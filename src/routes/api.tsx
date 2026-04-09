@@ -3,6 +3,7 @@ import type { AppEnv } from "../types";
 import { fetchGoogleDocHtml } from "../services/google-docs";
 import { parseHtmlDocument, extractDocLinksFromHtml } from "../services/html-parser";
 import { ingestParsedEpisodes } from "../jobs/ingest";
+import { ftsSearch } from "../services/search";
 
 const api = new Hono<AppEnv>();
 
@@ -13,22 +14,27 @@ api.get("/search", async (c) => {
     return c.json({ results: [], query: "" });
   }
 
-  const kwResults = await c.env.DB.prepare(
-    `SELECT c.id, c.slug, c.title, c.summary, c.content_plain,
-            e.slug as episode_slug, e.title as episode_title, e.published_date
-     FROM chunks c
-     JOIN episodes e ON c.episode_id = e.id
-     WHERE c.content_plain LIKE ?
-     ORDER BY e.published_date DESC
-     LIMIT 20`
-  )
-    .bind(`%${query}%`)
-    .all();
+  let results;
+  try {
+    results = await ftsSearch(c.env.DB, query);
+  } catch {
+    // FTS not available, fall back
+    const kwResults = await c.env.DB.prepare(
+      `SELECT c.id, c.slug, c.title, c.summary, c.content_plain,
+              e.slug as episode_slug, e.title as episode_title, e.published_date
+       FROM chunks c JOIN episodes e ON c.episode_id = e.id
+       WHERE c.content_plain LIKE ?
+       ORDER BY e.published_date DESC LIMIT 20`
+    )
+      .bind(`%${query}%`)
+      .all();
+    results = kwResults.results;
+  }
 
   return c.json({
-    results: kwResults.results,
+    results,
     query,
-    count: kwResults.results.length,
+    count: results.length,
   });
 });
 
@@ -105,6 +111,49 @@ api.get("/ingest", async (c) => {
   } catch (e: any) {
     return c.json({ error: e.message }, 500);
   }
+});
+
+// Reactive API: concordance with date filtering
+api.get("/concordance", async (c) => {
+  const from = c.req.query("from");
+  const to = c.req.query("to");
+  const limit = parseInt(c.req.query("limit") || "200", 10);
+
+  let query: string;
+  let binds: any[];
+
+  if (from || to) {
+    query = `SELECT cw.word, SUM(cw.count) as total_count, COUNT(DISTINCT cw.chunk_id) as doc_count
+       FROM chunk_words cw
+       JOIN chunks c ON cw.chunk_id = c.id
+       JOIN episodes e ON c.episode_id = e.id
+       WHERE 1=1
+       ${from ? "AND e.published_date >= ?" : ""}
+       ${to ? "AND e.published_date <= ?" : ""}
+       GROUP BY cw.word
+       ORDER BY total_count DESC
+       LIMIT ?`;
+    binds = [...(from ? [from] : []), ...(to ? [to] : []), limit];
+  } else {
+    query = `SELECT word, total_count, doc_count FROM concordance ORDER BY total_count DESC LIMIT ?`;
+    binds = [limit];
+  }
+
+  const results = await c.env.DB.prepare(query).bind(...binds).all();
+
+  return c.json({ words: results.results });
+});
+
+// Reactive API: timeline data
+api.get("/timeline", async (c) => {
+  const results = await c.env.DB.prepare(
+    `SELECT year, month, COUNT(*) as count, SUM(chunk_count) as total_chunks
+     FROM episodes
+     GROUP BY year, month
+     ORDER BY year, month`
+  ).all();
+
+  return c.json({ months: results.results });
 });
 
 export { api as apiRoutes };

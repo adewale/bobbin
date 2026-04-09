@@ -42,6 +42,7 @@ concordance.get("/", async (c) => {
           ))}
         </tbody>
       </table>
+      <script src="/scripts/reactive.js" defer></script>
     </Layout>
   );
 });

@@ -174,4 +174,110 @@ tags.get("/:slug", async (c) => {
   );
 });
 
+// Feature 4: Diff-over-time view for a tag
+tags.get("/:slug/diff", async (c) => {
+  const slug = c.req.param("slug");
+  const tag = await c.env.DB.prepare("SELECT * FROM tags WHERE slug = ?")
+    .bind(slug)
+    .first<TagRow>();
+
+  if (!tag) return c.notFound();
+
+  const chunks = await c.env.DB.prepare(
+    `SELECT c.*, e.slug as episode_slug, e.title as episode_title, e.published_date
+     FROM chunks c
+     JOIN chunk_tags ct ON c.id = ct.chunk_id
+     JOIN episodes e ON c.episode_id = e.id
+     WHERE ct.tag_id = ?
+     ORDER BY e.published_date ASC`
+  )
+    .bind(tag.id)
+    .all();
+
+  return c.html(
+    <Layout
+      title={`"${tag.name}" over time`}
+      description={`How Komoroske's thinking on "${tag.name}" has evolved`}
+    >
+      <Breadcrumbs
+        crumbs={[
+          { label: "Home", href: "/" },
+          { label: "Tags", href: "/tags" },
+          { label: tag.name, href: `/tags/${tag.slug}` },
+          { label: "Diff" },
+        ]}
+      />
+      <h1>&ldquo;{tag.name}&rdquo; over time</h1>
+      <div class="diff-view">
+        {(chunks.results as any[]).map((r, i) => (
+          <article key={r.id} class="diff-entry">
+            <div class="diff-date">
+              <time datetime={r.published_date}>{r.published_date}</time>
+              <a href={`/episodes/${r.episode_slug}`}>{r.episode_title}</a>
+            </div>
+            <div class="diff-content">
+              <h2><a href={`/chunks/${r.slug}`}>{r.title}</a></h2>
+              <p>{r.content_plain}</p>
+            </div>
+            {i < (chunks.results as any[]).length - 1 && (
+              <div class="diff-connector" aria-hidden="true" />
+            )}
+          </article>
+        ))}
+      </div>
+    </Layout>
+  );
+});
+
+// Feature 6: RSS feed per tag
+tags.get("/:slug/feed.xml", async (c) => {
+  const slug = c.req.param("slug");
+  const tag = await c.env.DB.prepare("SELECT * FROM tags WHERE slug = ?")
+    .bind(slug)
+    .first<TagRow>();
+
+  if (!tag) return c.notFound();
+
+  const chunks = await c.env.DB.prepare(
+    `SELECT c.*, e.slug as episode_slug, e.published_date
+     FROM chunks c
+     JOIN chunk_tags ct ON c.id = ct.chunk_id
+     JOIN episodes e ON c.episode_id = e.id
+     WHERE ct.tag_id = ?
+     ORDER BY e.published_date DESC
+     LIMIT 50`
+  )
+    .bind(tag.id)
+    .all();
+
+  const BASE_URL = "https://bobbin.adewale-883.workers.dev";
+  const escXml = (s: string) =>
+    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Bobbin — Tag: ${escXml(tag.name)}</title>
+  <link href="${BASE_URL}/tags/${tag.slug}" />
+  <link href="${BASE_URL}/tags/${tag.slug}/feed.xml" rel="self" />
+  <id>${BASE_URL}/tags/${tag.slug}</id>
+  <updated>${new Date().toISOString()}</updated>
+  <author><name>Alex Komoroske</name></author>
+${(chunks.results as any[])
+  .map(
+    (r) => `  <entry>
+    <title>${escXml(r.title)}</title>
+    <link href="${BASE_URL}/chunks/${r.slug}" />
+    <id>${BASE_URL}/chunks/${r.slug}</id>
+    <published>${r.published_date}T00:00:00Z</published>
+    <summary>${escXml(r.content_plain.substring(0, 300))}</summary>
+  </entry>`
+  )
+  .join("\n")}
+</feed>`;
+
+  return c.body(xml, {
+    headers: { "Content-Type": "application/atom+xml" },
+  });
+});
+
 export { tags as tagRoutes };

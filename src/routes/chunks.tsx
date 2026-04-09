@@ -106,6 +106,10 @@ chunks.get("/:slug", async (c) => {
             ))}
           </div>
 
+          <button class="reading-mode" onclick="document.body.classList.toggle('reader')">
+            Reading mode
+          </button>
+
           <script
             type="application/ld+json"
             dangerouslySetInnerHTML={{
