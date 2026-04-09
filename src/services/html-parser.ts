@@ -4,6 +4,8 @@ import type { ParsedEpisode, ParsedChunk } from "../types";
 const DATE_PATTERN = /\d{1,2}\/\d{1,2}\/\d{2,4}/;
 const GDOC_LINK_PATTERN = /docs\.google\.com\/document\/d\/([a-zA-Z0-9_-]+)/g;
 
+// Each top-level observation starts with a new list ID at level 0
+
 function stripHtml(html: string): string {
   return html
     .replace(/<[^>]+>/g, " ")
@@ -18,7 +20,6 @@ function stripHtml(html: string): string {
 }
 
 function generateTitle(text: string): string {
-  // Take the first sentence, capped at 80 chars
   const firstSentence = text.split(/[.!?]\s/)[0];
   if (firstSentence.length <= 80) return firstSentence;
   return firstSentence.substring(0, 77) + "...";
@@ -30,17 +31,16 @@ function generateTitle(text: string): string {
  * Structure:
  * - <h1> tags contain episode dates (e.g., "4/6/26")
  * - Content between h1 tags is the episode body
- * - Within an episode, observations are separated by <li style="padding-top:12pt">
- *   (a significant top padding indicates a new observation/chunk)
+ * - Within an episode, each observation starts with a new top-level list:
+ *   <ul class="lst-kix_[unique-id]-0 start">
+ *   Sub-points use the same list ID at higher nesting levels (-1, -2, etc.)
  */
 export function parseHtmlDocument(html: string): ParsedEpisode[] {
   const episodes: ParsedEpisode[] = [];
 
-  // Split on <h1> tags to get sections
   const sections = html.split(/<h1\b[^>]*>/);
 
   for (const section of sections) {
-    // Extract the h1 text (before the closing </h1>)
     const h1End = section.indexOf("</h1>");
     if (h1End === -1) continue;
 
@@ -51,15 +51,10 @@ export function parseHtmlDocument(html: string): ParsedEpisode[] {
     const parsedDate = parseEpisodeDate(dateMatch[0]);
     if (!parsedDate) continue;
 
-    // Extract heading ID
-    const idMatch = sections[0] === section ? "" : "";
     const headingId =
       html.match(new RegExp(`id="([^"]*)"[^>]*>\\s*<span[^>]*>${dateMatch[0]}`))?.[1] || "";
 
-    // Get body content after </h1>
     const body = section.substring(h1End + 5);
-
-    // Split into chunks by <li style="padding-top:12pt"> which indicates a new observation
     const chunks = splitIntoChunks(body);
 
     episodes.push({
@@ -84,15 +79,30 @@ export function parseHtmlDocument(html: string): ParsedEpisode[] {
 }
 
 function splitIntoChunks(html: string): string[] {
-  // Split on list items with significant top padding (new observation)
-  // The pattern is: <li style="...padding-top:12pt...">
-  const parts = html.split(/<li\s+style="[^"]*padding-top:\s*12pt[^"]*">/);
+  // Split on level-0 list starts: each <ul class="lst-kix_*-0 start"> marks a new observation.
+  // Everything between two boundaries (including nested sub-lists) is one chunk.
+  // Match <ul class="...lst-kix_ID-0 start..." ...> — the closing > may be after other attributes
+  const boundaryRegex = /<ul\s+class="[^"]*lst-kix_[a-z0-9_]+-0\s+start[^"]*"[^>]*>/g;
+  const boundaries: number[] = [];
+  let match;
+  while ((match = boundaryRegex.exec(html)) !== null) {
+    boundaries.push(match.index);
+  }
+
+  if (boundaries.length === 0) {
+    // Fallback: treat entire body as one chunk if no list structure found
+    const text = stripHtml(html);
+    return text.length > 10 ? [html] : [];
+  }
 
   const chunks: string[] = [];
-  for (const part of parts) {
-    const text = stripHtml(part);
+  for (let i = 0; i < boundaries.length; i++) {
+    const start = boundaries[i];
+    const end = i + 1 < boundaries.length ? boundaries[i + 1] : html.length;
+    const segment = html.substring(start, end);
+    const text = stripHtml(segment);
     if (text.length > 10) {
-      chunks.push(part);
+      chunks.push(segment);
     }
   }
 
