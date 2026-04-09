@@ -29,3 +29,13 @@ Optimise for SEO.
 Offer a concordance view.
 
 Use the Cloudflare platform and skill: https://github.com/cloudflare/skills
+
+## Implementation notes
+
+Content is fetched via public Google Docs export URLs (no auth required).
+The docs must be shared as "anyone with the link can view".
+
+Known doc IDs:
+- 1xRiCqpy3LMAgEsHdX-IA23j6nUISdT5nAJmtKbk9wNA (current)
+- 1ptHfoKWn0xbNSJgdkH8_3z4PHLC_f36MutFTTRf14I0 (archive 1)
+- 1GrEFrdF_IzRVXbGH1lG0aQMlvsB71XihPPqQN-ONTuo (archive 2)

@@ -1,0 +1,243 @@
+{
+  "documentId": "test-doc-id",
+  "title": "Bits and Bobs",
+  "revisionId": "rev-123",
+  "body": {
+    "content": [
+      {
+        "startIndex": 1,
+        "endIndex": 2,
+        "paragraph": {
+          "elements": [
+            {
+              "startIndex": 1,
+              "endIndex": 2,
+              "textRun": {
+                "content": "Bits and Bobs\n",
+                "textStyle": {}
+              }
+            }
+          ],
+          "paragraphStyle": {
+            "namedStyleType": "TITLE"
+          }
+        }
+      },
+      {
+        "startIndex": 100,
+        "endIndex": 110,
+        "paragraph": {
+          "elements": [
+            {
+              "startIndex": 100,
+              "endIndex": 110,
+              "textRun": {
+                "content": "4/8/24\n",
+                "textStyle": {}
+              }
+            }
+          ],
+          "paragraphStyle": {
+            "namedStyleType": "HEADING_1",
+            "headingId": "h.episode1"
+          }
+        }
+      },
+      {
+        "startIndex": 200,
+        "endIndex": 240,
+        "paragraph": {
+          "elements": [
+            {
+              "startIndex": 200,
+              "endIndex": 240,
+              "textRun": {
+                "content": "Nanotech cages for circus bears\n",
+                "textStyle": {}
+              }
+            }
+          ],
+          "paragraphStyle": {
+            "namedStyleType": "HEADING_2",
+            "headingId": "h.chunk1"
+          }
+        }
+      },
+      {
+        "startIndex": 300,
+        "endIndex": 500,
+        "paragraph": {
+          "elements": [
+            {
+              "startIndex": 300,
+              "endIndex": 500,
+              "textRun": {
+                "content": "There's a fascinating parallel between the way we try to contain powerful AI systems and how a hypothetical circus might contain nanoscale bears. The cages need to be built at the same scale as the thing they contain.\n",
+                "textStyle": {}
+              }
+            }
+          ],
+          "paragraphStyle": {
+            "namedStyleType": "NORMAL_TEXT"
+          }
+        }
+      },
+      {
+        "startIndex": 500,
+        "endIndex": 600,
+        "paragraph": {
+          "elements": [
+            {
+              "startIndex": 500,
+              "endIndex": 600,
+              "textRun": {
+                "content": "This is the second paragraph of the nanotech chunk.\n",
+                "textStyle": {}
+              }
+            }
+          ],
+          "paragraphStyle": {
+            "namedStyleType": "NORMAL_TEXT"
+          }
+        }
+      },
+      {
+        "startIndex": 600,
+        "endIndex": 640,
+        "paragraph": {
+          "elements": [
+            {
+              "startIndex": 600,
+              "endIndex": 640,
+              "textRun": {
+                "content": "Frankenstein ecosystems\n",
+                "textStyle": {}
+              }
+            }
+          ],
+          "paragraphStyle": {
+            "namedStyleType": "HEADING_2",
+            "headingId": "h.chunk2"
+          }
+        }
+      },
+      {
+        "startIndex": 700,
+        "endIndex": 900,
+        "paragraph": {
+          "elements": [
+            {
+              "startIndex": 700,
+              "endIndex": 900,
+              "textRun": {
+                "content": "When you stitch together different platform ecosystems, the result is often something that looks alive but moves in unpredictable ways. These Frankenstein ecosystems have emergent properties that none of the original architects intended.\n",
+                "textStyle": {}
+              }
+            }
+          ],
+          "paragraphStyle": {
+            "namedStyleType": "NORMAL_TEXT"
+          }
+        }
+      },
+      {
+        "startIndex": 1000,
+        "endIndex": 1010,
+        "paragraph": {
+          "elements": [
+            {
+              "startIndex": 1000,
+              "endIndex": 1010,
+              "textRun": {
+                "content": "3/25/24\n",
+                "textStyle": {}
+              }
+            }
+          ],
+          "paragraphStyle": {
+            "namedStyleType": "HEADING_1",
+            "headingId": "h.episode2"
+          }
+        }
+      },
+      {
+        "startIndex": 1100,
+        "endIndex": 1140,
+        "paragraph": {
+          "elements": [
+            {
+              "startIndex": 1100,
+              "endIndex": 1140,
+              "textRun": {
+                "content": "Whale falls\n",
+                "textStyle": {}
+              }
+            }
+          ],
+          "paragraphStyle": {
+            "namedStyleType": "HEADING_2",
+            "headingId": "h.chunk3"
+          }
+        }
+      },
+      {
+        "startIndex": 1200,
+        "endIndex": 1400,
+        "paragraph": {
+          "elements": [
+            {
+              "startIndex": 1200,
+              "endIndex": 1400,
+              "textRun": {
+                "content": "When a large platform dies, its carcass becomes an ecosystem unto itself. Other organisms feed on it for years. This is the tech equivalent of a whale fall.\n",
+                "textStyle": {}
+              }
+            }
+          ],
+          "paragraphStyle": {
+            "namedStyleType": "NORMAL_TEXT"
+          }
+        }
+      },
+      {
+        "startIndex": 1400,
+        "endIndex": 1500,
+        "paragraph": {
+          "elements": [
+            {
+              "startIndex": 1400,
+              "endIndex": 1450,
+              "textRun": {
+                "content": "See also ",
+                "textStyle": {}
+              }
+            },
+            {
+              "startIndex": 1450,
+              "endIndex": 1500,
+              "textRun": {
+                "content": "the archive doc",
+                "textStyle": {
+                  "link": {
+                    "url": "https://docs.google.com/document/d/1ptHfoKWn0xbNSJgdkH8_3z4PHLC_f36MutFTTRf14I0/edit"
+                  }
+                }
+              }
+            },
+            {
+              "startIndex": 1500,
+              "endIndex": 1510,
+              "textRun": {
+                "content": " for older editions.\n",
+                "textStyle": {}
+              }
+            }
+          ],
+          "paragraphStyle": {
+            "namedStyleType": "NORMAL_TEXT"
+          }
+        }
+      }
+    ]
+  }
+}
