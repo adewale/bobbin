@@ -71,7 +71,6 @@ describe("GET /concordance", () => {
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).toContain("ecosystem");
-    expect(html).toContain("platform");
   });
 });
 

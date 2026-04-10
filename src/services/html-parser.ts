@@ -1,10 +1,7 @@
 import { parseEpisodeDate } from "../lib/date";
-import type { ParsedEpisode, ParsedChunk } from "../types";
+import type { ParsedEpisode } from "../types";
 
 const DATE_PATTERN = /\d{1,2}\/\d{1,2}\/\d{2,4}/;
-const GDOC_LINK_PATTERN = /docs\.google\.com\/document\/d\/([a-zA-Z0-9_-]+)/g;
-
-// Each top-level observation starts with a new list ID at level 0
 
 function stripHtml(html: string): string {
   return html
@@ -20,24 +17,30 @@ function stripHtml(html: string): string {
 }
 
 function generateTitle(text: string): string {
-  const firstSentence = text.split(/[.!?]\s/)[0];
-  if (firstSentence.length <= 80) return firstSentence;
-  return firstSentence.substring(0, 77) + "...";
+  // Use just the first sentence of the main observation (level-0 text),
+  // capped at 80 chars. This is the "headline" of the observation.
+  const firstLine = text.split(/\n/)[0].trim();
+  const firstSentence = firstLine.split(/[.!?](?:\s|$)/)[0].trim();
+  if (!firstSentence) return firstLine.substring(0, 77) + (firstLine.length > 77 ? "..." : "");
+  if (firstSentence.length <= 72) return firstSentence;
+  // Cut at last word boundary before 80 chars
+  const cut = firstSentence.substring(0, 72).replace(/\s+\S*$/, "");
+  return cut + "...";
 }
 
 /**
  * Parses Google Docs mobilebasic HTML into episodes and chunks.
  *
  * Structure:
- * - <h1> tags contain episode dates (e.g., "4/6/26")
- * - Content between h1 tags is the episode body
- * - Within an episode, each observation starts with a new top-level list:
- *   <ul class="lst-kix_[unique-id]-0 start">
- *   Sub-points use the same list ID at higher nesting levels (-1, -2, etc.)
+ * - <h1> tags contain episode dates
+ * - Each episode is a single list with items at different nesting levels:
+ *   - margin-left:36pt  = level 0: a standalone observation (chunk boundary)
+ *   - margin-left:72pt  = level 1: sub-point of the current observation
+ *   - margin-left:108pt = level 2: sub-sub-point
+ * - Each level-0 item + its sub-points = one chunk
  */
 export function parseHtmlDocument(html: string): ParsedEpisode[] {
   const episodes: ParsedEpisode[] = [];
-
   const sections = html.split(/<h1\b[^>]*>/);
 
   for (const section of sections) {
@@ -52,58 +55,87 @@ export function parseHtmlDocument(html: string): ParsedEpisode[] {
     if (!parsedDate) continue;
 
     const headingId =
-      html.match(new RegExp(`id="([^"]*)"[^>]*>\\s*<span[^>]*>${dateMatch[0]}`))?.[1] || "";
+      html.match(
+        new RegExp(`id="([^"]*)"[^>]*>\\s*<span[^>]*>${dateMatch[0]}`)
+      )?.[1] || "";
 
     const body = section.substring(h1End + 5);
-    const chunks = splitIntoChunks(body);
+    const chunks = splitByObservations(body);
 
     episodes.push({
       dateStr: dateMatch[0],
       parsedDate,
       title: `Bits and Bobs ${dateMatch[0]}`,
       headingId,
-      chunks: chunks.map((content, i) => {
-        const plainText = stripHtml(content);
-        return {
-          title: generateTitle(plainText),
-          content: plainText,
-          contentPlain: plainText,
-          headingId: "",
-          position: i,
-        };
-      }),
+      chunks: chunks.map((c, i) => ({
+        title: generateTitle(c.mainText),
+        content: c.fullText,
+        contentPlain: c.fullText,
+        headingId: "",
+        position: i,
+      })),
     });
   }
 
   return episodes;
 }
 
-function splitIntoChunks(html: string): string[] {
-  // Split on level-0 list starts: each <ul class="lst-kix_*-0 start"> marks a new observation.
-  // Everything between two boundaries (including nested sub-lists) is one chunk.
-  // Match <ul class="...lst-kix_ID-0 start..." ...> — the closing > may be after other attributes
-  const boundaryRegex = /<ul\s+class="[^"]*lst-kix_[a-z0-9_]+-0\s+start[^"]*"[^>]*>/g;
-  const boundaries: number[] = [];
+interface ObservationChunk {
+  mainText: string; // Just the level-0 text (for title generation)
+  fullText: string; // Level-0 + all sub-points (for content)
+}
+
+function splitByObservations(html: string): ObservationChunk[] {
+  // Find all list items with their margin-left values
+  const itemRegex =
+    /<li[^>]*margin-left:\s*(\d+)pt[^>]*>([\s\S]*?)(?=<\/li>)/g;
+  const items: { margin: number; html: string }[] = [];
   let match;
-  while ((match = boundaryRegex.exec(html)) !== null) {
-    boundaries.push(match.index);
+  while ((match = itemRegex.exec(html)) !== null) {
+    items.push({ margin: parseInt(match[1], 10), html: match[2] });
   }
 
-  if (boundaries.length === 0) {
-    // Fallback: treat entire body as one chunk if no list structure found
+  if (!items.length) {
+    // Fallback: no list structure, treat entire body as one chunk
     const text = stripHtml(html);
-    return text.length > 10 ? [html] : [];
+    if (text.length > 10) {
+      return [{ mainText: text, fullText: text }];
+    }
+    return [];
   }
 
-  const chunks: string[] = [];
-  for (let i = 0; i < boundaries.length; i++) {
-    const start = boundaries[i];
-    const end = i + 1 < boundaries.length ? boundaries[i + 1] : html.length;
-    const segment = html.substring(start, end);
-    const text = stripHtml(segment);
-    if (text.length > 10) {
-      chunks.push(segment);
+  const chunks: ObservationChunk[] = [];
+  let currentMain = "";
+  let currentFull: string[] = [];
+
+  for (const item of items) {
+    const text = stripHtml(item.html);
+    if (!text) continue;
+
+    if (item.margin <= 36) {
+      // Level 0: new observation
+      if (currentMain) {
+        chunks.push({
+          mainText: currentMain,
+          fullText: currentFull.join("\n"),
+        });
+      }
+      currentMain = text;
+      currentFull = [text];
+    } else {
+      // Sub-point: append to current observation
+      if (currentMain) {
+        currentFull.push(text);
+      }
     }
+  }
+
+  // Flush last observation
+  if (currentMain) {
+    chunks.push({
+      mainText: currentMain,
+      fullText: currentFull.join("\n"),
+    });
   }
 
   return chunks;
@@ -111,8 +143,8 @@ function splitIntoChunks(html: string): string[] {
 
 export function extractDocLinksFromHtml(html: string): string[] {
   const links = new Set<string>();
+  const regex = /docs\.google\.com\/document\/d\/([a-zA-Z0-9_-]+)/g;
   let match;
-  const regex = new RegExp(GDOC_LINK_PATTERN);
   while ((match = regex.exec(html)) !== null) {
     links.add(match[1]);
   }

@@ -20,25 +20,28 @@ describe("parseHtmlDocument", () => {
   });
 
   it("extracts chunks (observations) from each episode", () => {
-    // Episode 1 has 3 observations separated by padding-top:12pt
+    // Episode 1: 3 level-0 observations
     expect(episodes[0].chunks.length).toBe(3);
-    // Episode 2 has 2 observations
+    // Episode 2: 2 level-0 observations
     expect(episodes[1].chunks.length).toBe(2);
-    // Episode 3 has 1 observation
+    // Episode 3: 1 observation
     expect(episodes[2].chunks.length).toBe(1);
   });
 
-  it("extracts chunk content as plain text", () => {
+  it("includes sub-points in chunk content", () => {
+    // First chunk has the main text plus 2 sub-points
     const firstChunk = episodes[0].chunks[0];
     expect(firstChunk.contentPlain).toContain("software provider");
-    expect(firstChunk.contentPlain).toContain("accomplishes");
+    expect(firstChunk.contentPlain).toContain("former");
+    expect(firstChunk.contentPlain).toContain("latter");
   });
 
-  it("generates chunk titles from first sentence", () => {
-    const firstChunk = episodes[0].chunks[0];
-    // Title should be derived from the first sentence/line
-    expect(firstChunk.title.length).toBeGreaterThan(5);
-    expect(firstChunk.title.length).toBeLessThanOrEqual(80);
+  it("generates meaningful titles from main observation text", () => {
+    const title = episodes[0].chunks[0].title;
+    expect(title.length).toBeGreaterThan(5);
+    expect(title.length).toBeLessThanOrEqual(80);
+    // Should NOT contain sub-point text
+    expect(title).not.toContain("former");
   });
 
   it("sets chunk positions", () => {
@@ -47,12 +50,12 @@ describe("parseHtmlDocument", () => {
     expect(episodes[0].chunks[2].position).toBe(2);
   });
 
-  it("includes multi-line content in chunks", () => {
-    // First chunk of episode 1 has the "selling software" observation
-    // which spans multiple list items
-    const chunk = episodes[0].chunks[0];
-    expect(chunk.contentPlain).toContain("former");
-    expect(chunk.contentPlain).toContain("latter");
+  it("separates observations correctly - second chunk is independent", () => {
+    const secondChunk = episodes[0].chunks[1];
+    expect(secondChunk.contentPlain).toContain("house that is on fire");
+    expect(secondChunk.contentPlain).toContain("fundamentals");
+    // Should NOT contain text from observation 1
+    expect(secondChunk.contentPlain).not.toContain("software provider");
   });
 });
 

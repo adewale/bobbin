@@ -3,10 +3,10 @@ import { tokenize, stripToPlainText, countWords } from "./text";
 
 describe("tokenize", () => {
   it("splits text into lowercase words", () => {
-    const tokens = tokenize("The Quick Brown Fox");
+    const tokens = tokenize("The Quick Brown Fox Jumps");
     expect(tokens).toContain("quick");
     expect(tokens).toContain("brown");
-    expect(tokens).toContain("fox");
+    expect(tokens).toContain("jumps");
   });
 
   it("excludes stopwords", () => {
@@ -15,19 +15,31 @@ describe("tokenize", () => {
     expect(tokens).not.toContain("over");
   });
 
-  it("excludes short words (<=2 chars)", () => {
-    const tokens = tokenize("I am a big fan of AI");
+  it("excludes short words (<=3 chars)", () => {
+    const tokens = tokenize("I am a big fan of AI and LLM");
     expect(tokens).not.toContain("i");
     expect(tokens).not.toContain("am");
     expect(tokens).not.toContain("a");
+    expect(tokens).not.toContain("big");
+    expect(tokens).not.toContain("fan");
+    expect(tokens).not.toContain("llm");
   });
 
-  it("handles punctuation", () => {
-    const tokens = tokenize("Hello, world! It's a test.");
-    expect(tokens).toContain("hello");
-    expect(tokens).toContain("world");
-    expect(tokens).toContain("it's");
-    expect(tokens).toContain("test");
+  it("excludes common generic words", () => {
+    const tokens = tokenize("People think good things are important and everyone knows time is something");
+    expect(tokens).not.toContain("people");
+    expect(tokens).not.toContain("good");
+    expect(tokens).not.toContain("everyone");
+    expect(tokens).not.toContain("something");
+  });
+
+  it("keeps domain-specific words", () => {
+    const tokens = tokenize("The ecosystem platform dynamics create emergent behavior");
+    expect(tokens).toContain("ecosystem");
+    expect(tokens).toContain("platform");
+    expect(tokens).toContain("dynamics");
+    expect(tokens).toContain("emergent");
+    expect(tokens).toContain("behavior");
   });
 });
 

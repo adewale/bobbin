@@ -8,6 +8,7 @@ const concordance = new Hono<AppEnv>();
 concordance.get("/", async (c) => {
   const words = await c.env.DB.prepare(
     `SELECT * FROM concordance
+     WHERE doc_count >= 2 AND total_count >= 3 AND length(word) >= 4
      ORDER BY total_count DESC
      LIMIT 200`
   ).all();

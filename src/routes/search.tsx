@@ -104,10 +104,11 @@ search.get("/", async (c) => {
           {results.map((r) => (
             <ChunkCard
               key={r.id}
-              chunk={{ id: r.id, slug: r.slug, title: r.title || "", summary: r.summary || null } as ChunkRow}
+              chunk={{ id: r.id, slug: r.slug, title: r.title || "", summary: r.summary || null, content_plain: r.contentPlain || "" } as ChunkRow}
               episodeSlug={r.episodeSlug}
               episodeTitle={r.episodeTitle}
               showEpisodeLink
+              query={query}
             />
           ))}
         </section>

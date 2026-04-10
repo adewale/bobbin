@@ -9,10 +9,10 @@ beforeEach(async () => {
 
 describe("tokenizeForConcordance", () => {
   it("returns word frequency map excluding stopwords", () => {
-    const result = tokenizeForConcordance("The quick brown fox jumps over the quick brown dog");
+    const result = tokenizeForConcordance("The quick brown foxes jump over the quick brown dogs repeatedly");
     expect(result.get("quick")).toBe(2);
     expect(result.get("brown")).toBe(2);
-    expect(result.get("fox")).toBe(1);
+    expect(result.get("foxes")).toBe(1);
     expect(result.has("the")).toBe(false);
     expect(result.has("over")).toBe(false);
   });
