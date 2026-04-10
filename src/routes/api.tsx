@@ -103,6 +103,43 @@ api.get("/ingest", async (c) => {
   }
 });
 
+// Generate embeddings for chunks that don't have them in Vectorize
+api.get("/embed", async (c) => {
+  const limit = parseInt(c.req.query("limit") || "10", 10);
+
+  try {
+    const chunks = await c.env.DB.prepare(
+      "SELECT id, content_plain, vector_id FROM chunks LIMIT ?"
+    )
+      .bind(limit)
+      .all();
+
+    if (!chunks.results.length) {
+      return c.json({ status: "no chunks to embed" });
+    }
+
+    const texts = (chunks.results as any[]).map((c) => c.content_plain);
+    const result = await c.env.AI.run("@cf/baai/bge-base-en-v1.5", {
+      text: texts,
+    });
+
+    const vectors = (chunks.results as any[]).map((chunk, i) => ({
+      id: chunk.vector_id,
+      values: (result as any).data[i],
+      metadata: { chunkId: chunk.id },
+    }));
+
+    await c.env.VECTORIZE.upsert(vectors);
+
+    return c.json({
+      status: "ok",
+      embedded: vectors.length,
+    });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
 // Reactive API: concordance with date filtering
 api.get("/concordance", async (c) => {
   const from = c.req.query("from");

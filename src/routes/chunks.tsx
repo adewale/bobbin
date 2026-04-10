@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { AppEnv, ChunkRow, TagRow } from "../types";
 import { Layout } from "../components/Layout";
 import { Breadcrumbs } from "../components/Breadcrumbs";
+import { getCrossReferences } from "../services/cross-refs";
 
 const chunks = new Hono<AppEnv>();
 
@@ -18,16 +19,35 @@ chunks.get("/:slug", async (c) => {
 
   if (!chunk) return c.notFound();
 
-  const [tags, related] = await Promise.all([
-    c.env.DB.prepare(
-      `SELECT t.* FROM tags t
-       JOIN chunk_tags ct ON t.id = ct.tag_id
-       WHERE ct.chunk_id = ?
-       ORDER BY t.usage_count DESC`
-    )
-      .bind((chunk as any).id)
-      .all(),
-    c.env.DB.prepare(
+  const tags = await c.env.DB.prepare(
+    `SELECT t.* FROM tags t
+     JOIN chunk_tags ct ON t.id = ct.tag_id
+     WHERE ct.chunk_id = ?
+     ORDER BY t.usage_count DESC`
+  )
+    .bind((chunk as any).id)
+    .all();
+
+  // Try Vectorize cross-references first, fall back to tag-based
+  let relatedItems: any[] = [];
+  try {
+    if (c.env.VECTORIZE && (chunk as any).vector_id) {
+      const crossRefs = await getCrossReferences(
+        c.env.VECTORIZE, c.env.DB,
+        (chunk as any).vector_id, (chunk as any).id
+      );
+      relatedItems = crossRefs.map((r) => ({
+        id: r.chunkId, slug: r.slug, title: r.title,
+        episode_slug: r.episodeSlug, rel_date: r.publishedDate,
+        score: r.score,
+      }));
+    }
+  } catch {
+    // Vectorize not available
+  }
+
+  if (!relatedItems.length) {
+    const related = await c.env.DB.prepare(
       `SELECT DISTINCT c.*, e.slug as episode_slug, e.published_date as rel_date
        FROM chunks c
        JOIN chunk_tags ct1 ON c.id = ct1.chunk_id
@@ -37,12 +57,12 @@ chunks.get("/:slug", async (c) => {
        LIMIT 5`
     )
       .bind((chunk as any).id, (chunk as any).id)
-      .all(),
-  ]);
+      .all();
+    relatedItems = related.results as any[];
+  }
 
   const chunkData = chunk as any;
   const paragraphs = chunkData.content.split("\n\n").filter((p: string) => p.trim());
-  const relatedItems = related.results as any[];
 
   return c.html(
     <Layout
