@@ -64,30 +64,10 @@ export async function runRefresh(env: Bindings): Promise<void> {
 }
 
 async function seedInitialSources(db: D1Database): Promise<void> {
-  const knownDocs = [
-    {
-      id: "1xRiCqpy3LMAgEsHdX-IA23j6nUISdT5nAJmtKbk9wNA",
-      title: "Bits and Bobs (Current)",
-      isArchive: 0,
-    },
-    {
-      id: "1ptHfoKWn0xbNSJgdkH8_3z4PHLC_f36MutFTTRf14I0",
-      title: "Bits and Bobs (Archive 1)",
-      isArchive: 1,
-    },
-    {
-      id: "1GrEFrdF_IzRVXbGH1lG0aQMlvsB71XihPPqQN-ONTuo",
-      title: "Bits and Bobs (Archive 2)",
-      isArchive: 1,
-    },
-  ];
-
-  for (const doc of knownDocs) {
-    await db
-      .prepare(
-        "INSERT OR IGNORE INTO sources (google_doc_id, title, is_archive) VALUES (?, ?, ?)"
-      )
-      .bind(doc.id, doc.title, doc.isArchive)
-      .run();
-  }
+  await db
+    .prepare(
+      "INSERT OR IGNORE INTO sources (google_doc_id, title) VALUES (?, ?)"
+    )
+    .bind("1xRiCqpy3LMAgEsHdX-IA23j6nUISdT5nAJmtKbk9wNA", "Bits and Bobs (Current)")
+    .run();
 }

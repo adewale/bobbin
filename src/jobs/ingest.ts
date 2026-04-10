@@ -15,11 +15,10 @@ export async function ingestParsedEpisodes(
   let episodesAdded = 0;
   let chunksAdded = 0;
 
+  // Check all existing episode dates (globally, not per-source) to avoid slug collisions
   const existing = await env.DB.prepare(
-    "SELECT published_date FROM episodes WHERE source_id = ?"
-  )
-    .bind(sourceId)
-    .all();
+    "SELECT published_date FROM episodes"
+  ).all();
   const existingDates = new Set(
     (existing.results as any[]).map((r) => r.published_date)
   );

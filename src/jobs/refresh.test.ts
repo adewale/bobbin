@@ -26,10 +26,8 @@ describe("runRefresh", () => {
     }
 
     const after = await env.DB.prepare("SELECT * FROM sources ORDER BY id").all();
-    expect(after.results.length).toBe(3);
+    expect(after.results.length).toBe(1);
     expect((after.results[0] as any).title).toContain("Current");
-    expect((after.results[1] as any).is_archive).toBe(1);
-    expect((after.results[2] as any).is_archive).toBe(1);
   }, 10000);
 
   it("creates an ingestion_log entry when running", async () => {

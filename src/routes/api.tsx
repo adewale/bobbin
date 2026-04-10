@@ -48,11 +48,9 @@ api.get("/ingest", async (c) => {
     // Ensure sources exist
     const sources = await c.env.DB.prepare("SELECT * FROM sources").all();
     if (!sources.results.length) {
-      await c.env.DB.batch([
-        c.env.DB.prepare("INSERT OR IGNORE INTO sources (google_doc_id, title) VALUES ('1xRiCqpy3LMAgEsHdX-IA23j6nUISdT5nAJmtKbk9wNA', 'Bits and Bobs (Current)')"),
-        c.env.DB.prepare("INSERT OR IGNORE INTO sources (google_doc_id, title, is_archive) VALUES ('1ptHfoKWn0xbNSJgdkH8_3z4PHLC_f36MutFTTRf14I0', 'Bits and Bobs (Archive 1)', 1)"),
-        c.env.DB.prepare("INSERT OR IGNORE INTO sources (google_doc_id, title, is_archive) VALUES ('1GrEFrdF_IzRVXbGH1lG0aQMlvsB71XihPPqQN-ONTuo', 'Bits and Bobs (Archive 2)', 1)"),
-      ]);
+      await c.env.DB.prepare(
+        "INSERT OR IGNORE INTO sources (google_doc_id, title) VALUES ('1xRiCqpy3LMAgEsHdX-IA23j6nUISdT5nAJmtKbk9wNA', 'Bits and Bobs (Current)')"
+      ).run();
     }
 
     // Pick which source to ingest
@@ -87,14 +85,6 @@ api.get("/ingest", async (c) => {
 
     const batch = newEpisodes.slice(0, limit);
     const result = await ingestParsedEpisodes(c.env, source.id, batch);
-
-    // Discover archive links
-    const newDocIds = extractDocLinksFromHtml(html);
-    for (const id of newDocIds) {
-      await c.env.DB.prepare(
-        "INSERT OR IGNORE INTO sources (google_doc_id, title, is_archive) VALUES (?, ?, 1)"
-      ).bind(id, `Archive (${id.substring(0, 8)}...)`).run();
-    }
 
     await c.env.DB.prepare(
       "UPDATE sources SET last_fetched_at = datetime('now') WHERE id = ?"
