@@ -3,6 +3,7 @@ import type { AppEnv, ChunkRow, TagRow } from "../types";
 import { Layout } from "../components/Layout";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { getCrossReferences } from "../services/cross-refs";
+import { safeJsonForHtml } from "../lib/html";
 
 const chunks = new Hono<AppEnv>();
 
@@ -42,8 +43,8 @@ chunks.get("/:slug", async (c) => {
         score: r.score,
       }));
     }
-  } catch {
-    // Vectorize not available
+  } catch (e) {
+    console.error("Cross-ref lookup failed:", e);
   }
 
   if (!relatedItems.length) {
@@ -133,7 +134,7 @@ chunks.get("/:slug", async (c) => {
           <script
             type="application/ld+json"
             dangerouslySetInnerHTML={{
-              __html: JSON.stringify({
+              __html: safeJsonForHtml({
                 "@context": "https://schema.org",
                 "@type": "Article",
                 headline: chunkData.title,

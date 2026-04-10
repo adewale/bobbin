@@ -1,5 +1,6 @@
 import { tokenize, STOPWORDS } from "../lib/text";
 import { slugify } from "../lib/slug";
+import { decodeHtmlEntities } from "../lib/html";
 
 interface TagResult {
   name: string;
@@ -10,13 +11,7 @@ export function extractTags(
   text: string,
   maxTags: number = 5
 ): TagResult[] {
-  // Decode HTML entities before processing
-  const clean = text
-    .replace(/&#39;/g, "'")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"');
+  const clean = decodeHtmlEntities(text);
 
   const words = tokenize(clean);
   const termFreq = new Map<string, number>();

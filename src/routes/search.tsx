@@ -5,6 +5,7 @@ import { SearchForm } from "../components/SearchForm";
 import { ChunkCard } from "../components/ChunkCard";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { ftsSearch, mergeAndRerank, type ScoredResult } from "../services/search";
+import { escapeLike } from "../lib/html";
 
 const search = new Hono<AppEnv>();
 
@@ -19,14 +20,14 @@ search.get("/", async (c) => {
     try {
       ftsResults = await ftsSearch(c.env.DB, query);
     } catch {
-      // FTS table might not exist yet — fall back to LIKE
+      // FTS table might not exist yet — fall back to LIKE with escaped metacharacters (S2)
       const kwResults = await c.env.DB.prepare(
         `SELECT c.*, e.slug as episode_slug, e.title as episode_title, e.published_date
          FROM chunks c JOIN episodes e ON c.episode_id = e.id
-         WHERE c.content_plain LIKE ?
+         WHERE c.content_plain LIKE ? ESCAPE '\\'
          ORDER BY e.published_date DESC LIMIT 20`
       )
-        .bind(`%${query}%`)
+        .bind(`%${escapeLike(query)}%`)
         .all();
       ftsResults = (kwResults.results as any[]).map((r) => ({
         id: r.id,

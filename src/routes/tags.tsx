@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { AppEnv, TagRow, ChunkRow } from "../types";
 import { Layout } from "../components/Layout";
+import { escapeXml, getBaseUrl } from "../lib/html";
 import { TagCloud } from "../components/TagCloud";
 import { ChunkCard } from "../components/ChunkCard";
 import { Breadcrumbs } from "../components/Breadcrumbs";
@@ -250,26 +251,24 @@ tags.get("/:slug/feed.xml", async (c) => {
     .bind(tag.id)
     .all();
 
-  const BASE_URL = "https://bobbin.adewale-883.workers.dev";
-  const escXml = (s: string) =>
-    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const baseUrl = getBaseUrl(c.req.url);
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
-  <title>Bobbin — Tag: ${escXml(tag.name)}</title>
-  <link href="${BASE_URL}/tags/${tag.slug}" />
-  <link href="${BASE_URL}/tags/${tag.slug}/feed.xml" rel="self" />
-  <id>${BASE_URL}/tags/${tag.slug}</id>
+  <title>Bobbin — Tag: ${escapeXml(tag.name)}</title>
+  <link href="${baseUrl}/tags/${escapeXml(tag.slug)}" />
+  <link href="${baseUrl}/tags/${escapeXml(tag.slug)}/feed.xml" rel="self" />
+  <id>${baseUrl}/tags/${escapeXml(tag.slug)}</id>
   <updated>${new Date().toISOString()}</updated>
   <author><name>Alex Komoroske</name></author>
 ${(chunks.results as any[])
   .map(
     (r) => `  <entry>
-    <title>${escXml(r.title)}</title>
-    <link href="${BASE_URL}/chunks/${r.slug}" />
-    <id>${BASE_URL}/chunks/${r.slug}</id>
+    <title>${escapeXml(r.title)}</title>
+    <link href="${baseUrl}/chunks/${escapeXml(r.slug)}" />
+    <id>${baseUrl}/chunks/${escapeXml(r.slug)}</id>
     <published>${r.published_date}T00:00:00Z</published>
-    <summary>${escXml(r.content_plain.substring(0, 300))}</summary>
+    <summary>${escapeXml(r.content_plain.substring(0, 300))}</summary>
   </entry>`
   )
   .join("\n")}

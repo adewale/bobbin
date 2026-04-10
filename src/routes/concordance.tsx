@@ -67,7 +67,8 @@ concordance.get("/:word", async (c) => {
        JOIN chunks c ON cw.chunk_id = c.id
        JOIN episodes e ON c.episode_id = e.id
        WHERE cw.word = ?
-       ORDER BY cw.count DESC, e.published_date DESC`
+       ORDER BY cw.count DESC, e.published_date DESC
+       LIMIT 100`
     )
       .bind(word)
       .all(),
@@ -140,7 +141,7 @@ concordance.get("/:word", async (c) => {
               <time datetime={r.published_date}>{r.published_date}</time>
             </span>
             <p class="excerpt">
-              {highlightWord(r.content_plain.substring(0, 300), word)}
+              {getExcerptAroundWord(r.content_plain, word)}
             </p>
             <span class="word-count">{r.word_count_in_chunk}x in this chunk</span>
           </article>
@@ -150,11 +151,17 @@ concordance.get("/:word", async (c) => {
   );
 });
 
-function highlightWord(text: string, word: string): string {
-  // Return text with the word highlighted via <mark> tags
-  // Note: Hono JSX will escape this, so we use raw HTML
-  const regex = new RegExp(`(${word})`, "gi");
-  return text.replace(regex, "**$1**");
+function getExcerptAroundWord(text: string, word: string, maxLen = 300): string {
+  const lower = text.toLowerCase();
+  const wLower = word.toLowerCase();
+  const idx = lower.indexOf(wLower);
+  if (idx === -1) return text.substring(0, maxLen);
+  const start = Math.max(0, idx - 80);
+  const end = Math.min(text.length, idx + word.length + 150);
+  let excerpt = text.substring(start, end);
+  if (start > 0) excerpt = "..." + excerpt;
+  if (end < text.length) excerpt += "...";
+  return excerpt;
 }
 
 export { concordance as concordanceRoutes };

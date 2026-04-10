@@ -3,7 +3,7 @@ import { formatDate } from "../lib/date";
 import { countWords } from "../lib/text";
 import { extractTags } from "../services/tag-generator";
 import { tokenizeForConcordance } from "../services/concordance";
-import { generateEmbedding } from "../services/embeddings";
+import { generateEmbeddings } from "../services/embeddings";
 import { generateSummary } from "../services/summarizer";
 import type { Bindings, ParsedEpisode } from "../types";
 
@@ -146,37 +146,33 @@ export async function ingestParsedEpisodes(
       await env.DB.batch(wordStmts.slice(i, i + 50));
     }
 
-    // AI operations (embeddings, summaries) — skip silently if unavailable
+    // P1: Batch embedding instead of per-chunk calls
     try {
-      if (env.AI && env.VECTORIZE) {
-        const vectors: { id: string; values: number[]; metadata: Record<string, unknown> }[] = [];
-        for (let i = 0; i < chunkMeta.length; i++) {
-          const embedding = await generateEmbedding(env.AI, chunkMeta[i].plain);
-          vectors.push({
-            id: chunkMeta[i].vectorId,
-            values: embedding,
-            metadata: { chunkId: chunkIds[i], episodeSlug, title: chunkMeta[i].title },
-          });
-        }
-        // Vectorize upsert supports batches
-        if (vectors.length > 0) {
-          await env.VECTORIZE.upsert(vectors);
-        }
+      if (env.AI && env.VECTORIZE && chunkMeta.length > 0) {
+        const texts = chunkMeta.map((c) => c.plain);
+        const embeddings = await generateEmbeddings(env.AI, texts);
+        const vectors = chunkMeta.map((c, i) => ({
+          id: c.vectorId,
+          values: embeddings[i],
+          metadata: { chunkId: chunkIds[i], episodeSlug, title: c.title },
+        }));
+        await env.VECTORIZE.upsert(vectors);
       }
-    } catch {
-      // AI/Vectorize may not be available
+    } catch (e) {
+      console.error("Embedding/Vectorize error:", e); // B2
     }
 
     try {
       if (env.AI) {
-        const chunkTexts = chunkMeta.map((c) => c.plain).join(" ");
+        // Truncate to ~1000 chars to stay within BART model limits
+        const chunkTexts = chunkMeta.map((c) => c.plain).join(" ").substring(0, 1000);
         const summary = await generateSummary(env.AI, chunkTexts);
         await env.DB.prepare("UPDATE episodes SET summary = ? WHERE id = ?")
           .bind(summary, episodeId)
           .run();
       }
-    } catch {
-      // AI may not be available
+    } catch (e) {
+      console.error("Summary generation error:", e); // B2
     }
   }
 

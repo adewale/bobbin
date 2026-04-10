@@ -38,6 +38,7 @@ timeline.get("/", async (c) => {
 // GET /timeline/:year — months in a year
 timeline.get("/:year", async (c) => {
   const year = parseInt(c.req.param("year"), 10);
+  if (isNaN(year)) return c.notFound();
 
   const months = await c.env.DB.prepare(
     `SELECT month, COUNT(*) as count
@@ -78,6 +79,7 @@ timeline.get("/:year", async (c) => {
 timeline.get("/:year/:month", async (c) => {
   const year = parseInt(c.req.param("year"), 10);
   const month = parseInt(c.req.param("month"), 10);
+  if (isNaN(year) || isNaN(month)) return c.notFound();
 
   const episodes = await c.env.DB.prepare(
     `SELECT * FROM episodes

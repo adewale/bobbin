@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://bobbin.example.com/sitemap.xml
+Sitemap: https://bobbin.adewale-883.workers.dev/sitemap.xml

@@ -1,17 +1,13 @@
 import { parseEpisodeDate } from "../lib/date";
+import { decodeHtmlEntities } from "../lib/html";
 import type { ParsedEpisode } from "../types";
 
 const DATE_PATTERN = /\d{1,2}\/\d{1,2}\/\d{2,4}/;
 
 function stripHtml(html: string): string {
-  return html
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, " ")
+  return decodeHtmlEntities(
+    html.replace(/<[^>]+>/g, " ")
+  )
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -108,7 +104,6 @@ function splitByObservations(html: string): ObservationChunk[] {
   const chunks: ObservationChunk[] = [];
   let currentMain = "";
   let currentFull: string[] = [];
-  let prevMargin = 0;
 
   for (const item of items) {
     const text = stripHtml(item.html);
@@ -132,7 +127,6 @@ function splitByObservations(html: string): ObservationChunk[] {
       currentFull.push(text);
     }
 
-    prevMargin = item.margin;
   }
 
   if (currentMain) {

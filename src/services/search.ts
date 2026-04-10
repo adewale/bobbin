@@ -34,6 +34,10 @@ export async function ftsSearch(
 ): Promise<ScoredResult[]> {
   if (!query.trim()) return [];
 
+  // S3: Sanitize query to prevent FTS5 operator injection
+  // Remove FTS5 operators by wrapping in double quotes (phrase search)
+  const safeQuery = '"' + query.replace(/"/g, "") + '"';
+
   // FTS5 bm25() accepts negative weights per column: bm25(table, w0, w1, ...)
   // Lower (more negative) = higher boost. We negate our boost values.
   const results = await db
@@ -48,7 +52,7 @@ export async function ftsSearch(
        ORDER BY rank
        LIMIT ?`
     )
-    .bind(-boosts.title, -boosts.content, query, limit)
+    .bind(-boosts.title, -boosts.content, safeQuery, limit)
     .all();
 
   // bm25 returns negative values where more negative = better match
