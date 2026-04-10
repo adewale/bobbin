@@ -98,3 +98,52 @@ These invariants would have caught the quality issues at the test level.
 ## The meta-lesson
 
 **TDD validates code correctness but not product quality.** You can have 122 passing tests and a bad product. The gap between "the code works" and "this is good" is where most of the actual work lives. Looking at the live site with real data — and being honest about what you see — is the most valuable test of all.
+
+## What the test audit revealed
+
+After building the app with 122 unit and route tests, a deep audit found:
+
+**50% of source files had zero test coverage.** All 8 JSX components, most routes' rendering logic, and all external-dependency services (embeddings, summarizer, Google Docs) were untested.
+
+**The tests that existed tested the wrong things.** Checking `expect(html).toContain("Nanotech cages")` passes whether the HTML is well-formed or broken — it's a string-in-string check, not a behavior check. Checking `GET / returns 200` passes even when the page shows "1 chunks" and tags like "it's".
+
+**Property-based testing caught a real bug on the first run.** The PBT for `stripToPlainText` found that angle brackets in content text (not tags) weren't handled — counterexample: `">"`. This is exactly the kind of edge case example-based tests miss because humans write the examples they already thought of.
+
+**The audit identified 47 testable invariants** across 10 modules. The most valuable:
+- `slugify` is idempotent and output always matches `/^[a-z0-9-]*$/`
+- `tokenize` output never contains stopwords and always > 3 chars
+- `extractTags` never returns HTML entities and never exceeds maxTags
+- `mergeAndRerank` output is always sorted descending with no duplicates
+- Every chunk belongs to a valid episode; positions are sequential
+- Concordance word counts match chunk_words aggregates
+
+### Three types of tests that were missing
+
+1. **Property-based tests** — invariants that hold for ALL inputs, not just the 3 examples you thought of. Fast-check found edge cases in the first run that 122 example tests missed.
+
+2. **Data consistency tests** — after ingestion, do the foreign keys actually reference valid rows? Does `episode.chunk_count` match the real count? These are database-level invariants that unit tests don't cover.
+
+3. **End-to-end pipeline tests** — parse HTML → ingest to D1 → query via route → render HTML. The unit tests for each step passed, but the pipeline had integration bugs (wrong chunk counts, broken slugs) that only showed up when the pieces connected.
+
+### What we learned about PBT
+
+**PBT is most valuable for functions with clear contracts.** `slugify`, `tokenize`, `extractTags`, and `mergeAndRerank` all have simple contracts (output format, invariants, bounds) that are easy to express as properties but tedious to test exhaustively with examples.
+
+**PBT is less valuable for I/O-heavy code.** You can't meaningfully fuzz a Google Docs fetch or a D1 query. For those, integration tests with realistic fixtures are better.
+
+**PBT finds the bugs you wouldn't write tests for.** Nobody writes a test for "what if the input to slugify is a string of emoji?" But fast-check will generate that input, and if your function can't handle it, you'll know.
+
+### The complete lesson list
+
+1. Start with the data, not the architecture
+2. Write acceptance tests with concrete examples of expected output
+3. Look at the live product after every feature, not just at the end
+4. Define "done" with specific criteria, not vague feature names
+5. PBT catches edge cases that example tests miss — use it for functions with clear contracts
+6. Data consistency tests catch integration bugs that unit tests miss
+7. End-to-end pipeline tests are more valuable than component tests in isolation
+8. The spec should include sample data and expected outputs, not just feature wishes
+9. Auth strategy should be validated before any code is written
+10. Ingestion performance should be designed for, not patched after the fact
+11. TDD validates correctness, not quality — you need both
+12. A test suite that reports 100% green can still describe a bad product
