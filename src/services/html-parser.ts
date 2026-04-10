@@ -96,7 +96,6 @@ function splitByObservations(html: string): ObservationChunk[] {
   }
 
   if (!items.length) {
-    // Fallback: no list structure, treat entire body as one chunk
     const text = stripHtml(html);
     if (text.length > 10) {
       return [{ mainText: text, fullText: text }];
@@ -104,16 +103,22 @@ function splitByObservations(html: string): ObservationChunk[] {
     return [];
   }
 
+  // A new observation starts when margin returns to 36pt from a deeper level.
+  // Sequential 36pt items are continuation paragraphs of the same observation.
   const chunks: ObservationChunk[] = [];
   let currentMain = "";
   let currentFull: string[] = [];
+  let prevMargin = 0;
 
   for (const item of items) {
     const text = stripHtml(item.html);
     if (!text) continue;
 
-    if (item.margin <= 36) {
-      // Level 0: new observation
+    const isTopLevel = item.margin <= 36;
+    const isFirstItem = !currentMain;
+
+    if ((isTopLevel && !isFirstItem) || isFirstItem) {
+      // Flush previous observation
       if (currentMain) {
         chunks.push({
           mainText: currentMain,
@@ -123,14 +128,13 @@ function splitByObservations(html: string): ObservationChunk[] {
       currentMain = text;
       currentFull = [text];
     } else {
-      // Sub-point: append to current observation
-      if (currentMain) {
-        currentFull.push(text);
-      }
+      // Continuation of current observation (same level or sub-level)
+      currentFull.push(text);
     }
+
+    prevMargin = item.margin;
   }
 
-  // Flush last observation
   if (currentMain) {
     chunks.push({
       mainText: currentMain,
