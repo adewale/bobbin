@@ -13,9 +13,17 @@ const tags = new Hono<AppEnv>();
 const PAGE_SIZE = 20;
 
 tags.get("/", async (c) => {
-  const topTags = await getFilteredTags(c.env.DB, 3, 200);
-  const entities = topTags.filter((t) => t.name.includes(" ")).slice(0, 20);
-  const concepts = topTags.filter((t) => !t.name.includes(" ")).slice(0, 40);
+  // Query entities and concepts separately so entities aren't crowded out
+  const [entityResults, conceptResults] = await Promise.all([
+    c.env.DB.prepare(
+      "SELECT * FROM tags WHERE usage_count >= 3 AND name LIKE '% %' ORDER BY usage_count DESC LIMIT 20"
+    ).all<TagRow>(),
+    c.env.DB.prepare(
+      "SELECT * FROM tags WHERE usage_count >= 3 AND name NOT LIKE '% %' ORDER BY usage_count DESC LIMIT 40"
+    ).all<TagRow>(),
+  ]);
+  const entities = entityResults.results;
+  const concepts = conceptResults.results;
 
   return c.html(
     <Layout title="Tags" description="Browse Bits and Bobs by topic" activePath="/tags">
