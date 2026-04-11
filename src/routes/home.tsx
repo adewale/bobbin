@@ -23,7 +23,6 @@ home.get("/", async (c) => {
       description="An archive of Alex Komoroske's Bits and Bobs weekly newsletter"
     >
       <section class="hero">
-        <h1>Bobbin</h1>
         <p>
           A searchable archive of Alex Komoroske's{" "}
           <em>Bits and Bobs</em> weekly observations.

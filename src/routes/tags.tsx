@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { AppEnv, TagRow, ChunkRow } from "../types";
 import { Layout } from "../components/Layout";
 import { escapeXml, getBaseUrl } from "../lib/html";
+import { SearchForm } from "../components/SearchForm";
 import { TagCloud } from "../components/TagCloud";
 import { ChunkCard } from "../components/ChunkCard";
 import { Breadcrumbs } from "../components/Breadcrumbs";
@@ -11,25 +12,19 @@ const tags = new Hono<AppEnv>();
 const PAGE_SIZE = 20;
 
 tags.get("/", async (c) => {
-  const allTags = await c.env.DB.prepare(
-    "SELECT * FROM tags WHERE usage_count > 0 ORDER BY usage_count DESC"
-  ).all();
+  // Only load tags with meaningful usage — not all 9000
+  const topTags = await c.env.DB.prepare(
+    "SELECT * FROM tags WHERE usage_count >= 3 ORDER BY usage_count DESC LIMIT 200"
+  ).all<TagRow>();
 
-  const tagList = allTags.results as unknown as TagRow[];
-
-  // Tier 1: Multi-word entities (Claude Code, Simon Willison, etc.)
-  const entities = tagList.filter((t) => t.name.includes(" ")).slice(0, 20);
-  // Tier 2: Top single-word tags by usage
-  const concepts = tagList.filter((t) => !t.name.includes(" ")).slice(0, 30);
-  // Tier 3: Everything else
-  const rest = tagList.filter(
-    (t) => !entities.includes(t) && !concepts.includes(t)
-  );
+  const entities = topTags.results.filter((t) => t.name.includes(" ")).slice(0, 20);
+  const concepts = topTags.results.filter((t) => !t.name.includes(" ")).slice(0, 40);
 
   return c.html(
     <Layout title="Tags" description="Browse Bits and Bobs by topic">
       <Breadcrumbs crumbs={[{ label: "Home", href: "/" }, { label: "Tags" }]} />
       <h1>Tags</h1>
+      <SearchForm />
 
       {entities.length > 0 && (
         <section class="tag-tier">
@@ -42,13 +37,6 @@ tags.get("/", async (c) => {
         <h2>Key Concepts</h2>
         <TagCloud tags={concepts} />
       </section>
-
-      {rest.length > 0 && (
-        <details class="tag-tier">
-          <summary>All {rest.length} other tags</summary>
-          <TagCloud tags={rest} />
-        </details>
-      )}
     </Layout>
   );
 });
@@ -131,7 +119,7 @@ tags.get("/:slug", async (c) => {
       />
       <h1>Tag: {tag.name}</h1>
       <p>
-        {total} chunk{total !== 1 ? "s" : ""} across {episodes.length} episode
+        {total} observation{total !== 1 ? "s" : ""} across {episodes.length} episode
         {episodes.length !== 1 ? "s" : ""}
       </p>
 
@@ -144,7 +132,7 @@ tags.get("/:slug", async (c) => {
               key={s.published_date}
               class="spark-bar"
               style={`height:${Math.round((s.count / maxSparkCount) * 100)}%`}
-              title={`${s.published_date}: ${s.count} chunk${s.count !== 1 ? "s" : ""}`}
+              title={`${s.published_date}: ${s.count} observation${s.count !== 1 ? "s" : ""}`}
             >
               <span class="spark-label">{s.published_date}</span>
             </div>

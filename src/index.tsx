@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { AppEnv, Bindings } from "./types";
+import { Layout } from "./components/Layout";
 import { homeRoutes } from "./routes/home";
 import { episodeRoutes } from "./routes/episodes";
 import { chunkRoutes } from "./routes/chunks";
@@ -40,14 +41,18 @@ app.route("/concordance", concordanceRoutes);
 app.route("/", feedRoutes);
 app.route("/api", apiRoutes);
 
-// 404 handler
+// 404 handler — uses Layout for consistency
 app.notFound((c) => {
   return c.html(
-    `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Not Found | Bobbin</title></head><body>
-    <header><nav><a href="/">Bobbin</a></nav></header>
-    <main><h1>404 — Not Found</h1><p>The page you're looking for doesn't exist.</p>
-    <p><a href="/">Go home</a> · <a href="/search">Search</a> · <a href="/episodes">Browse episodes</a></p>
-    </main></body></html>`,
+    <Layout title="Not Found" description="Page not found">
+      <h1>Not found</h1>
+      <p>The page you're looking for doesn't exist.</p>
+      <p>
+        <a href="/">Home</a> &middot;{" "}
+        <a href="/search">Search</a> &middot;{" "}
+        <a href="/episodes">Episodes</a>
+      </p>
+    </Layout>,
     404
   );
 });

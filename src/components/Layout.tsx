@@ -38,7 +38,7 @@ export const Layout: FC<LayoutProps> = ({
         <nav>
           <a href="/" class="site-title">Bobbin</a>
           <ul>
-            <li><a href="/episodes">Browse</a></li>
+            <li><a href="/episodes">Episodes</a></li>
             <li><a href="/tags">Tags</a></li>
             <li><a href="/concordance">Concordance</a></li>
           </ul>
