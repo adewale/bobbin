@@ -143,6 +143,31 @@ a:hover { text-decoration: underline; }
 .search-results > p:first-child { color: var(--text-light); font-size: 0.85rem; font-family: var(--font-ui); margin-bottom: 1rem; }
 .see-all { display: inline-block; margin-top: 1rem; font-size: 0.85rem; font-family: var(--font-ui); }
 
+/* === Episode TOC === */
+.episode-toc { list-style: decimal; padding-left: 1.5rem; font-family: var(--font-ui); font-size: 0.9rem; }
+.episode-toc li { padding: 0.35rem 0; border-bottom: 1px solid var(--border); line-height: 1.4; }
+.episode-toc a { color: var(--text); text-decoration: none; }
+.episode-toc a:hover { color: var(--accent); }
+
+/* === Most Connected === */
+.most-connected { margin: 2rem 0; padding: 1.25rem; background: var(--bg-warm); border: 1px solid var(--border); border-radius: 6px; }
+.most-connected h2 { font-family: var(--font-ui); font-size: 1rem; font-weight: 700; font-style: normal; margin-bottom: 0.15rem; }
+.section-subtitle { font-size: 0.8rem; font-family: var(--font-ui); color: var(--text-light); margin-bottom: 0.75rem; }
+.most-connected ul { list-style: none; }
+.most-connected li { padding: 0.3rem 0; border-bottom: 1px solid var(--border); }
+.most-connected li a { font-family: var(--font-ui); font-size: 0.88rem; font-weight: 500; text-decoration: none; color: var(--text); display: block; }
+.most-connected li a:hover { color: var(--accent); }
+.most-connected .meta { font-size: 0.72rem; font-family: var(--font-ui); color: var(--text-light); }
+
+/* === More On This Topic (Thread) === */
+.more-on-this { margin: 2rem 0; padding: 1.25rem; background: var(--bg-warm); border: 1px solid var(--border); border-radius: 6px; }
+.more-on-this h2 { font-family: var(--font-ui); font-size: 1rem; font-weight: 700; font-style: normal; margin-bottom: 0.15rem; }
+.more-on-this ul { list-style: none; }
+.more-on-this li { padding: 0.3rem 0; border-bottom: 1px solid var(--border); }
+.more-on-this li a { font-family: var(--font-ui); font-size: 0.88rem; font-weight: 500; text-decoration: none; color: var(--text); display: block; }
+.more-on-this li a:hover { color: var(--accent); }
+.more-on-this .meta { font-size: 0.72rem; font-family: var(--font-ui); color: var(--text-light); }
+
 /* === Sparkline === */
 .sparkline { display: flex; align-items: flex-end; gap: 2px; height: 48px; padding: 0.5rem 0; border-bottom: 1px solid var(--border); }
 .spark-bar { background: var(--accent); min-width: 4px; flex: 1; border-radius: 1px 1px 0 0; cursor: help; transition: opacity 0.15s; opacity: 0.7; }

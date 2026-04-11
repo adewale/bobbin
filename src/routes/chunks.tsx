@@ -62,6 +62,21 @@ chunks.get("/:slug", async (c) => {
     relatedItems = related.results as any[];
   }
 
+  // Fix 5: "More on this topic" — chunks from OTHER episodes that share tags
+  const thread = await c.env.DB.prepare(
+    `SELECT DISTINCT c.id, c.slug, c.title, c.content_plain,
+            e.slug as episode_slug, e.title as episode_title, e.published_date
+     FROM chunks c
+     JOIN chunk_tags ct1 ON c.id = ct1.chunk_id
+     JOIN chunk_tags ct2 ON ct1.tag_id = ct2.tag_id
+     JOIN episodes e ON c.episode_id = e.id
+     WHERE ct2.chunk_id = ? AND c.id != ? AND c.episode_id != ?
+     ORDER BY e.published_date DESC
+     LIMIT 8`
+  )
+    .bind((chunk as any).id, (chunk as any).id, (chunk as any).episode_id)
+    .all();
+
   const chunkData = chunk as any;
   const paragraphs = chunkData.content.split("\n\n").filter((p: string) => p.trim());
 
@@ -146,6 +161,23 @@ chunks.get("/:slug", async (c) => {
             }}
           />
         </article>
+
+        {(thread.results as any[]).length > 0 && (
+          <section class="more-on-this">
+            <h2>More on this topic</h2>
+            <p class="section-subtitle">From other episodes</p>
+            <ul>
+              {(thread.results as any[]).map((r: any) => (
+                <li key={r.id}>
+                  <a href={`/chunks/${r.slug}`}>{r.title}</a>
+                  <span class="meta">
+                    <a href={`/episodes/${r.episode_slug}`}>{r.published_date}</a>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
       </div>
     </Layout>
   );
