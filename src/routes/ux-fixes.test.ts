@@ -38,7 +38,7 @@ describe("Fix 1: Episode page as TOC", () => {
   it("shows chunk titles as a scannable list", async () => {
     const res = await SELF.fetch("http://localhost/episodes/2024-04-08");
     const html = await res.text();
-    expect(html).toContain("episode-toc");
+    expect(html).toContain("episode-notes");
   });
 
   it("each TOC entry links to the chunk", async () => {

@@ -3,6 +3,7 @@ import type { AppEnv, ConcordanceRow } from "../types";
 import { Layout } from "../components/Layout";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { getTopConcordance, getConcordanceWord } from "../db/concordance";
+import { escapeRegex } from "../lib/html";
 
 const concordance = new Hono<AppEnv>();
 
@@ -201,9 +202,12 @@ concordance.get("/:word", async (c) => {
               {" "}&middot;{" "}
               <time datetime={r.published_date}>{r.published_date}</time>
             </span>
-            <p class="excerpt">
-              {getExcerptAroundWord(r.content_plain, word)}
-            </p>
+            <p
+              class="excerpt"
+              dangerouslySetInnerHTML={{
+                __html: highlightInExcerpt(r.content_plain, word),
+              }}
+            />
             <span class="word-count">{r.word_count_in_chunk}x in this chunk</span>
           </article>
         ))}
@@ -211,6 +215,13 @@ concordance.get("/:word", async (c) => {
     </Layout>
   );
 });
+
+function highlightInExcerpt(text: string, word: string): string {
+  const excerpt = getExcerptAroundWord(text, word);
+  const escaped = excerpt.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const safeWord = escapeRegex(word);
+  return escaped.replace(new RegExp(`(${safeWord})`, "gi"), "<mark>$1</mark>");
+}
 
 function getExcerptAroundWord(text: string, word: string, maxLen = 300): string {
   const lower = text.toLowerCase();

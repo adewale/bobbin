@@ -19,7 +19,7 @@
   --max-width-wide: 56rem;
 }
 
-html { font-size: 18px; line-height: 1.7; color: var(--text); background: var(--bg); }
+html { font-size: 18px; line-height: 1.7; color: var(--text); background: var(--bg); scrollbar-gutter: stable; }
 body { font-family: var(--font-body); }
 
 /* === Layout === */
@@ -206,12 +206,20 @@ details.tag-tier .tag-cloud { margin-top: 0.5rem; }
 /* === Search Results === */
 .search-results > p:first-child { color: var(--text-light); font-size: 0.85rem; font-family: var(--font-ui); margin-bottom: 1rem; }
 .see-all { display: inline-block; margin-top: 1rem; font-size: 0.85rem; font-family: var(--font-ui); }
+mark { background: color-mix(in srgb, var(--accent-light) 60%, transparent); color: var(--text); padding: 0.05rem 0.15rem; border-radius: 2px; }
 
-/* === Episode TOC === */
-.episode-toc { list-style: decimal; padding-left: 1.5rem; font-family: var(--font-ui); font-size: 0.9rem; }
-.episode-toc li { padding: 0.5rem 0; border-bottom: 1px solid var(--border); line-height: 1.5; min-height: 2.75rem; }
-.episode-toc a { color: var(--text); text-decoration: none; }
-.episode-toc a:hover { color: var(--accent); }
+/* === Observation accordion (notes episodes) === */
+.episode-notes .observation { border-bottom: 1px solid var(--border); }
+.episode-notes summary { display: flex; align-items: baseline; gap: 0.5rem; padding: 0.6rem 0; cursor: pointer; list-style: none; min-height: 2.75rem; }
+.episode-notes summary::-webkit-details-marker { display: none; }
+.episode-notes summary::marker { display: none; content: ""; }
+.episode-notes .obs-num { font-family: var(--font-ui); font-size: 0.7rem; color: var(--text-light); min-width: 1.5rem; text-align: right; flex-shrink: 0; }
+.episode-notes .obs-title { font-family: var(--font-body); font-size: 0.92rem; color: var(--text); line-height: 1.5; }
+.episode-notes details[open] .obs-title { color: var(--accent-dark); }
+.episode-notes .obs-content { padding: 0 0 1rem 2rem; font-size: 0.9rem; color: var(--text-muted); }
+.episode-notes .obs-content p { margin-bottom: 0.4rem; }
+.episode-notes .obs-permalink { font-family: var(--font-ui); font-size: 0.75rem; color: var(--text-light); text-decoration: none; }
+.episode-notes .obs-permalink:hover { color: var(--accent); }
 
 /* === Most Connected === */
 .most-connected { margin: 2rem 0; padding: 1.25rem; background: var(--bg-warm); border: 1px solid var(--border); border-radius: 6px; }

@@ -117,13 +117,22 @@ episodes.get("/:slug", async (c) => {
             ))}
           </section>
         ) : (
-          <ol class="episode-toc">
-            {chunksList.map((chunk) => (
-              <li key={chunk.id}>
-                <a href={`/chunks/${chunk.slug}`}>{chunk.title}</a>
-              </li>
+          <div class="episode-notes">
+            {chunksList.map((chunk, idx) => (
+              <details key={chunk.id} class="observation">
+                <summary>
+                  <span class="obs-num">{idx + 1}</span>
+                  <span class="obs-title">{chunk.title}</span>
+                </summary>
+                <div class="obs-content">
+                  {chunk.content.split("\n").map((line, i) => (
+                    line.trim() ? <p key={i}>{line}</p> : null
+                  ))}
+                  <a href={`/chunks/${chunk.slug}`} class="obs-permalink">Permalink &rarr;</a>
+                </div>
+              </details>
             ))}
-          </ol>
+          </div>
         )}
       </article>
     </Layout>
