@@ -14,19 +14,28 @@ export async function ingestParsedEpisodes(
   let episodesAdded = 0;
   let chunksAdded = 0;
 
-  // Check all existing episode dates (globally, not per-source) to avoid slug collisions
+  // Dedup per-source: same source + same date = skip
   const existing = await env.DB.prepare(
-    "SELECT published_date FROM episodes"
-  ).all();
+    "SELECT published_date FROM episodes WHERE source_id = ?"
+  )
+    .bind(sourceId)
+    .all();
   const existingDates = new Set(
     (existing.results as any[]).map((r) => r.published_date)
   );
+
+  // Get source doc ID for slug disambiguation
+  const source = await env.DB.prepare("SELECT google_doc_id FROM sources WHERE id = ?")
+    .bind(sourceId)
+    .first<{ google_doc_id: string }>();
+  const sourceTag = source ? source.google_doc_id.substring(0, 6) : String(sourceId);
 
   for (const episode of episodes) {
     const dateStr = formatDate(episode.parsedDate);
     if (existingDates.has(dateStr)) continue;
 
-    const episodeSlug = dateStr;
+    // Include source tag in slug to allow same date from different sources
+    const episodeSlug = `${dateStr}-${sourceTag}`;
     const episodeResult = await env.DB.prepare(
       `INSERT INTO episodes (source_id, slug, title, published_date, year, month, day, chunk_count, format)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`

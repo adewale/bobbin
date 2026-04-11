@@ -29,8 +29,8 @@ describe("ingestParsedEpisodes", () => {
       "SELECT * FROM episodes ORDER BY published_date DESC"
     ).all();
     expect(episodes.results).toHaveLength(2);
-    expect((episodes.results[0] as any).slug).toBe("2024-04-08");
-    expect((episodes.results[1] as any).slug).toBe("2024-03-25");
+    expect((episodes.results[0] as any).slug).toContain("2024-04-08");
+    expect((episodes.results[1] as any).slug).toContain("2024-03-25");
   });
 
   it("inserts chunks with correct content", async () => {

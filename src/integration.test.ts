@@ -27,7 +27,11 @@ describe("End-to-end ingestion pipeline", () => {
     const homeHtml = await homeRes.text();
     expect(homeHtml).toContain("Bits and Bobs 4/6/26");
 
-    const epRes = await SELF.fetch("http://localhost/episodes/2026-04-06");
+    // Find the actual episode slug (includes source tag)
+    const epSlug = await env.DB.prepare(
+      "SELECT slug FROM episodes WHERE published_date = '2026-04-06'"
+    ).first();
+    const epRes = await SELF.fetch(`http://localhost/episodes/${(epSlug as any).slug}`);
     expect(epRes.status).toBe(200);
     const epHtml = await epRes.text();
     expect(epHtml).toContain("software provider");
