@@ -55,9 +55,6 @@ concordance.get("/", async (c) => {
                   <a href={`/concordance/${encodeURIComponent(w.word)}`}>
                     {w.word}
                   </a>
-                  {isDistinctive && (
-                    <span class="sip-badge">SIP</span>
-                  )}
                 </td>
                 <td class="col-bar">
                   <div
@@ -128,9 +125,6 @@ concordance.get("/:word", async (c) => {
       <p>
         {wordData.total_count} occurrence{wordData.total_count !== 1 ? "s" : ""}{" "}
         across {wordData.doc_count} chunk{wordData.doc_count !== 1 ? "s" : ""}
-        {wordData.in_baseline === 0 && (
-          <span class="sip-badge" style="margin-left:0.5rem">SIP</span>
-        )}
       </p>
 
       <div class="word-timeline" data-timeline={JSON.stringify(timelineData)}>
