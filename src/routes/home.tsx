@@ -17,26 +17,20 @@ home.get("/", async (c) => {
     ).all(),
   ]);
 
-  // Most-connected: chunks with the most cross-episode tag connections
-  // This query can be expensive with large tag sets, so fail gracefully
-  let connected: any = { results: [] };
-  try {
-    connected = await c.env.DB.prepare(
-      `SELECT c.id, c.slug, c.title,
-              e.slug as episode_slug, e.published_date,
-              COUNT(DISTINCT ct2.chunk_id) as connections
-       FROM chunks c
-       JOIN chunk_tags ct1 ON c.id = ct1.chunk_id
-       JOIN chunk_tags ct2 ON ct1.tag_id = ct2.tag_id AND ct2.chunk_id != c.id
-       JOIN chunks c2 ON ct2.chunk_id = c2.id AND c2.episode_id != c.episode_id
-       JOIN episodes e ON c.episode_id = e.id
-       GROUP BY c.id
-       ORDER BY connections DESC
-       LIMIT 8`
-    ).all();
-  } catch (e) {
-    console.error("Most-connected query failed:", e);
-  }
+  // Most-connected: chunks whose tags have the highest total reach
+  // Sum of usage_count for each chunk's tags = how connected it is
+  const connected = await c.env.DB.prepare(
+    `SELECT c.id, c.slug, c.title,
+            e.slug as episode_slug, e.published_date,
+            SUM(t.usage_count) as reach
+     FROM chunks c
+     JOIN chunk_tags ct ON c.id = ct.chunk_id
+     JOIN tags t ON ct.tag_id = t.id
+     JOIN episodes e ON c.episode_id = e.id
+     GROUP BY c.id
+     ORDER BY reach DESC
+     LIMIT 8`
+  ).all();
 
   return c.html(
     <Layout
@@ -61,7 +55,7 @@ home.get("/", async (c) => {
               <li key={r.id}>
                 <a href={`/chunks/${r.slug}`}>{r.title}</a>
                 <span class="meta">
-                  {r.connections} connections &middot;{" "}
+                  {r.reach} reach &middot;{" "}
                   <a href={`/episodes/${r.episode_slug}`}>{r.published_date}</a>
                 </span>
               </li>
