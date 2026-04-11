@@ -98,11 +98,11 @@ concordance.get("/", async (c) => {
                       style={`width:${Math.max(barWidth, 1)}%`}
                     />
                     {sparklineData.has(w.word) && (
-                      <svg class="inline-spark" viewBox="0 0 100 20" preserveAspectRatio="none">
+                      <svg class="inline-spark" viewBox="0 0 100 40" preserveAspectRatio="none">
                         <polyline
-                          points={renderSparkPoints(sparklineData.get(w.word)!)}
+                          points={renderSparkPoints(sparklineData.get(w.word)!, 40)}
                           fill="none"
-                          stroke={isDistinctive ? "var(--accent)" : "var(--text-light)"}
+                          stroke={isDistinctive ? "var(--accent)" : "var(--text-muted)"}
                           stroke-width="1.5"
                         />
                       </svg>
@@ -225,13 +225,14 @@ function getExcerptAroundWord(text: string, word: string, maxLen = 300): string 
   return excerpt;
 }
 
-function renderSparkPoints(values: number[]): string {
+function renderSparkPoints(values: number[], height = 40): string {
   if (!values.length) return "";
   const max = Math.max(...values, 1);
+  const pad = 3; // padding top/bottom
   return values
     .map((v, i) => {
       const x = (i / Math.max(values.length - 1, 1)) * 100;
-      const y = 20 - (v / max) * 18; // 1px top margin, 1px bottom
+      const y = height - pad - (v / max) * (height - pad * 2);
       return `${x.toFixed(1)},${y.toFixed(1)}`;
     })
     .join(" ");

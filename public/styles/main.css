@@ -173,13 +173,15 @@ details.tag-tier .tag-cloud { margin-top: 0.5rem; }
 .concordance-bars tr.distinctive { background: color-mix(in srgb, var(--accent-light) 30%, transparent); }
 .concordance-bars a { text-decoration: none; font-weight: 500; color: var(--text); }
 .concordance-bars a:hover { color: var(--accent); }
-.concordance-bars .bar { height: 14px; border-radius: 1px; min-width: 2px; }
-.concordance-bars .bar-distinctive { background: var(--accent); opacity: 0.8; }
-.concordance-bars .bar-baseline { background: var(--text-light); opacity: 0.4; }
-.bar-with-spark { position: relative; height: 20px; }
-.bar-with-spark .bar { position: absolute; top: 3px; left: 0; height: 14px; }
-.inline-spark { position: absolute; top: 0; left: 0; width: 100%; height: 20px; opacity: 0.6; }
-.concordance-bars tr:hover .inline-spark { opacity: 1; }
+.concordance-bars .bar { height: 100%; border-radius: 2px; min-width: 2px; }
+.concordance-bars .bar-distinctive { background: var(--accent); opacity: 0.15; }
+.concordance-bars .bar-baseline { background: var(--text-light); opacity: 0.1; }
+.bar-with-spark { position: relative; height: 2.5rem; }
+.bar-with-spark .bar { position: absolute; top: 0; left: 0; }
+.inline-spark { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+.inline-spark polyline { stroke-width: 1.5; }
+.concordance-bars tr:hover .bar-distinctive { opacity: 0.25; }
+.concordance-bars tr:hover .bar-baseline { opacity: 0.2; }
 .concordance-legend { display: flex; align-items: center; gap: 1.5rem; margin-bottom: 0.75rem; font-family: var(--font-ui); font-size: 0.75rem; color: var(--text-muted); flex-wrap: wrap; }
 .legend-item { display: inline-flex; align-items: center; gap: 0.35rem; white-space: nowrap; }
 .legend-bar { display: inline-block; width: 20px; height: 10px; border-radius: 1px; }
