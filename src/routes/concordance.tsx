@@ -30,7 +30,11 @@ concordance.get("/", async (c) => {
 
       {words.length === 0 && <p>No concordance data yet.</p>}
 
-      {/* Tufte-inspired horizontal bar table */}
+      <div class="concordance-legend">
+        <span class="legend-item"><span class="legend-bar bar-distinctive" /> Distinctive — rare in general English</span>
+        <span class="legend-item"><span class="legend-bar bar-baseline" /> Common — in top 1000 English words</span>
+      </div>
+
       <table class="concordance-bars">
         <thead>
           <tr>

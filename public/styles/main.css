@@ -174,6 +174,11 @@ details.tag-tier .tag-cloud { margin-top: 0.5rem; }
 .concordance-bars .bar { height: 14px; border-radius: 1px; min-width: 2px; }
 .concordance-bars .bar-distinctive { background: var(--accent); opacity: 0.8; }
 .concordance-bars .bar-baseline { background: var(--text-light); opacity: 0.4; }
+.concordance-legend { display: flex; gap: 1.5rem; margin-bottom: 0.75rem; font-family: var(--font-ui); font-size: 0.75rem; color: var(--text-muted); }
+.legend-item { display: flex; align-items: center; gap: 0.35rem; }
+.legend-bar { display: inline-block; width: 20px; height: 10px; border-radius: 1px; }
+.legend-bar.bar-distinctive { background: var(--accent); opacity: 0.8; }
+.legend-bar.bar-baseline { background: var(--text-light); opacity: 0.4; }
 @media (max-width: 640px) {
   .concordance-bars .col-bar { display: none; }
   .concordance-bars .col-num:last-child { display: none; }
