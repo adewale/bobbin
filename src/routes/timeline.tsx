@@ -54,8 +54,7 @@ timeline.get("/:year", async (c) => {
     <Layout title={`${year}`} description={`Bits and Bobs episodes from ${year}`}>
       <Breadcrumbs
         crumbs={[
-          { label: "Home", href: "/" },
-          { label: "Timeline", href: "/timeline" },
+                    { label: "Timeline", href: "/timeline" },
           { label: String(year) },
         ]}
       />
@@ -96,8 +95,7 @@ timeline.get("/:year/:month", async (c) => {
     >
       <Breadcrumbs
         crumbs={[
-          { label: "Home", href: "/" },
-          { label: "Timeline", href: "/timeline" },
+                    { label: "Timeline", href: "/timeline" },
           { label: String(year), href: `/timeline/${year}` },
           { label: monthName(month) },
         ]}

@@ -156,10 +156,10 @@ concordance.get("/:word", async (c) => {
     <Layout
       title={`"${word}" in context`}
       description={`Occurrences of "${word}" across Bits and Bobs`}
+      activePath="/concordance"
     >
       <Breadcrumbs
         crumbs={[
-          { label: "Home", href: "/" },
           { label: "Concordance", href: "/concordance" },
           { label: word },
         ]}

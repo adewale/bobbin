@@ -109,10 +109,10 @@ tags.get("/:slug", async (c) => {
     <Layout
       title={`Tag: ${tag.name}`}
       description={`Exploring "${tag.name}" across Bits and Bobs — ${total} chunks across ${episodes.length} episodes`}
+      activePath="/tags"
     >
       <Breadcrumbs
         crumbs={[
-          { label: "Home", href: "/" },
           { label: "Tags", href: "/tags" },
           { label: tag.name },
         ]}
@@ -257,11 +257,11 @@ tags.get("/:slug/diff", async (c) => {
   return c.html(
     <Layout
       title={`"${tag.name}" over time`}
+      activePath="/tags"
       description={`How Komoroske's thinking on "${tag.name}" has evolved`}
     >
       <Breadcrumbs
         crumbs={[
-          { label: "Home", href: "/" },
           { label: "Tags", href: "/tags" },
           { label: tag.name, href: `/tags/${tag.slug}` },
           { label: "Diff" },

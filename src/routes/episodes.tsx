@@ -70,10 +70,9 @@ episodes.get("/:slug", async (c) => {
   ]);
 
   return c.html(
-    <Layout title={episode.title} description={`Bits and Bobs from ${episode.published_date} — ${episode.chunk_count} observations`}>
+    <Layout title={episode.title} description={`Bits and Bobs from ${episode.published_date} — ${episode.chunk_count} observations`} activePath="/episodes">
       <Breadcrumbs
         crumbs={[
-          { label: "Home", href: "/" },
           { label: "Episodes", href: "/episodes" },
           { label: episode.title },
         ]}

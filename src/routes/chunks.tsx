@@ -101,10 +101,10 @@ chunks.get("/:slug", async (c) => {
     <Layout
       title={chunkData.title}
       description={chunkData.content_plain.substring(0, 160)}
+      activePath="/episodes"
     >
       <Breadcrumbs
         crumbs={[
-          { label: "Home", href: "/" },
           { label: "Episodes", href: "/episodes" },
           { label: chunkData.episode_title, href: `/episodes/${chunkData.episode_slug}` },
           { label: chunkData.title },
