@@ -6,39 +6,53 @@ import { Breadcrumbs } from "../components/Breadcrumbs";
 const concordance = new Hono<AppEnv>();
 
 concordance.get("/", async (c) => {
+  const sortBy = c.req.query("sort") || "distinctive";
+  const orderCol = sortBy === "count" ? "total_count" : "distinctiveness";
+
   const words = await c.env.DB.prepare(
     `SELECT * FROM concordance
      WHERE doc_count >= 2 AND total_count >= 3 AND length(word) >= 4
-     ORDER BY total_count DESC
+     ORDER BY ${orderCol} DESC
      LIMIT 200`
   ).all();
 
   return c.html(
-    <Layout title="Concordance" description="Word frequencies across the Bits and Bobs archive">
+    <Layout title="Concordance" description="Distinctive words in the Bits and Bobs archive">
       <Breadcrumbs
         crumbs={[{ label: "Home", href: "/" }, { label: "Concordance" }]}
       />
       <h1>Concordance</h1>
-      <p>Top words across all chunks, excluding common stopwords.</p>
+      <p>Words that distinguish Komoroske's writing from typical English.</p>
+      <nav class="concordance-sort">
+        <a href="/concordance?sort=distinctive" class={sortBy === "distinctive" ? "active" : ""}>
+          Most distinctive
+        </a>
+        <a href="/concordance?sort=count" class={sortBy === "count" ? "active" : ""}>
+          Most frequent
+        </a>
+      </nav>
       {words.results.length === 0 && <p>No concordance data yet.</p>}
       <table class="concordance-table">
         <thead>
           <tr>
             <th>Word</th>
-            <th>Occurrences</th>
-            <th>Appears In</th>
+            <th>Count</th>
+            <th>Chunks</th>
           </tr>
         </thead>
         <tbody>
-          {(words.results as unknown as ConcordanceRow[]).map((w) => (
+          {(words.results as any[]).map((w) => (
             <tr key={w.id}>
               <td>
                 <a href={`/concordance/${encodeURIComponent(w.word)}`}>
                   {w.word}
                 </a>
+                {w.in_baseline === 0 && w.distinctiveness > 5 && (
+                  <span class="sip-badge" title="Distinctive to this corpus">SIP</span>
+                )}
               </td>
               <td>{w.total_count}</td>
-              <td>{w.doc_count} chunk{w.doc_count !== 1 ? "s" : ""}</td>
+              <td>{w.doc_count}</td>
             </tr>
           ))}
         </tbody>

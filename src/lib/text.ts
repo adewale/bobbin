@@ -101,6 +101,14 @@ export const STOPWORDS = new Set([
   "especially", "particularly", "specifically", "generally",
   "often", "sometimes", "usually", "rarely", "frequently",
   "simply", "merely", "slightly", "roughly", "approximately",
+  // Additional noise words from concordance analysis
+  "gets", "getting", "another", "itself", "myself", "yourself", "themselves",
+  "ourselves", "having", "whole", "little", "fast", "faster", "fastest",
+  "easier", "easiest", "possible", "impossible",
+  "once", "twice", "alongside", "despite", "versus",
+  "interesting", "interestingly", "remarkable", "remarkably",
+  "open", "close", "closed", "wide", "narrow",
+  "powerful", "useful", "default", "thinking",
 ]);
 
 export function tokenize(text: string): string[] {

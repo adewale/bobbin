@@ -23,14 +23,19 @@ html { font-size: 18px; line-height: 1.7; color: var(--text); background: var(--
 body { font-family: var(--font-body); }
 
 /* === Layout === */
-header { border-bottom: 1px solid var(--border); padding: 0.75rem 1.5rem; background: var(--bg-warm); }
-header nav { max-width: var(--max-width-wide); margin: 0 auto; display: flex; align-items: center; gap: 2rem; flex-wrap: wrap; }
-header .site-title { font-family: var(--font-ui); font-size: 1rem; font-weight: 700; text-decoration: none; color: var(--accent-dark); letter-spacing: 0.05em; text-transform: uppercase; }
-header ul { list-style: none; display: flex; gap: 1.25rem; font-size: 0.8rem; font-family: var(--font-ui); flex: 1; }
+header { border-bottom: 1px solid var(--border); padding: 0.5rem 1rem; background: var(--bg-warm); }
+header nav { max-width: var(--max-width-wide); margin: 0 auto; display: flex; align-items: center; gap: 0.75rem; flex-wrap: nowrap; overflow-x: auto; }
+header .site-title { font-family: var(--font-ui); font-size: 0.9rem; font-weight: 700; text-decoration: none; color: var(--accent-dark); letter-spacing: 0.05em; text-transform: uppercase; white-space: nowrap; }
+header ul { list-style: none; display: flex; gap: 0.75rem; font-size: 0.75rem; font-family: var(--font-ui); flex: 1; white-space: nowrap; }
 header a { color: var(--text-muted); text-decoration: none; }
 header a:hover { color: var(--accent); }
-header .search-icon { margin-left: auto; color: var(--text-muted); display: flex; align-items: center; padding: 0.25rem; }
+header .search-icon { margin-left: auto; color: var(--text-muted); display: flex; align-items: center; padding: 0.25rem; flex-shrink: 0; }
 header .search-icon:hover { color: var(--accent); }
+@media (max-width: 480px) {
+  header { padding: 0.4rem 0.75rem; }
+  header .site-title { font-size: 0.8rem; }
+  header ul { gap: 0.5rem; font-size: 0.7rem; }
+}
 
 main { max-width: var(--max-width); margin: 2.5rem auto; padding: 0 1.5rem; }
 
@@ -149,6 +154,11 @@ a:hover { text-decoration: underline; }
 .concordance-table a { text-decoration: none; }
 .concordance-table td:first-child { font-weight: 500; }
 .concordance-table td:nth-child(2), .concordance-table td:nth-child(3) { font-variant-numeric: tabular-nums; color: var(--text-muted); }
+.concordance-sort { display: flex; gap: 0.75rem; margin-bottom: 1rem; font-family: var(--font-ui); font-size: 0.8rem; }
+.concordance-sort a { padding: 0.3rem 0.6rem; border: 1px solid var(--border); border-radius: 3px; text-decoration: none; color: var(--text-muted); }
+.concordance-sort a.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.concordance-sort a:hover { border-color: var(--accent); }
+.sip-badge { display: inline-block; margin-left: 0.3rem; padding: 0.05rem 0.3rem; font-size: 0.6rem; font-family: var(--font-ui); font-weight: 700; background: var(--accent-light); color: var(--accent); border-radius: 2px; vertical-align: middle; letter-spacing: 0.05em; }
 
 .concordance-entry { padding: 1rem 0; border-bottom: 1px solid var(--border); }
 .concordance-entry h2 { font-family: var(--font-ui); font-weight: 600; font-size: 0.95rem; font-style: normal; }
@@ -219,7 +229,8 @@ a:hover { text-decoration: underline; }
 .sparkline { display: flex; align-items: flex-end; gap: 2px; height: 48px; padding: 0.5rem 0; border-bottom: 1px solid var(--border); }
 .spark-bar { background: var(--accent); min-width: 4px; flex: 1; border-radius: 1px 1px 0 0; cursor: help; transition: opacity 0.15s; opacity: 0.7; }
 .spark-bar:hover { opacity: 1; }
-.spark-label { display: none; }
+.spark-label { display: block; font-size: 0.55rem; font-family: var(--font-ui); color: var(--text-light); writing-mode: vertical-rl; text-orientation: mixed; position: absolute; bottom: -3rem; left: 50%; transform: translateX(-50%); white-space: nowrap; }
+.sparkline { margin-bottom: 3rem; position: relative; }
 .word-timeline { margin: 1.5rem 0; }
 .word-timeline h2 { font-family: var(--font-ui); font-size: 0.85rem; font-weight: 600; margin-bottom: 0.25rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-light); }
 

@@ -70,6 +70,8 @@ const CREATES = [
     word TEXT NOT NULL UNIQUE,
     total_count INTEGER NOT NULL DEFAULT 0,
     doc_count INTEGER NOT NULL DEFAULT 0,
+    distinctiveness REAL NOT NULL DEFAULT 0,
+    in_baseline INTEGER NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   )`,
   `CREATE TABLE chunk_words (

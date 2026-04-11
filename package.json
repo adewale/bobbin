@@ -10,6 +10,7 @@
     "test:real": "vitest run --config vitest.node.config.ts",
     "test:all": "vitest run && vitest run --config vitest.node.config.ts",
     "test:watch": "vitest",
+    "test:e2e": "playwright test",
     "types": "wrangler types"
   },
   "dependencies": {
@@ -18,6 +19,7 @@
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.14.1",
     "@cloudflare/workers-types": "^4.20260405.1",
+    "@playwright/test": "^1.59.1",
     "fast-check": "^4.6.0",
     "typescript": "^6.0.2",
     "vitest": "^4.1.2",

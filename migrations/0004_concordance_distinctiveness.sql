@@ -1,0 +1,2 @@
+ALTER TABLE concordance ADD COLUMN distinctiveness REAL NOT NULL DEFAULT 0;
+ALTER TABLE concordance ADD COLUMN in_baseline INTEGER NOT NULL DEFAULT 0;
