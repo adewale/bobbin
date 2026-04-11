@@ -45,11 +45,7 @@ concordance.get("/", async (c) => {
   }
 
   return c.html(
-    <Layout title="Concordance" description="Distinctive words in the Bits and Bobs archive">
-      <Breadcrumbs
-        crumbs={[{ label: "Home", href: "/" }, { label: "Concordance" }]}
-      />
-      <h1>Concordance</h1>
+    <Layout title="Concordance" description="Distinctive words in the Bits and Bobs archive" activePath="/concordance">
       <nav class="concordance-sort">
         <a href="/concordance?sort=distinctive" class={sortBy === "distinctive" ? "active" : ""}>
           Most distinctive

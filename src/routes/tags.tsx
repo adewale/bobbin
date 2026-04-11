@@ -21,9 +21,7 @@ tags.get("/", async (c) => {
   const concepts = topTags.results.filter((t) => !t.name.includes(" ")).slice(0, 40);
 
   return c.html(
-    <Layout title="Tags" description="Browse Bits and Bobs by topic">
-      <Breadcrumbs crumbs={[{ label: "Home", href: "/" }, { label: "Tags" }]} />
-      <h1>Tags</h1>
+    <Layout title="Tags" description="Browse Bits and Bobs by topic" activePath="/tags">
       <SearchForm />
 
       {entities.length > 0 && (

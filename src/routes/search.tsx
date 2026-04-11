@@ -92,9 +92,8 @@ search.get("/", async (c) => {
     <Layout
       title={query ? `Search: ${query}` : "Search"}
       description="Search the Bits and Bobs archive"
+      activePath="/search"
     >
-      <Breadcrumbs crumbs={[{ label: "Home", href: "/" }, { label: "Search" }]} />
-      <h1>Search</h1>
       <SearchForm query={query} />
 
       {query && (

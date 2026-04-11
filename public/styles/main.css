@@ -29,6 +29,7 @@ header .site-title { font-family: var(--font-ui); font-size: 0.9rem; font-weight
 header ul { list-style: none; display: flex; gap: 0.75rem; font-size: 0.75rem; font-family: var(--font-ui); flex: 1; white-space: nowrap; }
 header a { color: var(--text-muted); text-decoration: none; }
 header a:hover { color: var(--accent); }
+header a.nav-active { color: var(--accent-dark); border-bottom: 2px solid var(--accent); padding-bottom: 0.1rem; }
 header .search-icon { margin-left: auto; color: var(--text-muted); display: flex; align-items: center; padding: 0.25rem; flex-shrink: 0; }
 header .search-icon:hover { color: var(--accent); }
 @media (max-width: 480px) {
@@ -39,7 +40,7 @@ header .search-icon:hover { color: var(--accent); }
   header .search-icon { padding: 0.5rem; }
 }
 
-main { max-width: var(--max-width); margin: 2.5rem auto; padding: 0 1.5rem; }
+main { max-width: var(--max-width); margin: 1.5rem auto 2.5rem; padding: 0 1.5rem; }
 
 footer { border-top: 1px solid var(--border); padding: 2rem 1.5rem; text-align: center; color: var(--text-light); font-size: 0.75rem; font-family: var(--font-ui); margin-top: 4rem; }
 footer a { color: var(--accent); }
@@ -53,7 +54,7 @@ a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
 /* === Hero === */
-.hero { padding: 2rem 0 2rem; border-bottom: 1px solid var(--border); margin-bottom: 2rem; }
+.hero { padding: 0.75rem 0 1.25rem; border-bottom: 1px solid var(--border); margin-bottom: 1.5rem; }
 .hero h1 { font-size: 1.8rem; font-style: normal; font-weight: 400; letter-spacing: -0.02em; }
 .hero p { color: var(--text-muted); font-size: 0.95rem; margin-bottom: 1.25rem; }
 
@@ -216,6 +217,7 @@ details.tag-tier .tag-cloud { margin-top: 0.5rem; }
 /* === Search Results === */
 .search-results > p:first-child { color: var(--text-light); font-size: 0.85rem; font-family: var(--font-ui); margin-bottom: 1rem; }
 .see-all { display: inline-block; margin-top: 1rem; font-size: 0.85rem; font-family: var(--font-ui); }
+.page-count { font-family: var(--font-ui); font-size: 0.8rem; color: var(--text-light); margin-bottom: 1rem; }
 mark { background: color-mix(in srgb, var(--accent-light) 60%, transparent); color: var(--text); padding: 0.05rem 0.15rem; border-radius: 2px; }
 
 /* === Observation accordion (notes episodes) === */

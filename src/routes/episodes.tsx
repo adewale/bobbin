@@ -23,10 +23,8 @@ episodes.get("/", async (c) => {
   const years = [...byYear.keys()].sort((a, b) => b - a);
 
   return c.html(
-    <Layout title="Episodes" description="All Bits and Bobs episodes by date">
-      <Breadcrumbs crumbs={[{ label: "Home", href: "/" }, { label: "Episodes" }]} />
-      <h1>Episodes</h1>
-      <p>{allEpisodesList.length} episodes</p>
+    <Layout title="Episodes" description="All Bits and Bobs episodes by date" activePath="/episodes">
+      <p class="page-count">{allEpisodesList.length} episodes</p>
 
       {years.map((year) => {
         const months = [...byYear.get(year)!.keys()].sort((a, b) => b - a);
