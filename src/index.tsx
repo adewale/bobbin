@@ -27,7 +27,7 @@ app.use("*", async (c, next) => {
     c.res.headers.get("content-type")?.includes("text/html") &&
     !c.res.headers.has("cache-control")
   ) {
-    c.res.headers.set("Cache-Control", "public, max-age=3600, s-maxage=86400");
+    c.res.headers.set("Cache-Control", "public, max-age=300, s-maxage=3600");
   }
 });
 

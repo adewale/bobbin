@@ -6,12 +6,7 @@ export const EpisodeCard: FC<{ episode: EpisodeRow }> = ({ episode }) => (
     <h2>
       <a href={`/episodes/${episode.slug}`}>{episode.title}</a>
     </h2>
-    <time datetime={episode.published_date}>
-      {new Date(episode.published_date + "T00:00:00Z").toLocaleDateString(
-        "en-US",
-        { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" }
-      )}
-    </time>
+    <time datetime={episode.published_date}>{episode.published_date}</time>
     <span class="chunk-count">{episode.chunk_count} observations</span>
   </article>
 );

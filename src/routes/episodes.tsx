@@ -79,12 +79,7 @@ episodes.get("/:slug", async (c) => {
       />
       <article class="episode-detail">
         <h1>{episode.title}</h1>
-        <time datetime={episode.published_date}>
-          {new Date(episode.published_date + "T00:00:00Z").toLocaleDateString(
-            "en-US",
-            { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" }
-          )}
-        </time>
+        <time datetime={episode.published_date}>{episode.published_date}</time>
         {tagsList.length > 0 && (
           <aside class="tags-margin">
             <details>

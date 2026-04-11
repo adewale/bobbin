@@ -83,11 +83,12 @@ tags.get("/:slug", async (c) => {
         const h = 80;
         const pad = 4;
 
+        const isSingle = counts.length === 1;
         const points = counts.map((c: number, i: number) => {
-          const x = (i / (counts.length - 1)) * (w - pad * 2) + pad;
+          const x = isSingle ? w / 2 : (i / (counts.length - 1)) * (w - pad * 2) + pad;
           const y = h - pad - (c / max) * (h - pad * 2);
-          return `${x},${y}`;
-        }).join(" ");
+          return { x, y };
+        });
 
         const meanY = h - pad - (mean / max) * (h - pad * 2);
 
@@ -111,8 +112,13 @@ tags.get("/:slug", async (c) => {
               </text>
 
               {/* Sparkline */}
-              <polyline points={points} fill="none"
-                stroke="var(--accent)" stroke-width="2" />
+              {isSingle ? (
+                <circle cx={points[0].x} cy={points[0].y} r="4"
+                  fill="var(--accent)" />
+              ) : (
+                <polyline points={points.map(p => `${p.x},${p.y}`).join(" ")} fill="none"
+                  stroke="var(--accent)" stroke-width="2" />
+              )}
 
               {/* Date landmarks */}
               {landmarks.map((lm, i) => (

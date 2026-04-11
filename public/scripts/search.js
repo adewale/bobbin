@@ -15,6 +15,8 @@
       const query = input.value.trim();
       if (query.length < 2) return;
 
+      resultsContainer.innerHTML = '<p class="loading">Searching...</p>';
+
       try {
         const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
         const data = await res.json();

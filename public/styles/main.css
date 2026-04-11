@@ -21,6 +21,18 @@
 html { font-size: 18px; line-height: 1.7; color: var(--text); background: var(--bg); scrollbar-gutter: stable; }
 body { font-family: var(--font-body); }
 
+/* === Animations (restrained, respects prefers-reduced-motion) === */
+@media (prefers-reduced-motion: no-preference) {
+  main { animation: fadeIn 0.2s ease-out; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+  .episode-notes details[open] .obs-content { animation: slideDown 0.15s ease-out; }
+  @keyframes slideDown { from { opacity: 0; } to { opacity: 1; } }
+  .tag { transition: background 0.15s, color 0.15s, border-color 0.15s; }
+  .concordance-bars tr { transition: background 0.1s; }
+  .brush-bar { transition: background 0.15s, opacity 0.15s; }
+}
+.loading { color: var(--text-light); font-family: var(--font-ui); font-size: 0.85rem; font-style: italic; }
+
 /* === Layout === */
 header { border-bottom: 1px solid var(--border); padding: 0.5rem 1rem; background: var(--bg-warm); }
 header nav { max-width: var(--max-width); margin: 0 auto; display: flex; align-items: center; gap: 0.75rem; flex-wrap: nowrap; }
@@ -42,7 +54,7 @@ header .search-icon:hover { color: var(--accent); }
 
 main { max-width: var(--max-width); margin: 1.5rem auto 2.5rem; padding: 0 1.5rem; }
 
-footer { border-top: 1px solid var(--border); padding: 2rem 1.5rem; text-align: center; color: var(--text-light); font-size: 0.75rem; font-family: var(--font-ui); margin-top: 4rem; }
+footer { border-top: 1px solid var(--border); padding: 1.5rem 1.5rem; text-align: center; color: var(--text-light); font-size: 0.65rem; font-family: var(--font-ui); margin-top: 3rem; letter-spacing: 0.02em; }
 footer a { color: var(--accent); }
 
 /* === Typography === */

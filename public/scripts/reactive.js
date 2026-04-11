@@ -106,6 +106,9 @@
   }
 
   async function updateConcordance() {
+    const tbody = table.querySelector("tbody");
+    tbody.innerHTML = '<tr><td colspan="4" class="loading">Loading...</td></tr>';
+
     let url = "/api/concordance?limit=200";
     if (fromDate) url += `&from=${fromDate}`;
     if (toDate) url += `&to=${toDate}`;

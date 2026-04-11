@@ -64,12 +64,7 @@ chunks.get("/:slug", async (c) => {
         <article class="chunk-detail">
           <h1>{chunk.title}</h1>
           <div class="chunk-meta">
-            <time datetime={chunk.published_date}>
-              {new Date(chunk.published_date + "T00:00:00Z").toLocaleDateString(
-                "en-US",
-                { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" }
-              )}
-            </time>
+            <time datetime={chunk.published_date}>{chunk.published_date}</time>
             <span> &middot; </span>
             <a href={`/episodes/${chunk.episode_slug}`}>
               {chunk.episode_title}

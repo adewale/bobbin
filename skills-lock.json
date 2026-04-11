@@ -1,6 +1,11 @@
 {
   "version": 1,
   "skills": {
+    "animate": {
+      "source": "pbakaus/impeccable",
+      "sourceType": "github",
+      "computedHash": "354414a934957f9d54a71468abe81888304d35b47a4fe8e27fff08f60b457d53"
+    },
     "polish": {
       "source": "pbakaus/impeccable",
       "sourceType": "github",
