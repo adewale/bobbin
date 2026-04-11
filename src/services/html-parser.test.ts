@@ -39,7 +39,8 @@ describe("parseHtmlDocument", () => {
   it("generates meaningful titles from main observation text", () => {
     const title = episodes[0].chunks[0].title;
     expect(title.length).toBeGreaterThan(5);
-    expect(title.length).toBeLessThanOrEqual(80);
+    // Full sentence titles — no arbitrary length cap
+    expect(title.length).toBeGreaterThan(10);
     // Should NOT contain sub-point text
     expect(title).not.toContain("former");
   });

@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Run Workers pool tests
+        run: npm test
+
+      - name: Run Node.js tests (local data files)
+        run: npx vitest run --config vitest.node.config.ts
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium
+
+      - name: Run E2E tests
+        run: npx playwright test
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 14

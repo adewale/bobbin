@@ -41,8 +41,11 @@ export async function runRefresh(env: Bindings): Promise<void> {
     const episodes = parseHtmlDocument(html);
     const result = await ingestEpisodesOnly(env.DB, source.id, episodes);
 
-    // Phase 2: Enrich a batch of unenriched chunks (50 per run)
-    const enrichResult = await enrichChunks(env.DB, 50);
+    // Phase 2: Enrich all new chunks from this run
+    // Typically 1 new episode = 60-130 chunks, fits within Workers CPU budget
+    if (result.chunksAdded > 0) {
+      await enrichChunks(env.DB, result.chunksAdded + 10);
+    }
 
     await env.DB.prepare(
       "UPDATE sources SET last_fetched_at = datetime('now') WHERE id = ?"

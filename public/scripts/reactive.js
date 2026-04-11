@@ -37,13 +37,22 @@
     const maxCount = Math.max(...data.months.map((m) => m.count));
 
     // Render bars
-    data.months.forEach((m) => {
+    data.months.forEach((m, i) => {
       const bar = document.createElement("div");
       bar.className = "brush-bar";
       bar.style.height = Math.round((m.count / maxCount) * 100) + "%";
       bar.dataset.year = m.year;
       bar.dataset.month = String(m.month).padStart(2, "0");
       bar.title = `${m.year}-${String(m.month).padStart(2, "0")}: ${m.count} episodes, ${m.total_chunks} chunks`;
+
+      // Show label every 3rd bar or on first/last
+      if (i % 3 === 0 || i === data.months.length - 1) {
+        const label = document.createElement("span");
+        label.className = "brush-label";
+        label.textContent = `${m.year}-${String(m.month).padStart(2, "0")}`;
+        bar.appendChild(label);
+      }
+
       barsEl.appendChild(bar);
     });
 

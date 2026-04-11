@@ -131,11 +131,14 @@ describe.skipIf(!hasData)("Real data: chunk structure completeness", () => {
     }
   });
 
-  it("chunk titles are ≤80 characters", () => {
+  it("chunk titles are full sentences (no arbitrary truncation)", () => {
     for (const doc of DOCS) {
       for (const ep of loadDoc(doc.file)) {
         for (const chunk of ep.chunks) {
-          expect(chunk.title.length).toBeLessThanOrEqual(80);
+          // Titles should be the full first sentence, not truncated
+          expect(chunk.title.length).toBeGreaterThan(0);
+          // Very few should end with "..." (only if the author wrote "...")
+          // No test for max length — titles are as long as the sentence
         }
       }
     }

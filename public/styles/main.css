@@ -112,6 +112,10 @@ a:hover { text-decoration: underline; }
 .tag:hover { background: var(--accent-light); color: var(--accent); border-color: var(--accent); text-decoration: none; }
 .tag .count { opacity: 0.6; font-size: 0.68rem; }
 .tag-cloud { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.tag-tier { margin: 1.5rem 0; }
+.tag-tier h2 { font-family: var(--font-ui); font-size: 0.9rem; font-weight: 700; font-style: normal; margin-bottom: 0.5rem; }
+details.tag-tier summary { font-family: var(--font-ui); font-size: 0.85rem; color: var(--text-muted); cursor: pointer; margin-bottom: 0.5rem; }
+details.tag-tier .tag-cloud { margin-top: 0.5rem; }
 
 /* Tags as Tufte marginalia (desktop) / accordion (mobile) */
 .tags-margin { font-family: var(--font-ui); }
@@ -280,7 +284,9 @@ body.reader .chunk-content p { font-size: 1.05rem; line-height: 1.85; }
 .filter-status { font-size: 0.8rem; font-family: var(--font-ui); color: var(--text-light); margin-bottom: 0.5rem; }
 .brush-area { position: relative; }
 .brush-bars { display: flex; align-items: flex-end; gap: 2px; height: 64px; }
-.brush-bar { flex: 1; background: var(--border); min-width: 6px; border-radius: 1px 1px 0 0; cursor: pointer; transition: background 0.15s; }
+.brush-bar { flex: 1; background: var(--border); min-width: 6px; border-radius: 1px 1px 0 0; cursor: pointer; transition: background 0.15s; position: relative; }
+.brush-label { position: absolute; bottom: -1.5rem; left: 50%; transform: translateX(-50%); font-size: 0.55rem; font-family: var(--font-ui); color: var(--text-light); white-space: nowrap; }
+.brush-bars { margin-bottom: 2rem; }
 .brush-bar:hover { background: var(--accent); opacity: 0.8; }
 .brush-bar.brush-active { background: var(--accent); }
 .brush-bar.brush-selected { background: var(--accent); opacity: 0.85; }

@@ -15,12 +15,40 @@ tags.get("/", async (c) => {
     "SELECT * FROM tags WHERE usage_count > 0 ORDER BY usage_count DESC"
   ).all();
 
+  const tagList = allTags.results as unknown as TagRow[];
+
+  // Tier 1: Multi-word entities (Claude Code, Simon Willison, etc.)
+  const entities = tagList.filter((t) => t.name.includes(" ")).slice(0, 20);
+  // Tier 2: Top single-word tags by usage
+  const concepts = tagList.filter((t) => !t.name.includes(" ")).slice(0, 30);
+  // Tier 3: Everything else
+  const rest = tagList.filter(
+    (t) => !entities.includes(t) && !concepts.includes(t)
+  );
+
   return c.html(
     <Layout title="Tags" description="Browse Bits and Bobs by topic">
       <Breadcrumbs crumbs={[{ label: "Home", href: "/" }, { label: "Tags" }]} />
       <h1>Tags</h1>
-      <p>{allTags.results.length} tags</p>
-      <TagCloud tags={allTags.results as unknown as TagRow[]} />
+
+      {entities.length > 0 && (
+        <section class="tag-tier">
+          <h2>People, Products &amp; Phrases</h2>
+          <TagCloud tags={entities} />
+        </section>
+      )}
+
+      <section class="tag-tier">
+        <h2>Key Concepts</h2>
+        <TagCloud tags={concepts} />
+      </section>
+
+      {rest.length > 0 && (
+        <details class="tag-tier">
+          <summary>All {rest.length} other tags</summary>
+          <TagCloud tags={rest} />
+        </details>
+      )}
     </Layout>
   );
 });

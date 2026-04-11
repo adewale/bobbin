@@ -13,15 +13,19 @@ function stripHtml(html: string): string {
 }
 
 function generateTitle(text: string): string {
-  // Use just the first sentence of the main observation (level-0 text),
-  // capped at 80 chars. This is the "headline" of the observation.
+  // Use the full first sentence as the title. Komoroske writes in aphorisms —
+  // the first sentence IS the observation. Don't truncate.
   const firstLine = text.split(/\n/)[0].trim();
-  const firstSentence = firstLine.split(/[.!?](?:\s|$)/)[0].trim();
-  if (!firstSentence) return firstLine.substring(0, 77) + (firstLine.length > 77 ? "..." : "");
-  if (firstSentence.length <= 72) return firstSentence;
-  // Cut at last word boundary before 80 chars
-  const cut = firstSentence.substring(0, 72).replace(/\s+\S*$/, "");
-  return cut + "...";
+
+  // Find the first sentence boundary (.!? followed by space or end)
+  const sentenceEnd = firstLine.match(/[.!?](?:\s|$)/);
+  if (sentenceEnd && sentenceEnd.index !== undefined) {
+    const sentence = firstLine.substring(0, sentenceEnd.index + 1).trim();
+    if (sentence.length > 0) return sentence;
+  }
+
+  // No sentence boundary — use the full first line
+  return firstLine;
 }
 
 /**
@@ -79,12 +83,11 @@ export function parseHtmlDocument(html: string): ParsedEpisode[] {
 }
 
 interface ObservationChunk {
-  mainText: string; // Just the level-0 text (for title generation)
-  fullText: string; // Level-0 + all sub-points (for content)
+  mainText: string;
+  fullText: string;
 }
 
 function splitByObservations(html: string): ObservationChunk[] {
-  // Find all list items with their margin-left values
   const itemRegex =
     /<li[^>]*margin-left:\s*(\d+)pt[^>]*>([\s\S]*?)(?=<\/li>)/g;
   const items: { margin: number; html: string }[] = [];
@@ -101,8 +104,6 @@ function splitByObservations(html: string): ObservationChunk[] {
     return [];
   }
 
-  // A new observation starts when margin returns to 36pt from a deeper level.
-  // Sequential 36pt items are continuation paragraphs of the same observation.
   const chunks: ObservationChunk[] = [];
   let currentMain = "";
   let currentFull: string[] = [];
@@ -115,7 +116,6 @@ function splitByObservations(html: string): ObservationChunk[] {
     const isFirstItem = !currentMain;
 
     if ((isTopLevel && !isFirstItem) || isFirstItem) {
-      // Flush previous observation
       if (currentMain) {
         chunks.push({
           mainText: currentMain,
@@ -125,7 +125,6 @@ function splitByObservations(html: string): ObservationChunk[] {
       currentMain = text;
       currentFull = [text];
     } else {
-      // Continuation of current observation (same level or sub-level)
       currentFull.push(text);
     }
 
@@ -143,8 +142,6 @@ function splitByObservations(html: string): ObservationChunk[] {
 
 /**
  * Detect whether an episode's chunks represent essays (rich, few) or notes (brief, many).
- * Essays: ≤12 chunks with ≥3 lines average per chunk.
- * Notes: everything else.
  */
 function detectFormat(chunks: ObservationChunk[]): "essays" | "notes" {
   if (chunks.length === 0) return "notes";
