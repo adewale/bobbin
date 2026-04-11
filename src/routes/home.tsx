@@ -8,17 +8,22 @@ import { SearchForm } from "../components/SearchForm";
 const home = new Hono<AppEnv>();
 
 home.get("/", async (c) => {
-  const [episodes, tags, connected] = await Promise.all([
+  const [episodes, tags] = await Promise.all([
     c.env.DB.prepare(
       "SELECT * FROM episodes ORDER BY published_date DESC LIMIT 10"
     ).all(),
     c.env.DB.prepare(
       "SELECT * FROM tags WHERE usage_count > 0 ORDER BY usage_count DESC LIMIT 30"
     ).all(),
-    // Most-connected: chunks that share the most tags with other chunks across episodes
-    c.env.DB.prepare(
-      `SELECT c.id, c.slug, c.title, c.content_plain,
-              e.slug as episode_slug, e.title as episode_title, e.published_date,
+  ]);
+
+  // Most-connected: chunks with the most cross-episode tag connections
+  // This query can be expensive with large tag sets, so fail gracefully
+  let connected: any = { results: [] };
+  try {
+    connected = await c.env.DB.prepare(
+      `SELECT c.id, c.slug, c.title,
+              e.slug as episode_slug, e.published_date,
               COUNT(DISTINCT ct2.chunk_id) as connections
        FROM chunks c
        JOIN chunk_tags ct1 ON c.id = ct1.chunk_id
@@ -28,8 +33,10 @@ home.get("/", async (c) => {
        GROUP BY c.id
        ORDER BY connections DESC
        LIMIT 8`
-    ).all(),
-  ]);
+    ).all();
+  } catch (e) {
+    console.error("Most-connected query failed:", e);
+  }
 
   return c.html(
     <Layout

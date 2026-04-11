@@ -83,6 +83,24 @@ export const STOPWORDS = new Set([
   "understand", "understands", "understood",
   "actually", "essentially", "particularly", "especially",
   "pretty", "quite", "really", "super", "totally",
+  // More generic words found in concordance/tag noise
+  "without", "along", "across", "until", "since", "toward", "towards",
+  "within", "among", "against", "beyond", "during", "except",
+  "around", "inside", "outside", "beneath", "beside", "besides",
+  "life", "world", "today", "tomorrow", "yesterday",
+  "whole", "entire", "single", "double", "half",
+  "less", "more", "most", "much", "many", "few", "some",
+  "else", "instead", "rather", "therefore", "however",
+  "modern", "simple", "complex", "obvious", "natural",
+  "similar", "different", "specific", "particular", "general",
+  "certain", "possible", "impossible", "necessary", "available",
+  "clear", "obvious", "current", "recent", "previous",
+  "large", "larger", "largest", "small", "smaller", "smallest",
+  "full", "empty", "complete", "total", "entire",
+  "direct", "directly", "indirect", "indirectly",
+  "especially", "particularly", "specifically", "generally",
+  "often", "sometimes", "usually", "rarely", "frequently",
+  "simply", "merely", "slightly", "roughly", "approximately",
 ]);
 
 export function tokenize(text: string): string[] {

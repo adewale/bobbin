@@ -13,6 +13,12 @@ import { runRefresh } from "./jobs/refresh";
 
 const app = new Hono<AppEnv>();
 
+// Error handler — show details in dev
+app.onError((err, c) => {
+  console.error("Unhandled error:", err.message, err.stack);
+  return c.text(`Error: ${err.message}`, 500);
+});
+
 // Cache-Control for SSR pages
 app.use("*", async (c, next) => {
   await next();
