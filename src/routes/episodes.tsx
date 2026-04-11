@@ -1,38 +1,63 @@
 import { Hono } from "hono";
 import type { AppEnv, EpisodeRow, ChunkRow, TagRow } from "../types";
 import { Layout } from "../components/Layout";
-import { EpisodeCard } from "../components/EpisodeCard";
 import { Breadcrumbs } from "../components/Breadcrumbs";
-import { Pagination } from "../components/Pagination";
+import { monthName } from "../lib/date";
 
 const episodes = new Hono<AppEnv>();
-const PAGE_SIZE = 20;
 
+// Unified browse: timeline + episode list in one page
 episodes.get("/", async (c) => {
-  const page = Math.max(1, parseInt(c.req.query("page") || "1", 10));
-  const offset = (page - 1) * PAGE_SIZE;
+  const allEpisodes = await c.env.DB.prepare(
+    "SELECT * FROM episodes ORDER BY published_date DESC"
+  ).all();
 
-  const [countResult, episodeResult] = await Promise.all([
-    c.env.DB.prepare("SELECT COUNT(*) as count FROM episodes").first(),
-    c.env.DB.prepare(
-      "SELECT * FROM episodes ORDER BY published_date DESC LIMIT ? OFFSET ?"
-    )
-      .bind(PAGE_SIZE, offset)
-      .all(),
-  ]);
+  // Group by year → month
+  const byYear = new Map<number, Map<number, any[]>>();
+  for (const ep of allEpisodes.results as unknown as EpisodeRow[]) {
+    if (!byYear.has(ep.year)) byYear.set(ep.year, new Map());
+    const yearMap = byYear.get(ep.year)!;
+    if (!yearMap.has(ep.month)) yearMap.set(ep.month, []);
+    yearMap.get(ep.month)!.push(ep);
+  }
 
-  const total = (countResult as any)?.count || 0;
-  const totalPages = Math.ceil(total / PAGE_SIZE);
+  const years = [...byYear.keys()].sort((a, b) => b - a);
 
   return c.html(
-    <Layout title="All Episodes" description="Browse all Bits and Bobs episodes">
-      <Breadcrumbs crumbs={[{ label: "Home", href: "/" }, { label: "Episodes" }]} />
-      <h1>All Episodes</h1>
-      <p>{total} episodes</p>
-      {(episodeResult.results as unknown as EpisodeRow[]).map((ep) => (
-        <EpisodeCard key={ep.id} episode={ep} />
-      ))}
-      <Pagination currentPage={page} totalPages={totalPages} baseUrl="/episodes" />
+    <Layout title="Browse" description="Browse all Bits and Bobs episodes by date">
+      <Breadcrumbs crumbs={[{ label: "Home", href: "/" }, { label: "Browse" }]} />
+      <h1>Browse</h1>
+      <p>{allEpisodes.results.length} episodes</p>
+
+      {years.map((year) => {
+        const months = [...byYear.get(year)!.keys()].sort((a, b) => b - a);
+        return (
+          <section key={year} class="browse-year">
+            <h2>{year}</h2>
+            {months.map((month) => {
+              const eps = byYear.get(year)!.get(month)!;
+              return (
+                <div key={month} class="browse-month">
+                  <h3>{monthName(month)}</h3>
+                  <ul class="browse-episodes">
+                    {eps.map((ep: any) => (
+                      <li key={ep.id}>
+                        <a href={`/episodes/${ep.slug}`}>{ep.title}</a>
+                        <span class="meta">
+                          {ep.chunk_count} observations
+                          {ep.format === "essays" && (
+                            <span class="format-badge essay">essay</span>
+                          )}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })}
+          </section>
+        );
+      })}
     </Layout>
   );
 });

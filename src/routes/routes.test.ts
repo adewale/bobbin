@@ -68,7 +68,7 @@ describe("GET /episodes", () => {
     const res = await SELF.fetch("http://localhost/episodes");
     expect(res.status).toBe(200);
     const html = await res.text();
-    expect(html).toContain("All Episodes");
+    expect(html).toContain("Browse");
     expect(html).toContain("Bits and Bobs 4/8/24");
   });
 });

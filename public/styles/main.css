@@ -26,9 +26,11 @@ body { font-family: var(--font-body); }
 header { border-bottom: 1px solid var(--border); padding: 0.75rem 1.5rem; background: var(--bg-warm); }
 header nav { max-width: var(--max-width-wide); margin: 0 auto; display: flex; align-items: center; gap: 2rem; flex-wrap: wrap; }
 header .site-title { font-family: var(--font-ui); font-size: 1rem; font-weight: 700; text-decoration: none; color: var(--accent-dark); letter-spacing: 0.05em; text-transform: uppercase; }
-header ul { list-style: none; display: flex; gap: 1.25rem; font-size: 0.8rem; font-family: var(--font-ui); }
+header ul { list-style: none; display: flex; gap: 1.25rem; font-size: 0.8rem; font-family: var(--font-ui); flex: 1; }
 header a { color: var(--text-muted); text-decoration: none; }
 header a:hover { color: var(--accent); }
+header .search-icon { margin-left: auto; color: var(--text-muted); display: flex; align-items: center; padding: 0.25rem; }
+header .search-icon:hover { color: var(--accent); }
 
 main { max-width: var(--max-width); margin: 2.5rem auto; padding: 0 1.5rem; }
 
@@ -184,6 +186,19 @@ a:hover { text-decoration: underline; }
 .chunk-nav a { text-decoration: none; color: var(--text-muted); max-width: 45%; }
 .chunk-nav a:hover { color: var(--accent); }
 .chunk-nav .nav-next { text-align: right; margin-left: auto; }
+
+/* === Unified Browse page === */
+.browse-year { margin: 1.5rem 0; }
+.browse-year h2 { font-family: var(--font-ui); font-size: 1.3rem; font-weight: 700; font-style: normal; border-bottom: 2px solid var(--accent); padding-bottom: 0.25rem; margin-bottom: 0.5rem; }
+.browse-month { margin: 0.75rem 0 0.75rem 0; }
+.browse-month h3 { font-family: var(--font-ui); font-size: 0.85rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.25rem; }
+.browse-episodes { list-style: none; }
+.browse-episodes li { padding: 0.3rem 0; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; }
+.browse-episodes a { font-family: var(--font-ui); font-size: 0.88rem; color: var(--text); text-decoration: none; }
+.browse-episodes a:hover { color: var(--accent); }
+.browse-episodes .meta { font-size: 0.72rem; font-family: var(--font-ui); color: var(--text-light); white-space: nowrap; }
+.format-badge { display: inline-block; padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 0.65rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; margin-left: 0.35rem; }
+.format-badge.essay { background: var(--accent-light); color: var(--accent); }
 
 /* === Sparkline === */
 .sparkline { display: flex; align-items: flex-end; gap: 2px; height: 48px; padding: 0.5rem 0; border-bottom: 1px solid var(--border); }
