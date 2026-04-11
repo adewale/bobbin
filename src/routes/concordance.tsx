@@ -50,7 +50,6 @@ concordance.get("/", async (c) => {
         crumbs={[{ label: "Home", href: "/" }, { label: "Concordance" }]}
       />
       <h1>Concordance</h1>
-      <p>Words that distinguish Komoroske's writing from typical English.</p>
       <nav class="concordance-sort">
         <a href="/concordance?sort=distinctive" class={sortBy === "distinctive" ? "active" : ""}>
           Most distinctive

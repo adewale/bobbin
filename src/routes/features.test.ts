@@ -118,12 +118,9 @@ describe("Ladder of abstraction on /tags/:slug", () => {
     expect(html).toContain("Ecosystem collapse");
   });
 
-  it("shows sentence-level concordance excerpts", async () => {
+  it("shows collapsible evolution section", async () => {
     const res = await SELF.fetch("http://localhost/tags/ecosystem");
     const html = await res.text();
-    expect(html).toContain("tag-concordance");
-    // Should show text snippets from the chunks
-    expect(html).toContain("complex");
-    expect(html).toContain("diversity");
+    expect(html).toContain("tag-diff-section");
   });
 });

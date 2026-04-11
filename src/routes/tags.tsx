@@ -140,27 +140,43 @@ tags.get("/:slug", async (c) => {
         </div>
       </section>
 
-      {/* Episode level: timeline of episodes with this tag */}
+      {/* Episode level: horizontal density bars */}
       <section class="tag-episode-timeline">
         <h2>Episodes</h2>
-        <ul class="timeline-list">
-          {episodes.map((ep: any) => (
-            <li key={ep.id}>
-              <a href={`/episodes/${ep.slug}`}>
-                <time datetime={ep.published_date}>{ep.published_date}</time>
-                {" "}{ep.title}
-              </a>
-              <span class="count">
-                {" "}({ep.tag_chunk_count} chunk{ep.tag_chunk_count !== 1 ? "s" : ""})
-              </span>
-            </li>
-          ))}
-        </ul>
+        {episodes.map((ep: any) => {
+          const barWidth = Math.round((ep.tag_chunk_count / Math.max(...episodes.map((e: any) => e.tag_chunk_count), 1)) * 100);
+          return (
+            <a key={ep.id} href={`/episodes/${ep.slug}`} class="ep-density-row">
+              <time datetime={ep.published_date}>{ep.published_date}</time>
+              <div class="ep-density-bar">
+                <div class="ep-density-fill" style={`width:${Math.max(barWidth, 2)}%`} />
+              </div>
+              <span class="ep-density-count">{ep.tag_chunk_count}</span>
+            </a>
+          );
+        })}
       </section>
 
-      {/* Chunk level: list of tagged chunks */}
+      {/* Diff: collapsible evolution view */}
+      <details class="tag-diff-section">
+        <summary>Evolution over time</summary>
+        <div class="diff-view">
+          {chunksList.slice(0, 20).map((r: any, i: number) => (
+            <article key={r.id} class="diff-entry">
+              <div class="diff-date">
+                <time datetime={r.published_date}>{r.published_date}</time>
+              </div>
+              <div class="diff-content">
+                <a href={`/chunks/${r.slug}`}>{r.title}</a>
+              </div>
+            </article>
+          ))}
+        </div>
+      </details>
+
+      {/* Observation list */}
       <section class="tag-chunks">
-        <h2>Chunks</h2>
+        <h2>Observations</h2>
         {chunksList.map((r) => (
           <ChunkCard
             key={r.id}
@@ -177,16 +193,6 @@ tags.get("/:slug", async (c) => {
         />
       </section>
 
-      {/* Sentence level: concordance excerpts */}
-      <section class="tag-concordance">
-        <h2>In context</h2>
-        {chunksList.slice(0, 10).map((r: any) => (
-          <div key={r.id} class="concordance-excerpt">
-            <a href={`/chunks/${r.slug}`}>{r.title}</a>
-            <p class="excerpt">{r.content_plain.substring(0, 200)}...</p>
-          </div>
-        ))}
-      </section>
     </Layout>
   );
 });
