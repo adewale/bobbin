@@ -67,10 +67,4 @@ describe("GET /tags/:slug/feed.xml", () => {
 });
 
 // === Feature 10: Mobile reading mode ===
-describe("Mobile reading mode", () => {
-  it("chunk pages include reading-mode toggle", async () => {
-    const res = await SELF.fetch("http://localhost/chunks/eco-jan");
-    const html = await res.text();
-    expect(html).toContain("reading-mode");
-  });
-});
+// Reading mode only shows on essay-format chunks (tested in tag-layout.test.ts)

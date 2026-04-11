@@ -105,13 +105,18 @@ episodes.get("/:slug", async (c) => {
           )}
         </time>
         {(tags.results as unknown as TagRow[]).length > 0 && (
-          <div class="tags">
-            {(tags.results as unknown as TagRow[]).map((tag) => (
-              <a key={tag.id} href={`/tags/${tag.slug}`} class="tag">
-                {tag.name}
-              </a>
-            ))}
-          </div>
+          <aside class="tags-margin">
+            <details>
+              <summary>Tags</summary>
+              <div class="tags">
+                {(tags.results as unknown as TagRow[]).map((tag) => (
+                  <a key={tag.id} href={`/tags/${tag.slug}`} class="tag">
+                    {tag.name}
+                  </a>
+                ))}
+              </div>
+            </details>
+          </aside>
         )}
 
         {episode.format === "essays" ? (

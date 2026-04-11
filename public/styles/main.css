@@ -108,6 +108,21 @@ a:hover { text-decoration: underline; }
 .tag .count { opacity: 0.6; font-size: 0.68rem; }
 .tag-cloud { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 
+/* Tags as Tufte marginalia (desktop) / accordion (mobile) */
+.tags-margin { font-family: var(--font-ui); }
+.tags-margin summary { font-size: 0.75rem; color: var(--text-light); cursor: pointer; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; }
+.tags-margin details[open] summary { margin-bottom: 0.3rem; }
+@media (min-width: 769px) {
+  .tags-margin { float: right; width: 12rem; margin: 0 -14rem 1rem 1rem; font-size: 0.78rem; }
+  .tags-margin details { open: true; }
+  .tags-margin details[open] { display: block; }
+  .tags-margin summary { display: none; }
+  .tags-margin .tags { display: flex; }
+}
+@media (max-width: 768px) {
+  .tags-margin { margin: 1.5rem 0 0; padding-top: 1rem; border-top: 1px solid var(--border); order: 99; }
+}
+
 /* === Breadcrumbs === */
 .breadcrumbs { margin-bottom: 1.5rem; font-size: 0.75rem; font-family: var(--font-ui); color: var(--text-light); }
 .breadcrumbs ol { list-style: none; display: flex; flex-wrap: wrap; gap: 0.2rem; }

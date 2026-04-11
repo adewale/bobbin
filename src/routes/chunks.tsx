@@ -127,13 +127,18 @@ chunks.get("/:slug", async (c) => {
           </div>
 
           {(tags.results as unknown as TagRow[]).length > 0 && (
-            <div class="tags">
-              {(tags.results as unknown as TagRow[]).map((tag) => (
-                <a key={tag.id} href={`/tags/${tag.slug}`} class="tag">
-                  {tag.name}
-                </a>
-              ))}
-            </div>
+            <aside class="tags-margin">
+              <details>
+                <summary>Tags</summary>
+                <div class="tags">
+                  {(tags.results as unknown as TagRow[]).map((tag) => (
+                    <a key={tag.id} href={`/tags/${tag.slug}`} class="tag">
+                      {tag.name}
+                    </a>
+                  ))}
+                </div>
+              </details>
+            </aside>
           )}
 
           <div class="chunk-content">
@@ -159,9 +164,11 @@ chunks.get("/:slug", async (c) => {
             ))}
           </div>
 
-          <button class="reading-mode" onclick="document.body.classList.toggle('reader')">
-            Reading mode
-          </button>
+          {!isNotes && (
+            <button class="reading-mode" onclick="document.body.classList.toggle('reader')">
+              Reading mode
+            </button>
+          )}
 
           <script
             type="application/ld+json"

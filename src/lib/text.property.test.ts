@@ -53,9 +53,10 @@ describe("stripToPlainText properties", () => {
           expect(result).not.toContain("<div");
           expect(result).not.toContain("<p>");
           expect(result).not.toContain("<b>");
-          // Content should be present
-          if (content.trim()) {
-            expect(result).toContain(content.trim());
+          // Content should be present (with collapsed whitespace)
+          const normalized = content.trim().replace(/\s+/g, " ");
+          if (normalized) {
+            expect(result).toContain(normalized);
           }
         }
       )
