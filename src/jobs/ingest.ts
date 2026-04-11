@@ -4,7 +4,6 @@ import { countWords } from "../lib/text";
 import { extractTags } from "../services/tag-generator";
 import { tokenizeForConcordance } from "../services/concordance";
 import { generateEmbeddings } from "../services/embeddings";
-import { generateSummary } from "../services/summarizer";
 import type { Bindings, ParsedEpisode } from "../types";
 
 export async function ingestParsedEpisodes(
@@ -162,18 +161,6 @@ export async function ingestParsedEpisodes(
       console.error("Embedding/Vectorize error:", e); // B2
     }
 
-    try {
-      if (env.AI) {
-        // Truncate to ~1000 chars to stay within BART model limits
-        const chunkTexts = chunkMeta.map((c) => c.plain).join(" ").substring(0, 1000);
-        const summary = await generateSummary(env.AI, chunkTexts);
-        await env.DB.prepare("UPDATE episodes SET summary = ? WHERE id = ?")
-          .bind(summary, episodeId)
-          .run();
-      }
-    } catch (e) {
-      console.error("Summary generation error:", e); // B2
-    }
   }
 
   // Rebuild concordance aggregates

@@ -63,7 +63,7 @@ episodes.get("/:slug", async (c) => {
     .all();
 
   return c.html(
-    <Layout title={episode.title} description={episode.summary || `Bits and Bobs from ${episode.published_date}`}>
+    <Layout title={episode.title} description={`Bits and Bobs from ${episode.published_date} — ${episode.chunk_count} observations`}>
       <Breadcrumbs
         crumbs={[
           { label: "Home", href: "/" },
@@ -79,8 +79,6 @@ episodes.get("/:slug", async (c) => {
             { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" }
           )}
         </time>
-        {episode.summary && <p class="summary">{episode.summary}</p>}
-
         {(tags.results as unknown as TagRow[]).length > 0 && (
           <div class="tags">
             {(tags.results as unknown as TagRow[]).map((tag) => (

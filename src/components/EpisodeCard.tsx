@@ -12,7 +12,6 @@ export const EpisodeCard: FC<{ episode: EpisodeRow }> = ({ episode }) => (
         { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" }
       )}
     </time>
-    {episode.summary && <p class="summary">{episode.summary}</p>}
-    <span class="chunk-count">{episode.chunk_count} chunks</span>
+    <span class="chunk-count">{episode.chunk_count} observations</span>
   </article>
 );

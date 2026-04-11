@@ -13,8 +13,6 @@ Expose tags for every episode.
 
 Expose a search interface.
 
-Generate short summaries for every episode.
-
 Expose every chunk with its own URL.
 Show related chunks for every chunk.
 Expose tags on every chunk.

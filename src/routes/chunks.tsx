@@ -68,7 +68,7 @@ chunks.get("/:slug", async (c) => {
   return c.html(
     <Layout
       title={chunkData.title}
-      description={chunkData.summary || chunkData.content_plain.substring(0, 160)}
+      description={chunkData.content_plain.substring(0, 160)}
     >
       <Breadcrumbs
         crumbs={[
@@ -140,7 +140,7 @@ chunks.get("/:slug", async (c) => {
                 headline: chunkData.title,
                 author: { "@type": "Person", name: "Alex Komoroske" },
                 datePublished: chunkData.published_date,
-                description: chunkData.summary || chunkData.content_plain.substring(0, 160),
+                description: chunkData.content_plain.substring(0, 160),
                 isPartOf: { "@type": "Periodical", name: "Bits and Bobs" },
               }),
             }}
