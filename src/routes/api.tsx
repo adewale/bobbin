@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { AppEnv } from "../types";
 import { fetchGoogleDocHtml } from "../services/google-docs";
 import { parseHtmlDocument } from "../services/html-parser";
-import { ingestParsedEpisodes } from "../jobs/ingest";
+import { ingestParsedEpisodes, enrichChunks, isEnrichmentComplete } from "../jobs/ingest";
 import { ftsSearch } from "../services/search";
 import { safeParseInt, escapeLike } from "../lib/html";
 
@@ -134,6 +134,27 @@ api.get("/embed", async (c) => {
   } catch (e: any) {
     console.error("Embed error:", e);
     return c.json({ error: "Embedding failed" }, 500);
+  }
+});
+
+// Admin: enrich unenriched chunks (tags, concordance)
+api.get("/enrich", async (c) => {
+  const denied = requireAuth(c);
+  if (denied) return denied;
+
+  const batchSize = safeParseInt(c.req.query("batch"), 50);
+
+  try {
+    const result = await enrichChunks(c.env.DB, batchSize);
+    const complete = await isEnrichmentComplete(c.env.DB);
+    return c.json({
+      status: "ok",
+      chunksProcessed: result.chunksProcessed,
+      complete,
+    });
+  } catch (e: any) {
+    console.error("Enrich error:", e);
+    return c.json({ error: "Enrichment failed" }, 500);
   }
 });
 

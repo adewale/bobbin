@@ -1,22 +1,19 @@
 import { fetchGoogleDocHtml } from "../services/google-docs";
 import { parseHtmlDocument } from "../services/html-parser";
-import { ingestParsedEpisodes } from "./ingest";
+import { ingestEpisodesOnly, enrichChunks } from "./ingest";
 import type { Bindings, SourceRow } from "../types";
 
-// The current doc where Komoroske publishes new content
 const CURRENT_DOC_ID = "1xRiCqpy3LMAgEsHdX-IA23j6nUISdT5nAJmtKbk9wNA";
 
 /**
- * Weekly cron refresh: only fetch the CURRENT doc (where new content appears).
- * Archives don't change — they're ingested once via /api/ingest.
+ * Weekly cron refresh — phased approach:
+ * 1. Fetch current doc, insert new episodes + chunks (fast, <10s)
+ * 2. Enrich a batch of unenriched chunks (tags, concordance)
  *
- * Designed to complete within Workers CPU limits:
- * - Fetches 1 doc (not all sources)
- * - Ingests only NEW episodes (dedup by date within source)
- * - Skips AI operations in cron (embeddings done separately via /api/embed)
+ * If there are more unenriched chunks than one batch can handle,
+ * the next cron run will continue where this one left off.
  */
 export async function runRefresh(env: Bindings): Promise<void> {
-  // Ensure the current doc source exists
   await env.DB.prepare(
     "INSERT OR IGNORE INTO sources (google_doc_id, title) VALUES (?, ?)"
   )
@@ -39,11 +36,13 @@ export async function runRefresh(env: Bindings): Promise<void> {
   const logId = logResult.meta.last_row_id;
 
   try {
+    // Phase 1: Fetch + insert episodes/chunks
     const html = await fetchGoogleDocHtml(source.google_doc_id);
     const episodes = parseHtmlDocument(html);
+    const result = await ingestEpisodesOnly(env.DB, source.id, episodes);
 
-    // Only ingest new episodes (limited to 5 per run to stay within CPU budget)
-    const result = await ingestParsedEpisodes(env, source.id, episodes);
+    // Phase 2: Enrich a batch of unenriched chunks (50 per run)
+    const enrichResult = await enrichChunks(env.DB, 50);
 
     await env.DB.prepare(
       "UPDATE sources SET last_fetched_at = datetime('now') WHERE id = ?"

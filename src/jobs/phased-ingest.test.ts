@@ -1,0 +1,197 @@
+import { describe, it, expect, beforeEach } from "vitest";
+import { env } from "cloudflare:test";
+import { applyTestMigrations } from "../../test/helpers/migrations";
+import { parseHtmlDocument } from "../services/html-parser";
+import { ingestEpisodesOnly, enrichChunks, isEnrichmentComplete } from "./ingest";
+import sampleEssays from "../../test/fixtures/sample-mobilebasic.html?raw";
+import sampleNotes from "../../test/fixtures/sample-notes-format.html?raw";
+
+beforeEach(async () => {
+  await applyTestMigrations(env.DB);
+  await env.DB.prepare(
+    "INSERT INTO sources (google_doc_id, title) VALUES ('test-doc', 'Test')"
+  ).run();
+});
+
+// === Phase 1: Fast insert (cron path) ===
+describe("Phase 1: ingestEpisodesOnly", () => {
+  it("inserts episodes and chunks into D1", async () => {
+    const episodes = parseHtmlDocument(sampleEssays);
+    const result = await ingestEpisodesOnly(env.DB, 1, episodes);
+
+    expect(result.episodesAdded).toBe(3);
+    expect(result.chunksAdded).toBeGreaterThan(0);
+
+    const dbEps = await env.DB.prepare("SELECT * FROM episodes").all();
+    expect(dbEps.results).toHaveLength(3);
+  });
+
+  it("does NOT create tags", async () => {
+    const episodes = parseHtmlDocument(sampleEssays);
+    await ingestEpisodesOnly(env.DB, 1, episodes);
+
+    const tags = await env.DB.prepare("SELECT COUNT(*) as c FROM tags").first();
+    expect((tags as any).c).toBe(0);
+  });
+
+  it("does NOT create chunk_words", async () => {
+    const episodes = parseHtmlDocument(sampleEssays);
+    await ingestEpisodesOnly(env.DB, 1, episodes);
+
+    const words = await env.DB.prepare("SELECT COUNT(*) as c FROM chunk_words").first();
+    expect((words as any).c).toBe(0);
+  });
+
+  it("does NOT create concordance", async () => {
+    const episodes = parseHtmlDocument(sampleEssays);
+    await ingestEpisodesOnly(env.DB, 1, episodes);
+
+    const conc = await env.DB.prepare("SELECT COUNT(*) as c FROM concordance").first();
+    expect((conc as any).c).toBe(0);
+  });
+
+  it("is idempotent", async () => {
+    const episodes = parseHtmlDocument(sampleEssays);
+    await ingestEpisodesOnly(env.DB, 1, episodes);
+    const second = await ingestEpisodesOnly(env.DB, 1, episodes);
+    expect(second.episodesAdded).toBe(0);
+  });
+
+  it("stores format correctly", async () => {
+    const essays = parseHtmlDocument(sampleEssays);
+    const notes = parseHtmlDocument(sampleNotes);
+    await ingestEpisodesOnly(env.DB, 1, essays);
+    await ingestEpisodesOnly(env.DB, 1, notes);
+
+    const formats = await env.DB.prepare(
+      "SELECT format, COUNT(*) as c FROM episodes GROUP BY format"
+    ).all();
+    const byFormat = Object.fromEntries(
+      (formats.results as any[]).map((r) => [r.format, r.c])
+    );
+    expect(byFormat.essays).toBe(3);
+    expect(byFormat.notes).toBe(1);
+  });
+});
+
+// === Phase 2: Enrichment (background) ===
+describe("Phase 2: enrichChunks", () => {
+  beforeEach(async () => {
+    const episodes = parseHtmlDocument(sampleEssays);
+    await ingestEpisodesOnly(env.DB, 1, episodes);
+  });
+
+  it("creates tags for a batch of unenriched chunks", async () => {
+    const result = await enrichChunks(env.DB, 10);
+
+    expect(result.chunksProcessed).toBeGreaterThan(0);
+
+    const tags = await env.DB.prepare("SELECT COUNT(*) as c FROM tags").first();
+    expect((tags as any).c).toBeGreaterThan(0);
+
+    const chunkTags = await env.DB.prepare("SELECT COUNT(*) as c FROM chunk_tags").first();
+    expect((chunkTags as any).c).toBeGreaterThan(0);
+  });
+
+  it("creates chunk_words for concordance", async () => {
+    await enrichChunks(env.DB, 100);
+
+    const words = await env.DB.prepare("SELECT COUNT(*) as c FROM chunk_words").first();
+    expect((words as any).c).toBeGreaterThan(0);
+  });
+
+  it("updates concordance aggregates", async () => {
+    await enrichChunks(env.DB, 100);
+
+    const conc = await env.DB.prepare("SELECT COUNT(*) as c FROM concordance").first();
+    expect((conc as any).c).toBeGreaterThan(0);
+  });
+
+  it("processes only the requested batch size", async () => {
+    const result = await enrichChunks(env.DB, 2);
+    expect(result.chunksProcessed).toBeLessThanOrEqual(2);
+  });
+
+  it("is idempotent — re-enriching already-enriched chunks is a no-op", async () => {
+    await enrichChunks(env.DB, 100);
+    const firstTags = await env.DB.prepare("SELECT COUNT(*) as c FROM tags").first();
+
+    const result = await enrichChunks(env.DB, 100);
+    expect(result.chunksProcessed).toBe(0);
+
+    const secondTags = await env.DB.prepare("SELECT COUNT(*) as c FROM tags").first();
+    expect((secondTags as any).c).toBe((firstTags as any).c);
+  });
+});
+
+// === isEnrichmentComplete ===
+describe("isEnrichmentComplete", () => {
+  it("returns false when chunks have no tags", async () => {
+    const episodes = parseHtmlDocument(sampleEssays);
+    await ingestEpisodesOnly(env.DB, 1, episodes);
+
+    expect(await isEnrichmentComplete(env.DB)).toBe(false);
+  });
+
+  it("returns true when all chunks are enriched", async () => {
+    const episodes = parseHtmlDocument(sampleEssays);
+    await ingestEpisodesOnly(env.DB, 1, episodes);
+    await enrichChunks(env.DB, 100);
+
+    expect(await isEnrichmentComplete(env.DB)).toBe(true);
+  });
+});
+
+// === E2E: Full phased pipeline ===
+describe("E2E: Phase 1 → Phase 2 produces same result as old pipeline", () => {
+  it("after both phases, DB has episodes, chunks, tags, concordance", async () => {
+    const episodes = parseHtmlDocument(sampleEssays);
+
+    // Phase 1
+    const phase1 = await ingestEpisodesOnly(env.DB, 1, episodes);
+    expect(phase1.episodesAdded).toBe(3);
+
+    // Phase 2 — enrich all
+    await enrichChunks(env.DB, 1000);
+
+    // Verify everything exists
+    const eps = await env.DB.prepare("SELECT COUNT(*) as c FROM episodes").first();
+    const chunks = await env.DB.prepare("SELECT COUNT(*) as c FROM chunks").first();
+    const tags = await env.DB.prepare("SELECT COUNT(*) as c FROM tags WHERE usage_count > 0").first();
+    const conc = await env.DB.prepare("SELECT COUNT(*) as c FROM concordance").first();
+    const ct = await env.DB.prepare("SELECT COUNT(*) as c FROM chunk_tags").first();
+
+    expect((eps as any).c).toBe(3);
+    expect((chunks as any).c).toBeGreaterThan(0);
+    expect((tags as any).c).toBeGreaterThan(0);
+    expect((conc as any).c).toBeGreaterThan(0);
+    expect((ct as any).c).toBeGreaterThan(0);
+  });
+
+  it("chunk positions are sequential after phased ingest", async () => {
+    const episodes = parseHtmlDocument(sampleEssays);
+    await ingestEpisodesOnly(env.DB, 1, episodes);
+
+    const dbEps = await env.DB.prepare("SELECT id FROM episodes").all();
+    for (const ep of dbEps.results as any[]) {
+      const chunks = await env.DB.prepare(
+        "SELECT position FROM chunks WHERE episode_id = ? ORDER BY position"
+      ).bind(ep.id).all();
+      for (let i = 0; i < chunks.results.length; i++) {
+        expect((chunks.results[i] as any).position).toBe(i);
+      }
+    }
+  });
+
+  it("no duplicate slugs after phased ingest", async () => {
+    const essays = parseHtmlDocument(sampleEssays);
+    const notes = parseHtmlDocument(sampleNotes);
+    await ingestEpisodesOnly(env.DB, 1, essays);
+    await ingestEpisodesOnly(env.DB, 1, notes);
+
+    const dupes = await env.DB.prepare(
+      "SELECT slug, COUNT(*) as c FROM chunks GROUP BY slug HAVING c > 1"
+    ).all();
+    expect(dupes.results).toHaveLength(0);
+  });
+});

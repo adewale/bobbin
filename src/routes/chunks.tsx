@@ -140,7 +140,7 @@ chunks.get("/:slug", async (c) => {
             {paragraphs.map((para: string, i: number) => (
               <div key={i} class="para-with-margin">
                 <p>{para}</p>
-                {relatedItems[i] && (
+                {relatedItems[i] && relatedItems[i].slug && (
                   <aside class="margin-note">
                     <a href={`/chunks/${relatedItems[i].slug}`}>
                       {relatedItems[i].title}
