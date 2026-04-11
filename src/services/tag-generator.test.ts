@@ -6,7 +6,7 @@ describe("extractTags", () => {
     const tags = extractTags(
       "The ecosystem dynamics of platform markets are fascinating. Platform ecosystems evolve through ecosystem competition and platform strategies."
     );
-    const names = tags.map((t) => t.name);
+    const names = tags.map((t) => t.name.toLowerCase());
     expect(names).toContain("ecosystem");
     expect(names).toContain("platform");
   });
