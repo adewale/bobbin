@@ -169,8 +169,7 @@ export async function enrichChunks(
     await db.batch(wordStmts.slice(i, i + 50));
   }
 
-  // Rebuild concordance incrementally from the chunks we just processed
-  // (Full rebuild is expensive; incremental is fine for new data)
+  // Rebuild concordance and precompute chunk reach
   await db.batch([
     db.prepare("DELETE FROM concordance"),
     db.prepare(
@@ -179,6 +178,15 @@ export async function enrichChunks(
        FROM chunk_words GROUP BY word`
     ),
   ]);
+
+  // Precompute reach for enriched chunks
+  await db.prepare(
+    `UPDATE chunks SET reach = (
+       SELECT COALESCE(SUM(t.usage_count), 0)
+       FROM chunk_tags ct JOIN tags t ON ct.tag_id = t.id
+       WHERE ct.chunk_id = chunks.id
+     ) WHERE id IN (SELECT chunk_id FROM chunk_tags)`
+  ).run();
 
   return { chunksProcessed: chunks.length };
 }

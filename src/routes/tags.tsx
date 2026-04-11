@@ -3,6 +3,7 @@ import type { AppEnv, TagRow, ChunkRow } from "../types";
 import { Layout } from "../components/Layout";
 import { escapeXml, getBaseUrl } from "../lib/html";
 import { SearchForm } from "../components/SearchForm";
+import { getFilteredTags, getTagBySlug, getTagChunkCount, getTaggedChunks, getTagSparkline, getTagEpisodes } from "../db/tags";
 import { TagCloud } from "../components/TagCloud";
 import { ChunkCard } from "../components/ChunkCard";
 import { Breadcrumbs } from "../components/Breadcrumbs";
@@ -12,13 +13,9 @@ const tags = new Hono<AppEnv>();
 const PAGE_SIZE = 20;
 
 tags.get("/", async (c) => {
-  // Only load tags with meaningful usage — not all 9000
-  const topTags = await c.env.DB.prepare(
-    "SELECT * FROM tags WHERE usage_count >= 3 ORDER BY usage_count DESC LIMIT 200"
-  ).all<TagRow>();
-
-  const entities = topTags.results.filter((t) => t.name.includes(" ")).slice(0, 20);
-  const concepts = topTags.results.filter((t) => !t.name.includes(" ")).slice(0, 40);
+  const topTags = await getFilteredTags(c.env.DB, 3, 200);
+  const entities = topTags.filter((t) => t.name.includes(" ")).slice(0, 20);
+  const concepts = topTags.filter((t) => !t.name.includes(" ")).slice(0, 40);
 
   return c.html(
     <Layout title="Tags" description="Browse Bits and Bobs by topic" activePath="/tags">
@@ -46,63 +43,17 @@ tags.get("/:slug", async (c) => {
   const page = Math.max(1, parseInt(c.req.query("page") || "1", 10));
   const offset = (page - 1) * PAGE_SIZE;
 
-  const tag = await c.env.DB.prepare("SELECT * FROM tags WHERE slug = ?")
-    .bind(slug)
-    .first<TagRow>();
-
+  const tag = await getTagBySlug(c.env.DB, slug);
   if (!tag) return c.notFound();
 
-  // All queries in parallel for the ladder of abstraction
-  const [countResult, chunksResult, episodeTimeline, sparklineData] =
-    await Promise.all([
-      c.env.DB.prepare(
-        "SELECT COUNT(*) as count FROM chunk_tags WHERE tag_id = ?"
-      )
-        .bind(tag.id)
-        .first(),
-      c.env.DB.prepare(
-        `SELECT c.*, e.slug as episode_slug, e.title as episode_title, e.published_date
-         FROM chunks c
-         JOIN chunk_tags ct ON c.id = ct.chunk_id
-         JOIN episodes e ON c.episode_id = e.id
-         WHERE ct.tag_id = ?
-         ORDER BY e.published_date DESC
-         LIMIT ? OFFSET ?`
-      )
-        .bind(tag.id, PAGE_SIZE, offset)
-        .all(),
-      // Episode-level: which episodes contain this tag
-      c.env.DB.prepare(
-        `SELECT e.*, COUNT(ct.chunk_id) as tag_chunk_count
-         FROM episodes e
-         JOIN episode_tags et ON e.id = et.episode_id
-         JOIN chunk_tags ct ON ct.tag_id = et.tag_id AND ct.tag_id = ?
-         JOIN chunks c ON c.id = ct.chunk_id AND c.episode_id = e.id
-         WHERE et.tag_id = ?
-         GROUP BY e.id
-         ORDER BY e.published_date ASC`
-      )
-        .bind(tag.id, tag.id)
-        .all(),
-      // Corpus-level: usage count per episode over time
-      c.env.DB.prepare(
-        `SELECT e.published_date, COUNT(ct.chunk_id) as count
-         FROM chunk_tags ct
-         JOIN chunks c ON ct.chunk_id = c.id
-         JOIN episodes e ON c.episode_id = e.id
-         WHERE ct.tag_id = ?
-         GROUP BY e.id
-         ORDER BY e.published_date ASC`
-      )
-        .bind(tag.id)
-        .all(),
-    ]);
+  const [total, chunksList, episodes, sparkline] = await Promise.all([
+    getTagChunkCount(c.env.DB, tag.id),
+    getTaggedChunks(c.env.DB, tag.id, PAGE_SIZE, offset),
+    getTagEpisodes(c.env.DB, tag.id),
+    getTagSparkline(c.env.DB, tag.id),
+  ]);
 
-  const total = (countResult as any)?.count || 0;
   const totalPages = Math.ceil(total / PAGE_SIZE);
-  const chunksList = chunksResult.results as any[];
-  const episodes = episodeTimeline.results as any[];
-  const sparkline = sparklineData.results as any[];
   const maxSparkCount = Math.max(...sparkline.map((s: any) => s.count), 1);
 
   return c.html(

@@ -14,7 +14,7 @@ concordance.get("/", async (c) => {
   const maxDist = Math.max(...words.map((w) => w.distinctiveness), 1);
 
   // Fetch per-episode sparkline data for the top 50 words
-  const top50Words = words.slice(0, 50).map((w) => w.word);
+  const top50Words = words.slice(0, 30).map((w) => w.word);
   const sparklineData = new Map<string, number[]>();
 
   if (top50Words.length > 0) {
