@@ -243,7 +243,7 @@ function renderSparkPoints(values: number[], height = 40): string {
     .map((v, i) => {
       const x = (i / Math.max(values.length - 1, 1)) * 100;
       const y = height - pad - (v / max) * (height - pad * 2);
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
+      return `${Math.round(x)},${Math.round(y)}`;
     })
     .join(" ");
 }

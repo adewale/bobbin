@@ -291,7 +291,8 @@ mark { background: color-mix(in srgb, var(--accent-light) 60%, transparent); col
 
 /* === Tag Ladder of Abstraction === */
 .tag-sparkline { margin: 1.5rem 0; padding: 1rem; background: var(--bg-warm); border: 1px solid var(--border); border-radius: 6px; }
-.tag-sparkline h2 { font-family: var(--font-ui); font-size: 0.85rem; font-weight: 600; margin-bottom: 0.25rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-light); }
+.tag-sparkline { margin: 1rem 0; }
+.tag-spark-svg { width: 100%; height: auto; display: block; }
 
 .tag-episode-timeline { margin: 1.5rem 0; }
 .tag-episode-timeline h2 { font-family: var(--font-ui); font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-light); margin-bottom: 0.5rem; }

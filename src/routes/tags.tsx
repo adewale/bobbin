@@ -37,6 +37,8 @@ tags.get("/", async (c) => {
         <h2>Key Concepts</h2>
         <TagCloud tags={concepts} />
       </section>
+
+      <script src="/scripts/tag-filter.js" defer></script>
     </Layout>
   );
 });
@@ -123,22 +125,59 @@ tags.get("/:slug", async (c) => {
         {episodes.length !== 1 ? "s" : ""}
       </p>
 
-      {/* Corpus level: sparkline of tag usage over time */}
-      <section class="tag-sparkline">
-        <h2>Frequency over time</h2>
-        <div class="sparkline">
-          {sparkline.map((s: any) => (
-            <div
-              key={s.published_date}
-              class="spark-bar"
-              style={`height:${Math.round((s.count / maxSparkCount) * 100)}%`}
-              title={`${s.published_date}: ${s.count} observation${s.count !== 1 ? "s" : ""}`}
-            >
-              <span class="spark-label">{s.published_date}</span>
-            </div>
-          ))}
-        </div>
-      </section>
+      {/* Corpus level: SVG sparkline with mean line */}
+      {sparkline.length > 1 && (() => {
+        const counts = sparkline.map((s: any) => s.count as number);
+        const mean = counts.reduce((a: number, b: number) => a + b, 0) / counts.length;
+        const max = maxSparkCount;
+        const w = 500;
+        const h = 80;
+        const pad = 4;
+
+        const points = counts.map((c: number, i: number) => {
+          const x = (i / (counts.length - 1)) * (w - pad * 2) + pad;
+          const y = h - pad - (c / max) * (h - pad * 2);
+          return `${x},${y}`;
+        }).join(" ");
+
+        const meanY = h - pad - (mean / max) * (h - pad * 2);
+
+        // Date landmarks: first, middle, last
+        const dates = sparkline.map((s: any) => s.published_date);
+        const landmarks = [
+          { label: dates[0], x: pad },
+          { label: dates[Math.floor(dates.length / 2)], x: w / 2 },
+          { label: dates[dates.length - 1], x: w - pad },
+        ];
+
+        return (
+          <section class="tag-sparkline">
+            <svg viewBox={`0 0 ${w} ${h + 16}`} class="tag-spark-svg">
+              {/* Mean reference line */}
+              <line x1={pad} y1={meanY} x2={w - pad} y2={meanY}
+                stroke="var(--border)" stroke-width="1" stroke-dasharray="4,3" />
+              <text x={w - pad} y={meanY - 3} text-anchor="end"
+                fill="var(--text-light)" font-size="9" font-family="var(--font-ui)">
+                avg {mean.toFixed(1)}
+              </text>
+
+              {/* Sparkline */}
+              <polyline points={points} fill="none"
+                stroke="var(--accent)" stroke-width="2" />
+
+              {/* Date landmarks */}
+              {landmarks.map((lm, i) => (
+                <text key={i} x={lm.x} y={h + 12}
+                  text-anchor={i === 0 ? "start" : i === 2 ? "end" : "middle"}
+                  fill="var(--text-light)" font-size="9" font-family="var(--font-ui)">
+                  {lm.label}
+                </text>
+              ))}
+            </svg>
+          </section>
+        );
+      })()}
+
 
       {/* Episode level: horizontal density bars */}
       <section class="tag-episode-timeline">
