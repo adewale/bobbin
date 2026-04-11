@@ -2,19 +2,15 @@ import { Hono } from "hono";
 import type { AppEnv, ConcordanceRow } from "../types";
 import { Layout } from "../components/Layout";
 import { Breadcrumbs } from "../components/Breadcrumbs";
+import { getTopConcordance, getConcordanceWord } from "../db/concordance";
 
 const concordance = new Hono<AppEnv>();
 
 concordance.get("/", async (c) => {
-  const sortBy = c.req.query("sort") || "distinctive";
-  const orderCol = sortBy === "count" ? "total_count" : "distinctiveness";
-
-  const words = await c.env.DB.prepare(
-    `SELECT * FROM concordance
-     WHERE doc_count >= 2 AND total_count >= 3 AND length(word) >= 4
-     ORDER BY ${orderCol} DESC
-     LIMIT 200`
-  ).all();
+  const sortBy = (c.req.query("sort") || "distinctive") as "distinctive" | "count";
+  const words = await getTopConcordance(c.env.DB, sortBy, 150);
+  const maxCount = Math.max(...words.map((w) => w.total_count), 1);
+  const maxDist = Math.max(...words.map((w) => w.distinctiveness), 1);
 
   return c.html(
     <Layout title="Concordance" description="Distinctive words in the Bits and Bobs archive">
@@ -31,32 +27,52 @@ concordance.get("/", async (c) => {
           Most frequent
         </a>
       </nav>
-      {words.results.length === 0 && <p>No concordance data yet.</p>}
-      <table class="concordance-table">
+
+      {words.length === 0 && <p>No concordance data yet.</p>}
+
+      {/* Tufte-inspired horizontal bar table */}
+      <table class="concordance-bars">
         <thead>
           <tr>
-            <th>Word</th>
-            <th>Count</th>
-            <th>Chunks</th>
+            <th class="col-word">Word</th>
+            <th class="col-bar">
+              {sortBy === "distinctive" ? "Distinctiveness" : "Frequency"}
+            </th>
+            <th class="col-num">Count</th>
+            <th class="col-num">Chunks</th>
           </tr>
         </thead>
         <tbody>
-          {(words.results as any[]).map((w) => (
-            <tr key={w.id}>
-              <td>
-                <a href={`/concordance/${encodeURIComponent(w.word)}`}>
-                  {w.word}
-                </a>
-                {w.in_baseline === 0 && w.distinctiveness > 5 && (
-                  <span class="sip-badge" title="Distinctive to this corpus">SIP</span>
-                )}
-              </td>
-              <td>{w.total_count}</td>
-              <td>{w.doc_count}</td>
-            </tr>
-          ))}
+          {words.map((w) => {
+            const barWidth = sortBy === "distinctive"
+              ? (w.distinctiveness / maxDist) * 100
+              : (w.total_count / maxCount) * 100;
+            const isDistinctive = w.in_baseline === 0 && w.distinctiveness > 5;
+
+            return (
+              <tr key={w.id} class={isDistinctive ? "distinctive" : ""}>
+                <td class="col-word">
+                  <a href={`/concordance/${encodeURIComponent(w.word)}`}>
+                    {w.word}
+                  </a>
+                  {isDistinctive && (
+                    <span class="sip-badge">SIP</span>
+                  )}
+                </td>
+                <td class="col-bar">
+                  <div
+                    class={`bar ${isDistinctive ? "bar-distinctive" : "bar-baseline"}`}
+                    style={`width:${Math.max(barWidth, 1)}%`}
+                  />
+                </td>
+                <td class="col-num">{w.total_count}</td>
+                <td class="col-num">{w.doc_count}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
+
       <script src="/scripts/reactive.js" defer></script>
     </Layout>
   );
@@ -64,13 +80,7 @@ concordance.get("/", async (c) => {
 
 concordance.get("/:word", async (c) => {
   const word = decodeURIComponent(c.req.param("word")).toLowerCase();
-
-  const wordData = await c.env.DB.prepare(
-    "SELECT * FROM concordance WHERE word = ?"
-  )
-    .bind(word)
-    .first<ConcordanceRow>();
-
+  const wordData = await getConcordanceWord(c.env.DB, word);
   if (!wordData) return c.notFound();
 
   const [chunks, timeline] = await Promise.all([
@@ -83,9 +93,7 @@ concordance.get("/:word", async (c) => {
        WHERE cw.word = ?
        ORDER BY cw.count DESC, e.published_date DESC
        LIMIT 100`
-    )
-      .bind(word)
-      .all(),
+    ).bind(word).all(),
     c.env.DB.prepare(
       `SELECT e.published_date, e.title, SUM(cw.count) as episode_count
        FROM chunk_words cw
@@ -94,9 +102,7 @@ concordance.get("/:word", async (c) => {
        WHERE cw.word = ?
        GROUP BY e.id
        ORDER BY e.published_date ASC`
-    )
-      .bind(word)
-      .all(),
+    ).bind(word).all(),
   ]);
 
   const timelineData = (timeline.results as any[]).map((r) => ({
@@ -122,12 +128,12 @@ concordance.get("/:word", async (c) => {
       <p>
         {wordData.total_count} occurrence{wordData.total_count !== 1 ? "s" : ""}{" "}
         across {wordData.doc_count} chunk{wordData.doc_count !== 1 ? "s" : ""}
+        {wordData.in_baseline === 0 && (
+          <span class="sip-badge" style="margin-left:0.5rem">SIP</span>
+        )}
       </p>
 
-      <div
-        class="word-timeline"
-        data-timeline={JSON.stringify(timelineData)}
-      >
+      <div class="word-timeline" data-timeline={JSON.stringify(timelineData)}>
         <h2>Usage over time</h2>
         <div class="sparkline">
           {timelineData.map((d) => (

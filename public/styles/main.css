@@ -158,6 +158,24 @@ details.tag-tier .tag-cloud { margin-top: 0.5rem; }
 .concordance-table a { text-decoration: none; }
 .concordance-table td:first-child { font-weight: 500; }
 .concordance-table td:nth-child(2), .concordance-table td:nth-child(3) { font-variant-numeric: tabular-nums; color: var(--text-muted); }
+
+/* === Tufte bar table === */
+.concordance-bars { width: 100%; border-collapse: collapse; font-family: var(--font-ui); font-size: 0.85rem; }
+.concordance-bars th, .concordance-bars td { padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--border); }
+.concordance-bars th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-light); font-weight: 600; text-align: left; }
+.concordance-bars .col-word { min-width: 8rem; }
+.concordance-bars .col-bar { width: 40%; min-width: 100px; }
+.concordance-bars .col-num { width: 4rem; text-align: right; font-variant-numeric: tabular-nums; color: var(--text-muted); font-size: 0.8rem; }
+.concordance-bars tr.distinctive { background: color-mix(in srgb, var(--accent-light) 30%, transparent); }
+.concordance-bars a { text-decoration: none; font-weight: 500; color: var(--text); }
+.concordance-bars a:hover { color: var(--accent); }
+.concordance-bars .bar { height: 14px; border-radius: 1px; min-width: 2px; }
+.concordance-bars .bar-distinctive { background: var(--accent); opacity: 0.8; }
+.concordance-bars .bar-baseline { background: var(--text-light); opacity: 0.4; }
+@media (max-width: 640px) {
+  .concordance-bars .col-bar { display: none; }
+  .concordance-bars .col-num:last-child { display: none; }
+}
 .concordance-sort { display: flex; gap: 0.75rem; margin-bottom: 1rem; font-family: var(--font-ui); font-size: 0.8rem; }
 .concordance-sort a { padding: 0.3rem 0.6rem; border: 1px solid var(--border); border-radius: 3px; text-decoration: none; color: var(--text-muted); }
 .concordance-sort a.active { background: var(--accent); color: #fff; border-color: var(--accent); }

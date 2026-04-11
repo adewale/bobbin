@@ -1,36 +1,21 @@
 import { Hono } from "hono";
-import type { AppEnv, EpisodeRow, TagRow } from "../types";
+import type { AppEnv } from "../types";
 import { Layout } from "../components/Layout";
 import { EpisodeCard } from "../components/EpisodeCard";
 import { TagCloud } from "../components/TagCloud";
 import { SearchForm } from "../components/SearchForm";
+import { getRecentEpisodes } from "../db/episodes";
+import { getTopTags } from "../db/tags";
+import { getMostConnected } from "../db/concordance";
 
 const home = new Hono<AppEnv>();
 
 home.get("/", async (c) => {
-  const [episodes, tags] = await Promise.all([
-    c.env.DB.prepare(
-      "SELECT * FROM episodes ORDER BY published_date DESC LIMIT 10"
-    ).all(),
-    c.env.DB.prepare(
-      "SELECT * FROM tags WHERE usage_count > 0 ORDER BY usage_count DESC LIMIT 30"
-    ).all(),
+  const [episodes, tags, connected] = await Promise.all([
+    getRecentEpisodes(c.env.DB, 10),
+    getTopTags(c.env.DB, 30),
+    getMostConnected(c.env.DB, 8),
   ]);
-
-  // Most-connected: chunks whose tags have the highest total reach
-  // Sum of usage_count for each chunk's tags = how connected it is
-  const connected = await c.env.DB.prepare(
-    `SELECT c.id, c.slug, c.title,
-            e.slug as episode_slug, e.published_date,
-            SUM(t.usage_count) as reach
-     FROM chunks c
-     JOIN chunk_tags ct ON c.id = ct.chunk_id
-     JOIN tags t ON ct.tag_id = t.id
-     JOIN episodes e ON c.episode_id = e.id
-     GROUP BY c.id
-     ORDER BY reach DESC
-     LIMIT 8`
-  ).all();
 
   return c.html(
     <Layout
@@ -46,12 +31,12 @@ home.get("/", async (c) => {
         <SearchForm />
       </section>
 
-      {(connected.results as any[]).length > 0 && (
+      {connected.length > 0 && (
         <section class="most-connected">
           <h2>Most Connected</h2>
           <p class="section-subtitle">Observations that echo across multiple episodes</p>
           <ul>
-            {(connected.results as any[]).map((r) => (
+            {connected.map((r: any) => (
               <li key={r.id}>
                 <a href={`/chunks/${r.slug}`}>{r.title}</a>
                 <span class="meta">
@@ -66,21 +51,21 @@ home.get("/", async (c) => {
 
       <section class="recent-episodes">
         <h2>Recent Episodes</h2>
-        {(episodes.results as unknown as EpisodeRow[]).map((ep) => (
+        {episodes.map((ep) => (
           <EpisodeCard key={ep.id} episode={ep} />
         ))}
-        {episodes.results.length > 0 && (
+        {episodes.length > 0 && (
           <a href="/episodes" class="see-all">See all episodes &rarr;</a>
         )}
-        {episodes.results.length === 0 && (
+        {episodes.length === 0 && (
           <p>No episodes yet. Content will be ingested soon.</p>
         )}
       </section>
 
-      {(tags.results as unknown as TagRow[]).length > 0 && (
+      {tags.length > 0 && (
         <section class="tag-section">
           <h2>Popular Tags</h2>
-          <TagCloud tags={tags.results as unknown as TagRow[]} />
+          <TagCloud tags={tags} />
         </section>
       )}
     </Layout>

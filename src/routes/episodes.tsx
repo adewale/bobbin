@@ -3,18 +3,17 @@ import type { AppEnv, EpisodeRow, ChunkRow, TagRow } from "../types";
 import { Layout } from "../components/Layout";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { monthName } from "../lib/date";
+import { getAllEpisodesGrouped, getEpisodeBySlug, getChunksByEpisode, getEpisodeTags } from "../db/episodes";
 
 const episodes = new Hono<AppEnv>();
 
 // Unified browse: timeline + episode list in one page
 episodes.get("/", async (c) => {
-  const allEpisodes = await c.env.DB.prepare(
-    "SELECT * FROM episodes ORDER BY published_date DESC"
-  ).all();
+  const allEpisodesList = await getAllEpisodesGrouped(c.env.DB);
 
   // Group by year → month
   const byYear = new Map<number, Map<number, any[]>>();
-  for (const ep of allEpisodes.results as unknown as EpisodeRow[]) {
+  for (const ep of allEpisodesList) {
     if (!byYear.has(ep.year)) byYear.set(ep.year, new Map());
     const yearMap = byYear.get(ep.year)!;
     if (!yearMap.has(ep.month)) yearMap.set(ep.month, []);
@@ -27,7 +26,7 @@ episodes.get("/", async (c) => {
     <Layout title="Browse" description="Browse all Bits and Bobs episodes by date">
       <Breadcrumbs crumbs={[{ label: "Home", href: "/" }, { label: "Browse" }]} />
       <h1>Browse</h1>
-      <p>{allEpisodes.results.length} episodes</p>
+      <p>{allEpisodesList.length} episodes</p>
 
       {years.map((year) => {
         const months = [...byYear.get(year)!.keys()].sort((a, b) => b - a);
@@ -64,28 +63,13 @@ episodes.get("/", async (c) => {
 
 episodes.get("/:slug", async (c) => {
   const slug = c.req.param("slug");
-  const episode = await c.env.DB.prepare(
-    "SELECT * FROM episodes WHERE slug = ?"
-  )
-    .bind(slug)
-    .first<EpisodeRow>();
-
+  const episode = await getEpisodeBySlug(c.env.DB, slug);
   if (!episode) return c.notFound();
 
-  const chunks = await c.env.DB.prepare(
-    "SELECT * FROM chunks WHERE episode_id = ? ORDER BY position"
-  )
-    .bind(episode.id)
-    .all();
-
-  const tags = await c.env.DB.prepare(
-    `SELECT t.* FROM tags t
-     JOIN episode_tags et ON t.id = et.tag_id
-     WHERE et.episode_id = ?
-     ORDER BY t.usage_count DESC`
-  )
-    .bind(episode.id)
-    .all();
+  const [chunksList, tagsList] = await Promise.all([
+    getChunksByEpisode(c.env.DB, episode.id),
+    getEpisodeTags(c.env.DB, episode.id),
+  ]);
 
   return c.html(
     <Layout title={episode.title} description={`Bits and Bobs from ${episode.published_date} — ${episode.chunk_count} observations`}>
@@ -104,12 +88,12 @@ episodes.get("/:slug", async (c) => {
             { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" }
           )}
         </time>
-        {(tags.results as unknown as TagRow[]).length > 0 && (
+        {tagsList.length > 0 && (
           <aside class="tags-margin">
             <details>
               <summary>Tags</summary>
               <div class="tags">
-                {(tags.results as unknown as TagRow[]).map((tag) => (
+                {tagsList.map((tag) => (
                   <a key={tag.id} href={`/tags/${tag.slug}`} class="tag">
                     {tag.name}
                   </a>
@@ -121,7 +105,7 @@ episodes.get("/:slug", async (c) => {
 
         {episode.format === "essays" ? (
           <section class="episode-essays">
-            {(chunks.results as unknown as ChunkRow[]).map((chunk) => (
+            {chunksList.map((chunk) => (
               <article key={chunk.id} class="essay" id={chunk.slug}>
                 <h2><a href={`/chunks/${chunk.slug}`}>{chunk.title}</a></h2>
                 <div class="essay-content">
@@ -134,7 +118,7 @@ episodes.get("/:slug", async (c) => {
           </section>
         ) : (
           <ol class="episode-toc">
-            {(chunks.results as unknown as ChunkRow[]).map((chunk) => (
+            {chunksList.map((chunk) => (
               <li key={chunk.id}>
                 <a href={`/chunks/${chunk.slug}`}>{chunk.title}</a>
               </li>

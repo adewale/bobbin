@@ -9,6 +9,6 @@ export default defineConfig({
     }),
   ],
   test: {
-    exclude: ["e2e/**", "node_modules/**", "src/**/distinctiveness.test.ts"],
+    exclude: ["e2e/**", "node_modules/**", "src/**/distinctiveness.test.ts", ".claude/**"],
   },
 });

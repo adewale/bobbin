@@ -63,7 +63,26 @@ export interface ConcordanceRow {
   word: string;
   total_count: number;
   doc_count: number;
+  distinctiveness: number;
+  in_baseline: number;
   updated_at: string;
+}
+
+// Extended types for JOIN queries
+export interface ChunkWithEpisode extends ChunkRow {
+  episode_slug: string;
+  episode_title: string;
+  published_date: string;
+  episode_format: string;
+}
+
+export interface ConnectedChunk {
+  id: number;
+  slug: string;
+  title: string;
+  episode_slug: string;
+  published_date: string;
+  reach: number;
 }
 
 export interface ChunkWordRow {
