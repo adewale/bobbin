@@ -34,7 +34,9 @@ header .search-icon:hover { color: var(--accent); }
 @media (max-width: 480px) {
   header { padding: 0.4rem 0.75rem; }
   header .site-title { font-size: 0.8rem; }
-  header ul { gap: 0.5rem; font-size: 0.7rem; }
+  header ul { gap: 0.25rem; font-size: 0.7rem; }
+  header ul a { padding: 0.5rem 0.25rem; display: inline-block; } /* 44px touch target */
+  header .search-icon { padding: 0.5rem; }
 }
 
 main { max-width: var(--max-width); margin: 2.5rem auto; padding: 0 1.5rem; }
@@ -108,7 +110,7 @@ a:hover { text-decoration: underline; }
 
 /* === Tags === */
 .tags { display: flex; flex-wrap: wrap; gap: 0.3rem; margin: 0.5rem 0; }
-.tag { display: inline-block; padding: 0.15rem 0.5rem; background: var(--bg-warm); color: var(--text-muted); border: 1px solid var(--border); border-radius: 3px; font-size: 0.72rem; font-family: var(--font-ui); text-decoration: none; }
+.tag { display: inline-block; padding: 0.35rem 0.6rem; background: var(--bg-warm); color: var(--text-muted); border: 1px solid var(--border); border-radius: 3px; font-size: 0.72rem; font-family: var(--font-ui); text-decoration: none; min-height: 2rem; line-height: 1.4; }
 .tag:hover { background: var(--accent-light); color: var(--accent); border-color: var(--accent); text-decoration: none; }
 .tag .count { opacity: 0.6; font-size: 0.68rem; }
 .tag-cloud { display: flex; flex-wrap: wrap; gap: 0.4rem; }
@@ -136,7 +138,7 @@ details.tag-tier .tag-cloud { margin-top: 0.5rem; }
 .breadcrumbs { margin-bottom: 1.5rem; font-size: 0.75rem; font-family: var(--font-ui); color: var(--text-light); }
 .breadcrumbs ol { list-style: none; display: flex; flex-wrap: wrap; gap: 0.2rem; }
 .breadcrumbs li:not(:last-child)::after { content: ' / '; color: var(--border); margin-left: 0.2rem; }
-.breadcrumbs a { color: var(--text-light); text-decoration: none; }
+.breadcrumbs a { color: var(--text-light); text-decoration: none; padding: 0.25rem 0; display: inline-block; }
 .breadcrumbs a:hover { color: var(--accent); }
 
 /* === Pagination === */
@@ -161,7 +163,7 @@ details.tag-tier .tag-cloud { margin-top: 0.5rem; }
 
 /* === Tufte bar table === */
 .concordance-bars { width: 100%; border-collapse: collapse; font-family: var(--font-ui); font-size: 0.85rem; }
-.concordance-bars th, .concordance-bars td { padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--border); }
+.concordance-bars th, .concordance-bars td { padding: 0.5rem 0.5rem; border-bottom: 1px solid var(--border); min-height: 2.75rem; }
 .concordance-bars th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-light); font-weight: 600; text-align: left; }
 .concordance-bars .col-word { min-width: 8rem; }
 .concordance-bars .col-bar { width: 40%; min-width: 100px; }
@@ -194,7 +196,7 @@ details.tag-tier .tag-cloud { margin-top: 0.5rem; }
 
 /* === Episode TOC === */
 .episode-toc { list-style: decimal; padding-left: 1.5rem; font-family: var(--font-ui); font-size: 0.9rem; }
-.episode-toc li { padding: 0.35rem 0; border-bottom: 1px solid var(--border); line-height: 1.4; }
+.episode-toc li { padding: 0.5rem 0; border-bottom: 1px solid var(--border); line-height: 1.5; min-height: 2.75rem; }
 .episode-toc a { color: var(--text); text-decoration: none; }
 .episode-toc a:hover { color: var(--accent); }
 
@@ -240,7 +242,7 @@ details.tag-tier .tag-cloud { margin-top: 0.5rem; }
 .browse-month { margin: 0.75rem 0 0.75rem 0; }
 .browse-month h3 { font-family: var(--font-ui); font-size: 0.85rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.25rem; }
 .browse-episodes { list-style: none; }
-.browse-episodes li { padding: 0.3rem 0; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; }
+.browse-episodes li { padding: 0.5rem 0; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; min-height: 2.75rem; }
 .browse-episodes a { font-family: var(--font-ui); font-size: 0.88rem; color: var(--text); text-decoration: none; }
 .browse-episodes a:hover { color: var(--accent); }
 .browse-episodes .meta { font-size: 0.72rem; font-family: var(--font-ui); color: var(--text-light); white-space: nowrap; }

@@ -50,8 +50,7 @@ export const Layout: FC<LayoutProps> = ({
       <main>{children}</main>
       <footer>
         <p>
-          Bobbin — An archive of Alex Komoroske's{" "}
-          <a href="https://komoroske.com/bits-and-bobs">Bits and Bobs</a>
+          <a href="https://komoroske.com/bits-and-bobs">Bits and Bobs</a> by Alex Komoroske
         </p>
       </footer>
     </body>
