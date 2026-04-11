@@ -116,6 +116,7 @@ export function parseDocument(doc: GDocDocument): ParsedEpisode[] {
         parsedDate: date,
         title: `Bits and Bobs ${dateStr}`,
         headingId: paragraph.paragraphStyle.headingId || "",
+        format: "essays",
         chunks: [],
       };
       continue;

@@ -57,12 +57,14 @@ export function parseHtmlDocument(html: string): ParsedEpisode[] {
 
     const body = section.substring(h1End + 5);
     const chunks = splitByObservations(body);
+    const format = detectFormat(chunks);
 
     episodes.push({
       dateStr: dateMatch[0],
       parsedDate,
       title: `Bits and Bobs ${dateMatch[0]}`,
       headingId,
+      format,
       chunks: chunks.map((c, i) => ({
         title: generateTitle(c.mainText),
         content: c.fullText,
@@ -137,6 +139,19 @@ function splitByObservations(html: string): ObservationChunk[] {
   }
 
   return chunks;
+}
+
+/**
+ * Detect whether an episode's chunks represent essays (rich, few) or notes (brief, many).
+ * Essays: ≤12 chunks with ≥3 lines average per chunk.
+ * Notes: everything else.
+ */
+function detectFormat(chunks: ObservationChunk[]): "essays" | "notes" {
+  if (chunks.length === 0) return "notes";
+  if (chunks.length > 12) return "notes";
+  const avgLines =
+    chunks.reduce((sum, c) => sum + c.fullText.split("\n").length, 0) / chunks.length;
+  return avgLines >= 3 ? "essays" : "notes";
 }
 
 export function extractDocLinksFromHtml(html: string): string[] {

@@ -31,6 +31,7 @@ const CREATES = [
     day INTEGER NOT NULL,
     summary TEXT,
     chunk_count INTEGER NOT NULL DEFAULT 0,
+    format TEXT NOT NULL DEFAULT 'notes',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   )`,

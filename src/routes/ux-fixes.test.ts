@@ -86,9 +86,10 @@ describe("Fix 5: Thread following across episodes", () => {
   it("thread does not include chunks from the SAME episode", async () => {
     const res = await SELF.fetch("http://localhost/chunks/eco-growth");
     const html = await res.text();
-    // platform-lock is in the same episode — should not appear in "more on this"
-    // (it's already visible on the episode page)
-    const moreSection = html.split("more-on-this")[1] || "";
-    expect(moreSection).not.toContain("platform-lock");
+    // Extract just the more-on-this <ul> content
+    const moreMatch = html.match(/more-on-this[\s\S]*?<ul>([\s\S]*?)<\/ul>/);
+    const moreList = moreMatch ? moreMatch[1] : "";
+    // platform-lock is in the same episode — should not appear in thread list
+    expect(moreList).not.toContain("platform-lock");
   });
 });

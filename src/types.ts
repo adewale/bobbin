@@ -31,6 +31,7 @@ export interface EpisodeRow {
   day: number;
   summary: string | null;
   chunk_count: number;
+  format: "essays" | "notes";
   created_at: string;
   updated_at: string;
 }
@@ -77,6 +78,7 @@ export interface ParsedEpisode {
   parsedDate: Date;
   title: string;
   headingId: string;
+  format: "essays" | "notes";
   chunks: ParsedChunk[];
 }
 

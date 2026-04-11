@@ -6,9 +6,9 @@ async function seedRichData() {
   await env.DB.batch([
     env.DB.prepare("INSERT INTO sources (google_doc_id, title) VALUES ('test', 'Test')"),
     // 3 episodes spread across months
-    env.DB.prepare("INSERT INTO episodes (source_id, slug, title, published_date, year, month, day, chunk_count) VALUES (1, '2024-01-15', 'Bits and Bobs 1/15/24', '2024-01-15', 2024, 1, 15, 2)"),
-    env.DB.prepare("INSERT INTO episodes (source_id, slug, title, published_date, year, month, day, chunk_count) VALUES (1, '2024-02-12', 'Bits and Bobs 2/12/24', '2024-02-12', 2024, 2, 12, 2)"),
-    env.DB.prepare("INSERT INTO episodes (source_id, slug, title, published_date, year, month, day, chunk_count) VALUES (1, '2024-03-18', 'Bits and Bobs 3/18/24', '2024-03-18', 2024, 3, 18, 1)"),
+    env.DB.prepare("INSERT INTO episodes (source_id, slug, title, published_date, year, month, day, chunk_count, format) VALUES (1, '2024-01-15', 'Bits and Bobs 1/15/24', '2024-01-15', 2024, 1, 15, 2, 'essays')"),
+    env.DB.prepare("INSERT INTO episodes (source_id, slug, title, published_date, year, month, day, chunk_count, format) VALUES (1, '2024-02-12', 'Bits and Bobs 2/12/24', '2024-02-12', 2024, 2, 12, 2, 'essays')"),
+    env.DB.prepare("INSERT INTO episodes (source_id, slug, title, published_date, year, month, day, chunk_count, format) VALUES (1, '2024-03-18', 'Bits and Bobs 3/18/24', '2024-03-18', 2024, 3, 18, 1, 'essays')"),
     // Chunks with varying word usage
     env.DB.prepare("INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (1, 'eco-jan-0', 'Ecosystem dynamics', 'Ecosystem dynamics are complex.', 'Ecosystem dynamics are complex.', 0)"),
     env.DB.prepare("INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (1, 'plat-jan-1', 'Platform markets', 'Platform markets evolve.', 'Platform markets evolve.', 1)"),

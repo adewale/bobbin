@@ -28,8 +28,8 @@ export async function ingestParsedEpisodes(
 
     const episodeSlug = dateStr;
     const episodeResult = await env.DB.prepare(
-      `INSERT INTO episodes (source_id, slug, title, published_date, year, month, day, chunk_count)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO episodes (source_id, slug, title, published_date, year, month, day, chunk_count, format)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
       .bind(
         sourceId,
@@ -39,7 +39,8 @@ export async function ingestParsedEpisodes(
         episode.parsedDate.getUTCFullYear(),
         episode.parsedDate.getUTCMonth() + 1,
         episode.parsedDate.getUTCDate(),
-        episode.chunks.length
+        episode.chunks.length,
+        episode.format
       )
       .run();
 

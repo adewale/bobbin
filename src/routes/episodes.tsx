@@ -89,13 +89,28 @@ episodes.get("/:slug", async (c) => {
           </div>
         )}
 
-        <ol class="episode-toc">
-          {(chunks.results as unknown as ChunkRow[]).map((chunk) => (
-            <li key={chunk.id}>
-              <a href={`/chunks/${chunk.slug}`}>{chunk.title}</a>
-            </li>
-          ))}
-        </ol>
+        {episode.format === "essays" ? (
+          <section class="episode-essays">
+            {(chunks.results as unknown as ChunkRow[]).map((chunk) => (
+              <article key={chunk.id} class="essay" id={chunk.slug}>
+                <h2><a href={`/chunks/${chunk.slug}`}>{chunk.title}</a></h2>
+                <div class="essay-content">
+                  {chunk.content.split("\n").map((line, i) => (
+                    line.trim() ? <p key={i}>{line}</p> : null
+                  ))}
+                </div>
+              </article>
+            ))}
+          </section>
+        ) : (
+          <ol class="episode-toc">
+            {(chunks.results as unknown as ChunkRow[]).map((chunk) => (
+              <li key={chunk.id}>
+                <a href={`/chunks/${chunk.slug}`}>{chunk.title}</a>
+              </li>
+            ))}
+          </ol>
+        )}
       </article>
     </Layout>
   );

@@ -1,0 +1,1 @@
+ALTER TABLE episodes ADD COLUMN format TEXT NOT NULL DEFAULT 'notes';

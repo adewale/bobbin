@@ -10,7 +10,7 @@ const chunks = new Hono<AppEnv>();
 chunks.get("/:slug", async (c) => {
   const slug = c.req.param("slug");
   const chunk = await c.env.DB.prepare(
-    `SELECT c.*, e.slug as episode_slug, e.title as episode_title, e.published_date
+    `SELECT c.*, e.slug as episode_slug, e.title as episode_title, e.published_date, e.format as episode_format
      FROM chunks c
      JOIN episodes e ON c.episode_id = e.id
      WHERE c.slug = ?`
@@ -78,7 +78,24 @@ chunks.get("/:slug", async (c) => {
     .all();
 
   const chunkData = chunk as any;
-  const paragraphs = chunkData.content.split("\n\n").filter((p: string) => p.trim());
+  const isNotes = chunkData.episode_format === "notes";
+  const paragraphs = chunkData.content.split("\n").filter((p: string) => p.trim());
+
+  // Prev/next navigation for notes-format chunks
+  let prevChunk: any = null;
+  let nextChunk: any = null;
+  if (isNotes) {
+    const [prev, next] = await Promise.all([
+      c.env.DB.prepare(
+        "SELECT slug, title FROM chunks WHERE episode_id = ? AND position = ?"
+      ).bind(chunkData.episode_id, chunkData.position - 1).first(),
+      c.env.DB.prepare(
+        "SELECT slug, title FROM chunks WHERE episode_id = ? AND position = ?"
+      ).bind(chunkData.episode_id, chunkData.position + 1).first(),
+    ]);
+    prevChunk = prev;
+    nextChunk = next;
+  }
 
   return c.html(
     <Layout
@@ -93,7 +110,7 @@ chunks.get("/:slug", async (c) => {
           { label: chunkData.title },
         ]}
       />
-      <div class="tufte-layout">
+      <div class={isNotes ? "chunk-compact" : "tufte-layout"}>
         <article class="chunk-detail">
           <h1>{chunkData.title}</h1>
           <div class="chunk-meta">
@@ -177,6 +194,21 @@ chunks.get("/:slug", async (c) => {
               ))}
             </ul>
           </section>
+        )}
+
+        {isNotes && (prevChunk || nextChunk) && (
+          <nav class="chunk-nav">
+            {prevChunk && (
+              <a href={`/chunks/${prevChunk.slug}`} class="nav-prev">
+                &larr; {prevChunk.title}
+              </a>
+            )}
+            {nextChunk && (
+              <a href={`/chunks/${nextChunk.slug}`} class="nav-next">
+                {nextChunk.title} &rarr;
+              </a>
+            )}
+          </nav>
         )}
       </div>
     </Layout>
