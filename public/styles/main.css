@@ -24,7 +24,8 @@ body { font-family: var(--font-body); }
 
 /* === Layout === */
 header { border-bottom: 1px solid var(--border); padding: 0.5rem 1rem; background: var(--bg-warm); }
-header nav { max-width: var(--max-width-wide); margin: 0 auto; display: flex; align-items: center; gap: 0.75rem; flex-wrap: nowrap; overflow-x: auto; }
+header nav { max-width: var(--max-width-wide); margin: 0 auto; display: flex; align-items: center; gap: 0.75rem; flex-wrap: nowrap; }
+header nav > * { flex-shrink: 0; }
 header .site-title { font-family: var(--font-ui); font-size: 0.9rem; font-weight: 700; text-decoration: none; color: var(--accent-dark); letter-spacing: 0.05em; text-transform: uppercase; white-space: nowrap; }
 header ul { list-style: none; display: flex; gap: 0.75rem; font-size: 0.75rem; font-family: var(--font-ui); flex: 1; white-space: nowrap; }
 header a { color: var(--text-muted); text-decoration: none; }
@@ -135,10 +136,11 @@ details.tag-tier .tag-cloud { margin-top: 0.5rem; }
 }
 
 /* === Breadcrumbs === */
-.breadcrumbs { margin-bottom: 1.5rem; font-size: 0.75rem; font-family: var(--font-ui); color: var(--text-light); }
-.breadcrumbs ol { list-style: none; display: flex; flex-wrap: wrap; gap: 0.2rem; }
-.breadcrumbs li:not(:last-child)::after { content: ' / '; color: var(--border); margin-left: 0.2rem; }
-.breadcrumbs a { color: var(--text-light); text-decoration: none; padding: 0.25rem 0; display: inline-block; }
+.breadcrumbs { margin-bottom: 1rem; font-size: 0.75rem; font-family: var(--font-ui); color: var(--text-light); }
+.breadcrumbs ol { list-style: none; display: flex; flex-wrap: wrap; align-items: center; gap: 0; }
+.breadcrumbs li { display: flex; align-items: center; }
+.breadcrumbs li:not(:last-child)::after { content: '/'; color: var(--border); margin: 0 0.35rem; }
+.breadcrumbs a { color: var(--text-light); text-decoration: none; padding: 0.25rem 0; }
 .breadcrumbs a:hover { color: var(--accent); }
 
 /* === Pagination === */
@@ -174,8 +176,12 @@ details.tag-tier .tag-cloud { margin-top: 0.5rem; }
 .concordance-bars .bar { height: 14px; border-radius: 1px; min-width: 2px; }
 .concordance-bars .bar-distinctive { background: var(--accent); opacity: 0.8; }
 .concordance-bars .bar-baseline { background: var(--text-light); opacity: 0.4; }
-.concordance-legend { display: flex; gap: 1.5rem; margin-bottom: 0.75rem; font-family: var(--font-ui); font-size: 0.75rem; color: var(--text-muted); }
-.legend-item { display: flex; align-items: center; gap: 0.35rem; }
+.bar-with-spark { position: relative; height: 20px; }
+.bar-with-spark .bar { position: absolute; top: 3px; left: 0; height: 14px; }
+.inline-spark { position: absolute; top: 0; left: 0; width: 100%; height: 20px; opacity: 0.6; }
+.concordance-bars tr:hover .inline-spark { opacity: 1; }
+.concordance-legend { display: flex; align-items: center; gap: 1.5rem; margin-bottom: 0.75rem; font-family: var(--font-ui); font-size: 0.75rem; color: var(--text-muted); flex-wrap: wrap; }
+.legend-item { display: inline-flex; align-items: center; gap: 0.35rem; white-space: nowrap; }
 .legend-bar { display: inline-block; width: 20px; height: 10px; border-radius: 1px; }
 .legend-bar.bar-distinctive { background: var(--accent); opacity: 0.8; }
 .legend-bar.bar-baseline { background: var(--text-light); opacity: 0.4; }
@@ -183,8 +189,8 @@ details.tag-tier .tag-cloud { margin-top: 0.5rem; }
   .concordance-bars .col-bar { display: none; }
   .concordance-bars .col-num:last-child { display: none; }
 }
-.concordance-sort { display: flex; gap: 0.75rem; margin-bottom: 1rem; font-family: var(--font-ui); font-size: 0.8rem; }
-.concordance-sort a { padding: 0.3rem 0.6rem; border: 1px solid var(--border); border-radius: 3px; text-decoration: none; color: var(--text-muted); }
+.concordance-sort { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem; font-family: var(--font-ui); font-size: 0.8rem; }
+.concordance-sort a { padding: 0.4rem 0.7rem; border: 1px solid var(--border); border-radius: 3px; text-decoration: none; color: var(--text-muted); line-height: 1; }
 .concordance-sort a.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 .concordance-sort a:hover { border-color: var(--accent); }
 .sip-badge { display: inline-block; margin-left: 0.3rem; padding: 0.05rem 0.3rem; font-size: 0.6rem; font-family: var(--font-ui); font-weight: 700; background: var(--accent-light); color: var(--accent); border-radius: 2px; vertical-align: middle; letter-spacing: 0.05em; }

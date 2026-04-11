@@ -8,9 +8,40 @@ const concordance = new Hono<AppEnv>();
 
 concordance.get("/", async (c) => {
   const sortBy = (c.req.query("sort") || "distinctive") as "distinctive" | "count";
-  const words = await getTopConcordance(c.env.DB, sortBy, 150);
+  const words = await getTopConcordance(c.env.DB, sortBy, 100);
   const maxCount = Math.max(...words.map((w) => w.total_count), 1);
   const maxDist = Math.max(...words.map((w) => w.distinctiveness), 1);
+
+  // Fetch per-episode sparkline data for the top 50 words
+  const top50Words = words.slice(0, 50).map((w) => w.word);
+  const sparklineData = new Map<string, number[]>();
+
+  if (top50Words.length > 0) {
+    const placeholders = top50Words.map(() => "?").join(",");
+    const timeline = await c.env.DB.prepare(
+      `SELECT cw.word, e.published_date, SUM(cw.count) as ep_count
+       FROM chunk_words cw
+       JOIN chunks c ON cw.chunk_id = c.id
+       JOIN episodes e ON c.episode_id = e.id
+       WHERE cw.word IN (${placeholders})
+       GROUP BY cw.word, e.id
+       ORDER BY e.published_date ASC`
+    ).bind(...top50Words).all();
+
+    // Get all unique dates for consistent x-axis
+    const allDates = [...new Set((timeline.results as any[]).map((r) => r.published_date))].sort();
+    const dateIdx = new Map(allDates.map((d, i) => [d, i]));
+
+    for (const word of top50Words) {
+      const points = new Array(allDates.length).fill(0);
+      for (const r of timeline.results as any[]) {
+        if (r.word === word) {
+          points[dateIdx.get(r.published_date)!] = r.ep_count;
+        }
+      }
+      sparklineData.set(word, points);
+    }
+  }
 
   return c.html(
     <Layout title="Concordance" description="Distinctive words in the Bits and Bobs archive">
@@ -61,10 +92,22 @@ concordance.get("/", async (c) => {
                   </a>
                 </td>
                 <td class="col-bar">
-                  <div
-                    class={`bar ${isDistinctive ? "bar-distinctive" : "bar-baseline"}`}
-                    style={`width:${Math.max(barWidth, 1)}%`}
-                  />
+                  <div class="bar-with-spark">
+                    <div
+                      class={`bar ${isDistinctive ? "bar-distinctive" : "bar-baseline"}`}
+                      style={`width:${Math.max(barWidth, 1)}%`}
+                    />
+                    {sparklineData.has(w.word) && (
+                      <svg class="inline-spark" viewBox="0 0 100 20" preserveAspectRatio="none">
+                        <polyline
+                          points={renderSparkPoints(sparklineData.get(w.word)!)}
+                          fill="none"
+                          stroke={isDistinctive ? "var(--accent)" : "var(--text-light)"}
+                          stroke-width="1.5"
+                        />
+                      </svg>
+                    )}
+                  </div>
                 </td>
                 <td class="col-num">{w.total_count}</td>
                 <td class="col-num">{w.doc_count}</td>
@@ -180,6 +223,18 @@ function getExcerptAroundWord(text: string, word: string, maxLen = 300): string 
   if (start > 0) excerpt = "..." + excerpt;
   if (end < text.length) excerpt += "...";
   return excerpt;
+}
+
+function renderSparkPoints(values: number[]): string {
+  if (!values.length) return "";
+  const max = Math.max(...values, 1);
+  return values
+    .map((v, i) => {
+      const x = (i / Math.max(values.length - 1, 1)) * 100;
+      const y = 20 - (v / max) * 18; // 1px top margin, 1px bottom
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
 }
 
 export { concordance as concordanceRoutes };
