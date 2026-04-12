@@ -1,4 +1,5 @@
 import type { TopicRow, WordStatsRow } from "../types";
+import { curateTopics } from "../services/topic-quality";
 
 export interface TrendingTopic {
   name: string;
@@ -160,11 +161,32 @@ export async function getTopicKWIC(db: D1Database, topicName: string, limit = 10
 }
 
 export async function getThemeRiverData(db: D1Database, topicLimit = 8) {
-  // Get top topics
-  const topTopics = await db.prepare(
-    `SELECT id, name, slug FROM topics WHERE usage_count >= 5
+  // Get phrase topics for subsumption check
+  const phrases = await db.prepare(
+    "SELECT name, usage_count FROM topics WHERE name LIKE '% %' AND usage_count >= 5"
+  ).all<{ name: string; usage_count: number }>();
+
+  // Get candidate topics (3x for filtering headroom)
+  const candidates = await db.prepare(
+    `SELECT id, name, slug, usage_count, distinctiveness FROM topics WHERE usage_count >= 5
      ORDER BY usage_count * CASE WHEN distinctiveness > 0 THEN distinctiveness ELSE 1 END DESC LIMIT ?`
-  ).bind(topicLimit).all<{ id: number; name: string; slug: string }>();
+  ).bind(topicLimit * 3).all<TopicRow>();
+
+  if (!candidates.results.length) return { topics: [], episodes: [], data: [] };
+
+  // Apply quality curation
+  const curated = curateTopics(
+    candidates.results.map(t => ({
+      name: t.name,
+      slug: t.slug,
+      usage_count: t.usage_count,
+      distinctiveness: t.distinctiveness ?? 0,
+    })),
+    phrases.results
+  ).slice(0, topicLimit);
+
+  const curatedSlugs = new Set(curated.map(t => t.slug));
+  const topTopics = { results: candidates.results.filter(t => curatedSlugs.has(t.slug)).slice(0, topicLimit) };
 
   if (!topTopics.results.length) return { topics: [], episodes: [], data: [] };
 
@@ -228,19 +250,42 @@ export async function getTopicRanksByYear(db: D1Database) {
 }
 
 export async function getTopTopicsWithSparklines(db: D1Database, limit = 20) {
-  // Rank by usage × distinctiveness to surface interesting topics, not just frequent ones.
+  // Get phrase topics for subsumption check
+  const phrases = await db.prepare(
+    "SELECT name, usage_count FROM topics WHERE name LIKE '% %' AND usage_count >= 5"
+  ).all<{ name: string; usage_count: number }>();
+
+  // Rank by usage x distinctiveness to surface interesting topics, not just frequent ones.
   // Multi-word topics (entities/phrases) get a boost since they're higher quality.
-  const topTopics = await db.prepare(
+  // Fetch 3x to account for quality filtering.
+  const candidates = await db.prepare(
     `SELECT id, name, slug, usage_count, distinctiveness FROM topics
      WHERE usage_count >= 3
      ORDER BY usage_count * CASE WHEN distinctiveness > 0 THEN distinctiveness ELSE 1 END
        * CASE WHEN name LIKE '% %' THEN 2 ELSE 1 END DESC
      LIMIT ?`
-  ).bind(limit).all<TopicRow>();
+  ).bind(limit * 3).all<TopicRow>();
 
-  if (!topTopics.results.length) return [];
+  if (!candidates.results.length) return [];
 
-  const topicIds = topTopics.results.map(t => t.id);
+  // Apply quality curation then take top N
+  const curated = curateTopics(
+    candidates.results.map(t => ({
+      name: t.name,
+      slug: t.slug,
+      usage_count: t.usage_count,
+      distinctiveness: t.distinctiveness ?? 0,
+    })),
+    phrases.results
+  ).slice(0, limit);
+
+  // Map back to full TopicRow objects (need id for sparkline query)
+  const curatedSlugs = new Set(curated.map(t => t.slug));
+  const topTopics = candidates.results.filter(t => curatedSlugs.has(t.slug)).slice(0, limit);
+
+  if (!topTopics.length) return [];
+
+  const topicIds = topTopics.map(t => t.id);
   const placeholders = topicIds.map(() => "?").join(",");
   const timeline = await db.prepare(
     `SELECT ct.topic_id, e.published_date, COUNT(*) as count
@@ -254,7 +299,7 @@ export async function getTopTopicsWithSparklines(db: D1Database, limit = 20) {
 
   const allDates = [...new Set((timeline.results as any[]).map(r => r.published_date))].sort();
 
-  return topTopics.results.map(topic => {
+  return topTopics.map(topic => {
     const points = allDates.map(date => {
       const match = (timeline.results as any[]).find(r => r.topic_id === topic.id && r.published_date === date);
       return match ? match.count : 0;

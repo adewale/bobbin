@@ -93,10 +93,25 @@ describe("Topics index - small multiples grid", () => {
   });
 });
 
-describe("Topics index - entity tier", () => {
-  it("shows multi-word entity topics", async () => {
+describe("Topics index - unified grid", () => {
+  it("does not show a separate entity tier section", async () => {
     const res = await SELF.fetch("http://localhost/topics");
     const html = await res.text();
+    expect(html).not.toContain("People, Products &amp; Phrases");
+    expect(html).not.toContain("topic-tier");
+  });
+
+  it("shows intro text describing the topic grid", async () => {
+    const res = await SELF.fetch("http://localhost/topics");
+    const html = await res.text();
+    expect(html).toContain("page-intro");
+    expect(html).toContain("concepts Komoroske returns to most");
+  });
+
+  it("includes multi-word topics in the sparkline grid", async () => {
+    const res = await SELF.fetch("http://localhost/topics");
+    const html = await res.text();
+    // Multi-word topics with sufficient usage appear in the unified grid
     expect(html).toContain("simon willison");
     expect(html).toContain("claude code");
   });
