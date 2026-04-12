@@ -19,12 +19,13 @@ tags.get("/", async (c) => {
     c.env.DB.prepare(
       "SELECT * FROM tags WHERE usage_count >= 3 AND name LIKE '% %' ORDER BY usage_count DESC LIMIT 20"
     ).all<TagRow>(),
-    // Single-word proper nouns/products: not in English, used 8+ times
+    // Distinctive domain terms: not in baseline, high distinctiveness
     c.env.DB.prepare(
       `SELECT t.* FROM tags t
        JOIN concordance c ON c.word = t.name
-       WHERE t.usage_count >= 8 AND t.name NOT LIKE '% %' AND c.in_baseline = 0
-       ORDER BY t.usage_count DESC LIMIT 20`
+       WHERE t.usage_count >= 5 AND t.name NOT LIKE '% %'
+         AND c.in_baseline = 0 AND c.distinctiveness >= 10
+       ORDER BY c.distinctiveness DESC LIMIT 20`
     ).all<TagRow>(),
     // Domain concepts: ranked by usage × distinctiveness
     c.env.DB.prepare(
