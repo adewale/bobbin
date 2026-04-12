@@ -7,8 +7,8 @@ async function seedTestData() {
     env.DB.prepare("INSERT INTO sources (google_doc_id, title) VALUES ('test', 'Test')"),
     env.DB.prepare("INSERT INTO episodes (source_id, slug, title, published_date, year, month, day, chunk_count) VALUES (1, '2024-04-08', 'Bits and Bobs 4/8/24', '2024-04-08', 2024, 4, 8, 1)"),
     env.DB.prepare("INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (1, 'ecosystem-chunk-2024-04-08', 'Ecosystem Dynamics', 'Ecosystem dynamics are fascinating', 'Ecosystem dynamics are fascinating', 0)"),
-    env.DB.prepare("INSERT INTO tags (name, slug, usage_count) VALUES ('ecosystem', 'ecosystem', 5)"),
-    env.DB.prepare("INSERT INTO chunk_tags (chunk_id, tag_id) VALUES (1, 1)"),
+    env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('ecosystem', 'ecosystem', 5)"),
+    env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 1)"),
   ]);
 }
 
@@ -51,26 +51,26 @@ describe("GET /api/search", () => {
   });
 });
 
-describe("GET /tags", () => {
-  it("returns 200 with tag list", async () => {
-    const res = await SELF.fetch("http://localhost/tags");
+describe("GET /topics", () => {
+  it("returns 200 with topic list", async () => {
+    const res = await SELF.fetch("http://localhost/topics");
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).toContain("ecosystem");
   });
 });
 
-describe("GET /tags/:slug", () => {
-  it("returns 200 with chunks for tag", async () => {
-    const res = await SELF.fetch("http://localhost/tags/ecosystem");
+describe("GET /topics/:slug", () => {
+  it("returns 200 with chunks for topic", async () => {
+    const res = await SELF.fetch("http://localhost/topics/ecosystem");
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).toContain("ecosystem");
     expect(html).toContain("Ecosystem Dynamics");
   });
 
-  it("returns 404 for nonexistent tag", async () => {
-    const res = await SELF.fetch("http://localhost/tags/nonexistent");
+  it("returns 404 for nonexistent topic", async () => {
+    const res = await SELF.fetch("http://localhost/topics/nonexistent");
     expect(res.status).toBe(404);
   });
 });

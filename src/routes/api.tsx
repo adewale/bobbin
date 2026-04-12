@@ -129,7 +129,7 @@ api.get("/embed", async (c) => {
   }
 });
 
-// Admin: enrich unenriched chunks (tags, concordance)
+// Admin: enrich unenriched chunks (topics, word stats)
 api.get("/enrich", async (c) => {
   const denied = requireAuth(c);
   if (denied) return denied;
@@ -150,20 +150,20 @@ api.get("/enrich", async (c) => {
   }
 });
 
-// Tag search API
-api.get("/tags", async (c) => {
+// Topic search API
+api.get("/topics", async (c) => {
   const q = c.req.query("q")?.trim().toLowerCase() || "";
-  if (!q || q.length < 2) return c.json({ tags: [] });
+  if (!q || q.length < 2) return c.json({ topics: [] });
 
   const result = await c.env.DB.prepare(
-    "SELECT name, slug, usage_count FROM tags WHERE name LIKE ? ESCAPE '\\' AND usage_count >= 1 ORDER BY usage_count DESC LIMIT 10"
+    "SELECT name, slug, usage_count FROM topics WHERE name LIKE ? ESCAPE '\\' AND usage_count >= 1 ORDER BY usage_count DESC LIMIT 10"
   ).bind(`%${escapeLike(q)}%`).all();
 
-  return c.json({ tags: result.results });
+  return c.json({ topics: result.results });
 });
 
-// Reactive API: concordance with date filtering
-api.get("/concordance", async (c) => {
+// Reactive API: word stats with date filtering
+api.get("/word-stats", async (c) => {
   const from = c.req.query("from");
   const to = c.req.query("to");
   const limit = safeParseInt(c.req.query("limit"), 200);
@@ -184,7 +184,7 @@ api.get("/concordance", async (c) => {
        LIMIT ?`;
     binds = [...(from ? [from] : []), ...(to ? [to] : []), limit];
   } else {
-    query = "SELECT word, total_count, doc_count FROM concordance ORDER BY total_count DESC LIMIT ?";
+    query = "SELECT word, total_count, doc_count FROM word_stats ORDER BY total_count DESC LIMIT ?";
     binds = [limit];
   }
 

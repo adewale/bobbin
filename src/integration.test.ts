@@ -84,42 +84,42 @@ describe("Data consistency after ingestion", () => {
     expect(mismatches.results).toHaveLength(0);
   });
 
-  it("all chunk_tags reference valid chunks and tags", async () => {
+  it("all chunk_topics reference valid chunks and topics", async () => {
     const invalidChunkRefs = await env.DB.prepare(
-      `SELECT ct.chunk_id FROM chunk_tags ct
+      `SELECT ct.chunk_id FROM chunk_topics ct
        LEFT JOIN chunks c ON ct.chunk_id = c.id
        WHERE c.id IS NULL`
     ).all();
     expect(invalidChunkRefs.results).toHaveLength(0);
 
-    const invalidTagRefs = await env.DB.prepare(
-      `SELECT ct.tag_id FROM chunk_tags ct
-       LEFT JOIN tags t ON ct.tag_id = t.id
+    const invalidTopicRefs = await env.DB.prepare(
+      `SELECT ct.topic_id FROM chunk_topics ct
+       LEFT JOIN topics t ON ct.topic_id = t.id
        WHERE t.id IS NULL`
     ).all();
-    expect(invalidTagRefs.results).toHaveLength(0);
+    expect(invalidTopicRefs.results).toHaveLength(0);
   });
 
-  it("tag usage_count matches actual chunk_tags count", async () => {
+  it("topic usage_count matches actual chunk_topics count", async () => {
     const mismatches = await env.DB.prepare(
       `SELECT t.id, t.usage_count as declared,
-              (SELECT COUNT(*) FROM chunk_tags ct WHERE ct.tag_id = t.id) as actual
-       FROM tags t
-       WHERE t.usage_count != (SELECT COUNT(*) FROM chunk_tags ct WHERE ct.tag_id = t.id)`
+              (SELECT COUNT(*) FROM chunk_topics ct WHERE ct.topic_id = t.id) as actual
+       FROM topics t
+       WHERE t.usage_count != (SELECT COUNT(*) FROM chunk_topics ct WHERE ct.topic_id = t.id)`
     ).all();
-    // Note: usage_count may be higher than chunk_tags due to increment-on-insert logic
+    // Note: usage_count may be higher than chunk_topics due to increment-on-insert logic
     // This test documents the current behavior
     for (const row of mismatches.results as any[]) {
       expect(row.declared).toBeGreaterThanOrEqual(row.actual);
     }
   });
 
-  it("concordance word counts are consistent with chunk_words", async () => {
-    const concordance = await env.DB.prepare(
-      "SELECT word, total_count, doc_count FROM concordance"
+  it("word_stats word counts are consistent with chunk_words", async () => {
+    const wordStats = await env.DB.prepare(
+      "SELECT word, total_count, doc_count FROM word_stats"
     ).all();
 
-    for (const row of concordance.results as any[]) {
+    for (const row of wordStats.results as any[]) {
       const chunkWords = await env.DB.prepare(
         "SELECT SUM(count) as total, COUNT(DISTINCT chunk_id) as docs FROM chunk_words WHERE word = ?"
       )
@@ -162,4 +162,3 @@ describe("Data consistency after ingestion", () => {
     expect(dupes.results).toHaveLength(0);
   });
 });
-

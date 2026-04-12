@@ -1,41 +1,41 @@
 import { Hono } from "hono";
-import type { AppEnv, ConcordanceRow } from "../types";
+import type { AppEnv, WordStatsRow } from "../types";
 import { Layout } from "../components/Layout";
 import { Breadcrumbs } from "../components/Breadcrumbs";
-import { getTopConcordance, getConcordanceWord, getWordChunks, getWordTimeline, getSparklineDataForWords } from "../db/concordance";
+import { getTopWordStats, getWordStats, getWordChunks, getWordTimeline, getSparklineDataForWords } from "../db/word-stats";
 import { escapeRegex } from "../lib/html";
 
-const concordance = new Hono<AppEnv>();
+const wordStats = new Hono<AppEnv>();
 
-concordance.get("/", async (c) => {
+wordStats.get("/", async (c) => {
   const sortBy = (c.req.query("sort") || "distinctive") as "distinctive" | "count";
-  const words = await getTopConcordance(c.env.DB, sortBy, 100);
+  const words = await getTopWordStats(c.env.DB, sortBy, 100);
   const maxCount = Math.max(...words.map((w) => w.total_count), 1);
   const maxDist = Math.max(...words.map((w) => w.distinctiveness), 1);
 
-  // Fetch per-episode sparkline data for the top 50 words
+  // Fetch per-episode sparkline data for the top 30 words
   const top30Words = words.slice(0, 30).map((w) => w.word);
   const sparklineData = await getSparklineDataForWords(c.env.DB, top30Words);
 
   return c.html(
-    <Layout title="Concordance" description="Distinctive words in the Bits and Bobs archive" activePath="/concordance">
-      <nav class="concordance-sort">
-        <a href="/concordance?sort=distinctive" class={sortBy === "distinctive" ? "active" : ""}>
+    <Layout title="Word Stats" description="Distinctive words in the Bits and Bobs archive" activePath="/word-stats">
+      <nav class="word-stats-sort">
+        <a href="/word-stats?sort=distinctive" class={sortBy === "distinctive" ? "active" : ""}>
           Most distinctive
         </a>
-        <a href="/concordance?sort=count" class={sortBy === "count" ? "active" : ""}>
+        <a href="/word-stats?sort=count" class={sortBy === "count" ? "active" : ""}>
           Most frequent
         </a>
       </nav>
 
-      {words.length === 0 && <p>No concordance data yet.</p>}
+      {words.length === 0 && <p>No word stats data yet.</p>}
 
-      <div class="concordance-legend">
+      <div class="word-stats-legend">
         <span class="legend-item"><span class="legend-bar bar-distinctive" /> Distinctive — rare in general English</span>
         <span class="legend-item"><span class="legend-bar bar-baseline" /> Common — in top 1000 English words</span>
       </div>
 
-      <table class="concordance-bars">
+      <table class="word-stats-bars">
         <thead>
           <tr>
             <th class="col-word">Word</th>
@@ -56,7 +56,7 @@ concordance.get("/", async (c) => {
             return (
               <tr key={w.id} class={isDistinctive ? "distinctive" : ""}>
                 <td class="col-word">
-                  <a href={`/concordance/${encodeURIComponent(w.word)}`}>
+                  <a href={`/word-stats/${encodeURIComponent(w.word)}`}>
                     {w.word}
                   </a>
                 </td>
@@ -91,9 +91,9 @@ concordance.get("/", async (c) => {
   );
 });
 
-concordance.get("/:word", async (c) => {
+wordStats.get("/:word", async (c) => {
   const word = decodeURIComponent(c.req.param("word")).toLowerCase();
-  const wordData = await getConcordanceWord(c.env.DB, word);
+  const wordData = await getWordStats(c.env.DB, word);
   if (!wordData) return c.notFound();
 
   const [wordChunks, wordTimeline] = await Promise.all([
@@ -112,11 +112,11 @@ concordance.get("/:word", async (c) => {
     <Layout
       title={`"${word}" in context`}
       description={`Occurrences of "${word}" across Bits and Bobs`}
-      activePath="/concordance"
+      activePath="/word-stats"
     >
       <Breadcrumbs
         crumbs={[
-          { label: "Concordance", href: "/concordance" },
+          { label: "Word Stats", href: "/word-stats" },
           { label: word },
         ]}
       />
@@ -142,9 +142,9 @@ concordance.get("/:word", async (c) => {
         </div>
       </div>
 
-      <div class="concordance-results">
+      <div class="word-stats-results">
         {wordChunks.map((r) => (
-          <article key={r.id} class="concordance-entry">
+          <article key={r.id} class="word-stats-entry">
             <h2>
               <a href={`/chunks/${r.slug}`}>{r.title}</a>
             </h2>
@@ -200,4 +200,4 @@ function renderSparkPoints(values: number[], height = 40): string {
     .join(" ");
 }
 
-export { concordance as concordanceRoutes };
+export { wordStats as wordStatsRoutes };

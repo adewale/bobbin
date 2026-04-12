@@ -4,7 +4,7 @@ import { Layout } from "../components/Layout";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { getCrossReferences } from "../services/cross-refs";
 import { safeJsonForHtml } from "../lib/html";
-import { getChunkBySlug, getChunkTags, getRelatedByTags, getThreadChunks, getAdjacentChunks } from "../db/chunks";
+import { getChunkBySlug, getChunkTopics, getRelatedByTopics, getThreadChunks, getAdjacentChunks } from "../db/chunks";
 
 const chunks = new Hono<AppEnv>();
 
@@ -15,8 +15,8 @@ chunks.get("/:slug", async (c) => {
 
   const isNotes = chunk.episode_format === "notes";
 
-  const [tags, thread, adjacentResult] = await Promise.all([
-    getChunkTags(c.env.DB, chunk.id),
+  const [topics, thread, adjacentResult] = await Promise.all([
+    getChunkTopics(c.env.DB, chunk.id),
     getThreadChunks(c.env.DB, chunk.id, chunk.episode_id),
     isNotes ? getAdjacentChunks(c.env.DB, chunk.episode_id, chunk.position) : Promise.resolve({ prev: null, next: null }),
   ]);
@@ -35,7 +35,7 @@ chunks.get("/:slug", async (c) => {
     console.error("Cross-ref lookup failed:", e);
   }
   if (!relatedItems.length) {
-    relatedItems = await getRelatedByTags(c.env.DB, chunk.id);
+    relatedItems = await getRelatedByTopics(c.env.DB, chunk.id);
   }
 
   const prevChunk = adjacentResult.prev;
@@ -69,14 +69,14 @@ chunks.get("/:slug", async (c) => {
             </a>
           </div>
 
-          {tags.length > 0 && (
-            <aside class="tags-margin">
+          {topics.length > 0 && (
+            <aside class="topics-margin">
               <details>
-                <summary>Tags</summary>
-                <div class="tags">
-                  {tags.map((tag) => (
-                    <a key={tag.id} href={`/tags/${tag.slug}`} class="tag">
-                      {tag.name}
+                <summary>Topics</summary>
+                <div class="topics">
+                  {topics.map((topic) => (
+                    <a key={topic.id} href={`/topics/${topic.slug}`} class="topic">
+                      {topic.name}
                     </a>
                   ))}
                 </div>

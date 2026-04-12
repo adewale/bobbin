@@ -14,11 +14,11 @@ const htmlPages: Array<{
 }> = [
   { path: "/", titleContains: "Home", headingText: "Bobbin" },
   { path: "/episodes", titleContains: "Browse", headingText: "Browse" },
-  { path: "/tags", titleContains: "Tags", headingText: "Tags" },
+  { path: "/topics", titleContains: "Topics", headingText: "Topics" },
   {
-    path: "/concordance",
-    titleContains: "Concordance",
-    headingText: "Concordance",
+    path: "/word-stats",
+    titleContains: "Word Stats",
+    headingText: "Word Stats",
   },
   { path: "/search", titleContains: "Search", headingText: "Search" },
   {

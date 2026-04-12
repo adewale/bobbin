@@ -1,30 +1,30 @@
-// Tag search: filters visible tags AND queries API for matches not on page
+// Topic search: filters visible topics AND queries API for matches not on page
 (function () {
   const form = document.querySelector(".search-form");
-  if (!form || !document.querySelector(".tag-cloud")) return;
+  if (!form || !document.querySelector(".topic-cloud")) return;
 
   const input = form.querySelector('input[name="q"]');
   if (!input) return;
 
   // Create results container
   const resultsDiv = document.createElement("div");
-  resultsDiv.className = "tag-search-results";
+  resultsDiv.className = "topic-search-results";
   form.parentNode.insertBefore(resultsDiv, form.nextSibling);
 
   let debounce;
 
   form.addEventListener("submit", (e) => {
-    if (window.location.pathname === "/tags") e.preventDefault();
+    if (window.location.pathname === "/topics") e.preventDefault();
   });
 
   input.addEventListener("input", () => {
     clearTimeout(debounce);
     const query = input.value.toLowerCase().trim();
 
-    // Filter visible tags
-    document.querySelectorAll(".tag").forEach((tag) => {
-      const name = tag.textContent.toLowerCase();
-      tag.style.display = !query || name.includes(query) ? "" : "none";
+    // Filter visible topics
+    document.querySelectorAll(".topic").forEach((topic) => {
+      const name = topic.textContent.toLowerCase();
+      topic.style.display = !query || name.includes(query) ? "" : "none";
     });
 
     if (query.length < 2) {
@@ -32,25 +32,25 @@
       return;
     }
 
-    // Query API for tags not visible on page
+    // Query API for topics not visible on page
     debounce = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/tags?q=${encodeURIComponent(query)}`);
+        const res = await fetch(`/api/topics?q=${encodeURIComponent(query)}`);
         const data = await res.json();
 
-        // Filter out tags already visible on page
+        // Filter out topics already visible on page
         const visibleSlugs = new Set(
-          [...document.querySelectorAll(".tag")].map((t) =>
-            t.getAttribute("href")?.replace("/tags/", "")
+          [...document.querySelectorAll(".topic")].map((t) =>
+            t.getAttribute("href")?.replace("/topics/", "")
           )
         );
-        const extra = data.tags.filter((t) => !visibleSlugs.has(t.slug));
+        const extra = data.topics.filter((t) => !visibleSlugs.has(t.slug));
 
         if (extra.length > 0) {
           resultsDiv.innerHTML = extra
             .map(
               (t) =>
-                `<a href="/tags/${t.slug}" class="tag" style="font-size:0.8rem">${esc(t.name)}</a>`
+                `<a href="/topics/${t.slug}" class="topic" style="font-size:0.8rem">${esc(t.name)}</a>`
             )
             .join(" ");
         } else {
@@ -62,7 +62,7 @@
     }, 200);
   });
 
-  input.setAttribute("placeholder", "Filter tags...");
+  input.setAttribute("placeholder", "Filter topics...");
 
   function esc(s) {
     const d = document.createElement("div");

@@ -46,7 +46,7 @@ function normalizeSingleWord(word: string): string {
   return word;
 }
 
-export interface TagResult {
+export interface TopicResult {
   name: string;
   slug: string;
   score?: number;
@@ -59,7 +59,7 @@ export interface CorpusStats {
 
 /**
  * Pre-compute document frequency across the entire corpus.
- * Call once with all chunk plain texts; pass the result to extractTags.
+ * Call once with all chunk plain texts; pass the result to extractTopics.
  */
 export function computeCorpusStats(allChunkTexts: string[]): CorpusStats {
   const docFreq = new Map<string, number>();
@@ -92,8 +92,8 @@ const ENTITY_SKIP = new Set([
   "some", "other", "such", "same", "more", "less", "much", "very",
 ]);
 
-export function extractEntities(text: string): TagResult[] {
-  const entities: TagResult[] = [];
+export function extractEntities(text: string): TopicResult[] {
+  const entities: TopicResult[] = [];
   const seen = new Set<string>();
 
   // Split into sentences
@@ -164,17 +164,17 @@ export function extractEntities(text: string): TagResult[] {
 }
 
 /**
- * Extract tags using TF-IDF scoring with entity detection.
+ * Extract topics using TF-IDF scoring with entity detection.
  *
  * @param text - chunk content
- * @param maxTags - maximum tags to return (default 5)
+ * @param maxTopics - maximum topics to return (default 5)
  * @param corpusStats - pre-computed IDF stats (optional, falls back to pure TF)
  */
-export function extractTags(
+export function extractTopics(
   text: string,
-  maxTags: number = 5,
+  maxTopics: number = 5,
   corpusStats?: CorpusStats
-): TagResult[] {
+): TopicResult[] {
   const clean = decodeHtmlEntities(text);
 
   // Step 1: Extract named entities
@@ -225,21 +225,21 @@ export function extractTags(
 
   // Step 5: Merge entities + TF-IDF keywords
   // Entities come first (they're high-signal named things)
-  const result: TagResult[] = [];
+  const result: TopicResult[] = [];
   const usedSlugs = new Set<string>();
 
   for (const entity of entities) {
-    if (result.length >= maxTags) break;
+    if (result.length >= maxTopics) break;
     if (usedSlugs.has(entity.slug)) continue;
     usedSlugs.add(entity.slug);
     result.push({ ...entity, score: 100 }); // entities get high score
   }
 
-  for (const tag of scored) {
-    if (result.length >= maxTags) break;
-    if (usedSlugs.has(tag.slug)) continue;
-    usedSlugs.add(tag.slug);
-    result.push(tag);
+  for (const topic of scored) {
+    if (result.length >= maxTopics) break;
+    if (usedSlugs.has(topic.slug)) continue;
+    usedSlugs.add(topic.slug);
+    result.push(topic);
   }
 
   return result;

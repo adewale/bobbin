@@ -1,9 +1,9 @@
 import { Hono } from "hono";
-import type { AppEnv, EpisodeRow, ChunkRow, TagRow } from "../types";
+import type { AppEnv, EpisodeRow, ChunkRow, TopicRow } from "../types";
 import { Layout } from "../components/Layout";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { monthName } from "../lib/date";
-import { getAllEpisodesGrouped, getEpisodeBySlug, getChunksByEpisode, getEpisodeTags } from "../db/episodes";
+import { getAllEpisodesGrouped, getEpisodeBySlug, getChunksByEpisode, getEpisodeTopics } from "../db/episodes";
 
 const episodes = new Hono<AppEnv>();
 
@@ -64,9 +64,9 @@ episodes.get("/:slug", async (c) => {
   const episode = await getEpisodeBySlug(c.env.DB, slug);
   if (!episode) return c.notFound();
 
-  const [chunksList, tagsList] = await Promise.all([
+  const [chunksList, topicsList] = await Promise.all([
     getChunksByEpisode(c.env.DB, episode.id),
-    getEpisodeTags(c.env.DB, episode.id),
+    getEpisodeTopics(c.env.DB, episode.id),
   ]);
 
   return c.html(
@@ -80,14 +80,14 @@ episodes.get("/:slug", async (c) => {
       <article class="episode-detail">
         <h1>{episode.title}</h1>
         <time datetime={episode.published_date}>{episode.published_date}</time>
-        {tagsList.length > 0 && (
-          <aside class="tags-margin">
+        {topicsList.length > 0 && (
+          <aside class="topics-margin">
             <details>
-              <summary>Tags</summary>
-              <div class="tags">
-                {tagsList.map((tag) => (
-                  <a key={tag.id} href={`/tags/${tag.slug}`} class="tag">
-                    {tag.name}
+              <summary>Topics</summary>
+              <div class="topics">
+                {topicsList.map((topic) => (
+                  <a key={topic.id} href={`/topics/${topic.slug}`} class="topic">
+                    {topic.name}
                   </a>
                 ))}
               </div>

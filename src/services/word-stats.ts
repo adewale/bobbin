@@ -6,7 +6,7 @@ async function batchExec(db: D1Database, stmts: D1PreparedStatement[], size = 50
   }
 }
 
-export function tokenizeForConcordance(text: string): Map<string, number> {
+export function tokenizeForWordStats(text: string): Map<string, number> {
   const words = tokenize(text);
   const freq = new Map<string, number>();
   for (const word of words) {
@@ -15,12 +15,12 @@ export function tokenizeForConcordance(text: string): Map<string, number> {
   return freq;
 }
 
-export async function updateConcordance(
+export async function updateWordStats(
   db: D1Database,
   chunkId: number,
   plainText: string
 ): Promise<void> {
-  const wordCounts = tokenizeForConcordance(plainText);
+  const wordCounts = tokenizeForWordStats(plainText);
   if (wordCounts.size === 0) return;
 
   const batch: D1PreparedStatement[] = [];
@@ -39,12 +39,12 @@ export async function updateConcordance(
   await batchExec(db, batch);
 }
 
-export async function rebuildConcordanceAggregates(
+export async function rebuildWordStatsAggregates(
   db: D1Database
 ): Promise<void> {
   await db.batch([
-    db.prepare("DELETE FROM concordance WHERE word NOT IN (SELECT DISTINCT word FROM chunk_words)"),
-    db.prepare(`INSERT INTO concordance (word, total_count, doc_count, updated_at)
+    db.prepare("DELETE FROM word_stats WHERE word NOT IN (SELECT DISTINCT word FROM chunk_words)"),
+    db.prepare(`INSERT INTO word_stats (word, total_count, doc_count, updated_at)
       SELECT word, SUM(count) as total_count, COUNT(DISTINCT chunk_id) as doc_count, datetime('now')
       FROM chunk_words GROUP BY word
       ON CONFLICT(word) DO UPDATE SET

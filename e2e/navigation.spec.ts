@@ -57,16 +57,16 @@ test.describe("Navigation", () => {
     expect(page.url()).toMatch(/\/chunks\/[^/]+/);
   });
 
-  test("click a tag from the tag page -> arrives at tag detail", async ({
+  test("click a topic from the topics page -> arrives at topic detail", async ({
     page,
   }) => {
-    await page.goto("/tags", { waitUntil: "domcontentloaded" });
+    await page.goto("/topics", { waitUntil: "domcontentloaded" });
 
-    // Find any tag link in the tag cloud
-    const tagLink = page.locator('a[href^="/tags/"]').first();
-    await expect(tagLink).toBeVisible();
+    // Find any topic link in the topic cloud
+    const topicLink = page.locator('a[href^="/topics/"]').first();
+    await expect(topicLink).toBeVisible();
 
-    await tagLink.click();
+    await topicLink.click();
     await page.waitForLoadState("domcontentloaded");
 
     // Should not be a 404
@@ -74,11 +74,11 @@ test.describe("Navigation", () => {
     await expect(h1).toBeVisible();
     await expect(h1).not.toContainText("404");
 
-    // URL should be a tag detail page
-    expect(page.url()).toMatch(/\/tags\/[^/]+/);
+    // URL should be a topic detail page
+    expect(page.url()).toMatch(/\/topics\/[^/]+/);
 
-    // Page heading should include "Tag:"
-    await expect(h1).toContainText("Tag:");
+    // Page heading should include "Topic:"
+    await expect(h1).toContainText("Topic:");
   });
 
   test('search for "ecosystem" -> results appear', async ({ page }) => {

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { tokenizeForConcordance, updateConcordance, rebuildConcordanceAggregates } from "./concordance";
+import { tokenizeForWordStats, updateWordStats, rebuildWordStatsAggregates } from "./word-stats";
 import { env } from "cloudflare:test";
 import { applyTestMigrations } from "../../test/helpers/migrations";
 
@@ -7,9 +7,9 @@ beforeEach(async () => {
   await applyTestMigrations(env.DB);
 });
 
-describe("tokenizeForConcordance", () => {
+describe("tokenizeForWordStats", () => {
   it("returns word frequency map excluding stopwords", () => {
-    const result = tokenizeForConcordance("The quick brown foxes jump over the quick brown dogs repeatedly");
+    const result = tokenizeForWordStats("The quick brown foxes jump over the quick brown dogs repeatedly");
     expect(result.get("quick")).toBe(2);
     expect(result.get("brown")).toBe(2);
     expect(result.get("foxes")).toBe(1);
@@ -18,14 +18,14 @@ describe("tokenizeForConcordance", () => {
   });
 
   it("excludes words <= 2 chars", () => {
-    const result = tokenizeForConcordance("I am a big AI fan");
+    const result = tokenizeForWordStats("I am a big AI fan");
     expect(result.has("i")).toBe(false);
     expect(result.has("am")).toBe(false);
     expect(result.has("a")).toBe(false);
   });
 });
 
-describe("updateConcordance + rebuildAggregates", () => {
+describe("updateWordStats + rebuildAggregates", () => {
   it("stores word counts and aggregates across chunks", async () => {
     // Set up test data: source + episode + 2 chunks
     await env.DB.batch([
@@ -35,12 +35,12 @@ describe("updateConcordance + rebuildAggregates", () => {
       env.DB.prepare("INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (1, 'chunk-2', 'Chunk 2', 'content', 'ecosystem dynamics complex', 1)"),
     ]);
 
-    await updateConcordance(env.DB, 1, "ecosystem platform ecosystem");
-    await updateConcordance(env.DB, 2, "ecosystem dynamics complex");
-    await rebuildConcordanceAggregates(env.DB);
+    await updateWordStats(env.DB, 1, "ecosystem platform ecosystem");
+    await updateWordStats(env.DB, 2, "ecosystem dynamics complex");
+    await rebuildWordStatsAggregates(env.DB);
 
     const ecosystem = await env.DB.prepare(
-      "SELECT * FROM concordance WHERE word = ?"
+      "SELECT * FROM word_stats WHERE word = ?"
     ).bind("ecosystem").first();
 
     expect(ecosystem).not.toBeNull();
@@ -48,7 +48,7 @@ describe("updateConcordance + rebuildAggregates", () => {
     expect(ecosystem!.doc_count).toBe(2); // appears in both chunks
 
     const platform = await env.DB.prepare(
-      "SELECT * FROM concordance WHERE word = ?"
+      "SELECT * FROM word_stats WHERE word = ?"
     ).bind("platform").first();
     expect(platform!.total_count).toBe(1);
     expect(platform!.doc_count).toBe(1);

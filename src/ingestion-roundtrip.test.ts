@@ -124,27 +124,27 @@ describe("Ingestion roundtrip: no data loss", () => {
     expect(dupChunks.results).toHaveLength(0);
   });
 
-  it("tag counts are positive for all generated tags", async () => {
+  it("topic counts are positive for all generated topics", async () => {
     const parsed = parseHtmlDocument(sampleEssays);
     const testEnv = { ...env, AI: null as any, VECTORIZE: null as any };
     await ingestParsedEpisodes(testEnv, 1, parsed);
 
-    const tags = await env.DB.prepare("SELECT * FROM tags").all();
-    for (const tag of tags.results as any[]) {
-      expect(tag.usage_count).toBeGreaterThan(0);
-      expect(tag.name.length).toBeGreaterThan(0);
-      expect(tag.slug.length).toBeGreaterThan(0);
+    const topics = await env.DB.prepare("SELECT * FROM topics").all();
+    for (const topic of topics.results as any[]) {
+      expect(topic.usage_count).toBeGreaterThan(0);
+      expect(topic.name.length).toBeGreaterThan(0);
+      expect(topic.slug.length).toBeGreaterThan(0);
     }
   });
 
-  it("concordance is populated after ingestion", async () => {
+  it("word_stats is populated after ingestion", async () => {
     const parsed = parseHtmlDocument(sampleEssays);
     const testEnv = { ...env, AI: null as any, VECTORIZE: null as any };
     await ingestParsedEpisodes(testEnv, 1, parsed);
 
-    const concordance = await env.DB.prepare(
-      "SELECT COUNT(*) as c FROM concordance"
+    const wordStats = await env.DB.prepare(
+      "SELECT COUNT(*) as c FROM word_stats"
     ).first();
-    expect((concordance as any).c).toBeGreaterThan(0);
+    expect((wordStats as any).c).toBeGreaterThan(0);
   });
 });

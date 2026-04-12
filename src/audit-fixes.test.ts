@@ -8,7 +8,7 @@ beforeEach(async () => {
     env.DB.prepare("INSERT INTO sources (google_doc_id, title) VALUES ('t', 'T')"),
     env.DB.prepare("INSERT INTO episodes (source_id, slug, title, published_date, year, month, day, chunk_count) VALUES (1, '2024-04-08', 'Ep 1', '2024-04-08', 2024, 4, 8, 1)"),
     env.DB.prepare("INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (1, 'test-chunk', 'Test', 'Content', 'ecosystem test content', 0)"),
-    env.DB.prepare("INSERT INTO concordance (word, total_count, doc_count) VALUES ('ecosystem', 5, 2)"),
+    env.DB.prepare("INSERT INTO word_stats (word, total_count, doc_count) VALUES ('ecosystem', 5, 2)"),
     env.DB.prepare("INSERT INTO chunk_words (chunk_id, word, count) VALUES (1, 'ecosystem', 3)"),
   ]);
 });
@@ -39,11 +39,11 @@ describe("S3: FTS5 injection safety", () => {
   });
 });
 
-// B1: Regex injection in concordance highlight
-describe("B1: Regex safety in concordance", () => {
-  it("concordance word with regex metacharacters does not crash", async () => {
+// B1: Regex injection in word stats highlight
+describe("B1: Regex safety in word stats", () => {
+  it("word stats word with regex metacharacters does not crash", async () => {
     // These would crash with unescaped RegExp
-    const res = await SELF.fetch("http://localhost/concordance/ecosystem");
+    const res = await SELF.fetch("http://localhost/word-stats/ecosystem");
     expect(res.status).toBe(200);
   });
 });
@@ -72,4 +72,3 @@ describe("S5: Generic error messages", () => {
     }
   });
 });
-

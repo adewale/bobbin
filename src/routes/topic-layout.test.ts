@@ -11,12 +11,12 @@ async function seedData() {
     // Notes episode
     env.DB.prepare("INSERT INTO episodes (source_id, slug, title, published_date, year, month, day, chunk_count, format) VALUES (1, '2024-05-01-t', 'Ep2', '2024-05-01', 2024, 5, 1, 1, 'notes')"),
     env.DB.prepare("INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (2, 'note-chunk', 'Note chunk', 'Brief thought.', 'Brief thought.', 0)"),
-    // Tags
-    env.DB.prepare("INSERT INTO tags (name, slug, usage_count) VALUES ('ecosystem', 'ecosystem', 2)"),
-    env.DB.prepare("INSERT INTO chunk_tags (chunk_id, tag_id) VALUES (1, 1)"),
-    env.DB.prepare("INSERT INTO chunk_tags (chunk_id, tag_id) VALUES (2, 1)"),
-    env.DB.prepare("INSERT INTO episode_tags (episode_id, tag_id) VALUES (1, 1)"),
-    env.DB.prepare("INSERT INTO episode_tags (episode_id, tag_id) VALUES (2, 1)"),
+    // Topics
+    env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('ecosystem', 'ecosystem', 2)"),
+    env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 1)"),
+    env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (2, 1)"),
+    env.DB.prepare("INSERT INTO episode_topics (episode_id, topic_id) VALUES (1, 1)"),
+    env.DB.prepare("INSERT INTO episode_topics (episode_id, topic_id) VALUES (2, 1)"),
   ]);
 }
 
@@ -25,14 +25,14 @@ beforeEach(async () => {
   await seedData();
 });
 
-describe("Tag layout on chunk pages", () => {
-  it("tags are wrapped in tags-margin class for Tufte sidebar positioning", async () => {
+describe("Topic layout on chunk pages", () => {
+  it("topics are wrapped in topics-margin class for Tufte sidebar positioning", async () => {
     const res = await SELF.fetch("http://localhost/chunks/essay-chunk");
     const html = await res.text();
-    expect(html).toContain("tags-margin");
+    expect(html).toContain("topics-margin");
   });
 
-  it("tags are inside a details/summary accordion for mobile", async () => {
+  it("topics are inside a details/summary accordion for mobile", async () => {
     const res = await SELF.fetch("http://localhost/chunks/essay-chunk");
     const html = await res.text();
     expect(html).toContain("<details");
@@ -40,11 +40,10 @@ describe("Tag layout on chunk pages", () => {
   });
 });
 
-describe("Tag layout on episode pages", () => {
-  it("essay episode has tags in tags-margin wrapper", async () => {
+describe("Topic layout on episode pages", () => {
+  it("essay episode has topics in topics-margin wrapper", async () => {
     const res = await SELF.fetch("http://localhost/episodes/2024-04-08-t");
     const html = await res.text();
-    expect(html).toContain("tags-margin");
+    expect(html).toContain("topics-margin");
   });
 });
-

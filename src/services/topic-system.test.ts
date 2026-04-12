@@ -1,18 +1,18 @@
 /**
- * Tests for the upgraded tag system:
+ * Tests for the upgraded topic system:
  * 1. TF-IDF scoring (corpus-aware)
  * 2. Multi-word entity detection
- * 3. Adaptive tag counts
- * 4. Tag quality properties
+ * 3. Adaptive topic counts
+ * 4. Topic quality properties
  */
 import { describe, it, expect } from "vitest";
 import fc from "fast-check";
 import {
-  extractTags,
+  extractTopics,
   extractEntities,
   computeCorpusStats,
   type CorpusStats,
-} from "./tag-generator";
+} from "./topic-extractor";
 import { STOPWORDS } from "../lib/text";
 
 // === 1. TF-IDF scoring ===
@@ -38,18 +38,18 @@ describe("TF-IDF scoring", () => {
 
   it("rare terms score higher than common terms with same TF", () => {
     // "resonant" (1 doc) should score higher than "software" (3 docs) when TF is equal
-    const tagsRare = extractTags("resonant computing resonant paradigm", 5, stats);
-    const tagsCommon = extractTags("software engineering software testing", 5, stats);
+    const topicsRare = extractTopics("resonant computing resonant paradigm", 5, stats);
+    const topicsCommon = extractTopics("software engineering software testing", 5, stats);
 
-    const rareScore = tagsRare.find((t) => t.name === "resonant")?.score || 0;
-    const commonScore = tagsCommon.find((t) => t.name === "software")?.score || 0;
+    const rareScore = topicsRare.find((t) => t.name === "resonant")?.score || 0;
+    const commonScore = topicsCommon.find((t) => t.name === "software")?.score || 0;
     expect(rareScore).toBeGreaterThan(commonScore);
   });
 
   it("falls back to pure TF when no corpus stats provided", () => {
-    const tags = extractTags("ecosystem dynamics ecosystem platform", 5);
-    expect(tags.length).toBeGreaterThan(0);
-    expect(tags[0].name).toBe("ecosystem"); // highest TF
+    const topics = extractTopics("ecosystem dynamics ecosystem platform", 5);
+    expect(topics.length).toBeGreaterThan(0);
+    expect(topics[0].name).toBe("ecosystem"); // highest TF
   });
 });
 
@@ -83,21 +83,21 @@ describe("Multi-word entity detection", () => {
     expect(names).toContain("openai");
   });
 
-  it("entity tags are included in extractTags output", () => {
-    const tags = extractTags(
+  it("entity topics are included in extractTopics output", () => {
+    const topics = extractTopics(
       "Jeremie Miller said that resonant computing challenges extraction. Jeremie Miller is an interesting thinker.",
       10
     );
-    const names = tags.map((t) => t.name);
+    const names = topics.map((t) => t.name);
     expect(names).toContain("jeremie miller");
   });
 
-  it("does not produce 'jeremie' and 'miller' as separate tags when entity exists", () => {
-    const tags = extractTags(
+  it("does not produce 'jeremie' and 'miller' as separate topics when entity exists", () => {
+    const topics = extractTopics(
       "Jeremie Miller said that resonant computing challenges extraction. Jeremie Miller is an interesting thinker.",
       10
     );
-    const names = tags.map((t) => t.name);
+    const names = topics.map((t) => t.name);
     // Should have the entity, not the parts
     if (names.includes("jeremie miller")) {
       expect(names).not.toContain("jeremie");
@@ -106,88 +106,88 @@ describe("Multi-word entity detection", () => {
   });
 });
 
-// === 3. Adaptive tag counts ===
-describe("Adaptive tag counts", () => {
-  it("always returns at least 1 tag for non-trivial text", () => {
-    const tags = extractTags("The ecosystem platform dynamics are fascinating", 10);
-    expect(tags.length).toBeGreaterThanOrEqual(1);
+// === 3. Adaptive topic counts ===
+describe("Adaptive topic counts", () => {
+  it("always returns at least 1 topic for non-trivial text", () => {
+    const topics = extractTopics("The ecosystem platform dynamics are fascinating", 10);
+    expect(topics.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("returns fewer tags for brief text", () => {
-    const briefTags = extractTags("Short note.", 10);
-    const richTags = extractTags(
+  it("returns fewer topics for brief text", () => {
+    const briefTopics = extractTopics("Short note.", 10);
+    const richTopics = extractTopics(
       "The ecosystem dynamics of platform markets create emergent behaviors that challenge our understanding of competitive strategy and market consolidation patterns across technology sectors.",
       10
     );
-    expect(briefTags.length).toBeLessThanOrEqual(richTags.length);
+    expect(briefTopics.length).toBeLessThanOrEqual(richTopics.length);
   });
 
-  it("never exceeds maxTags", () => {
-    const tags = extractTags(
+  it("never exceeds maxTopics", () => {
+    const topics = extractTopics(
       "ecosystem platform dynamics emergent behavior competitive strategy market consolidation technology innovation disruption paradigm",
       3
     );
-    expect(tags.length).toBeLessThanOrEqual(3);
+    expect(topics.length).toBeLessThanOrEqual(3);
   });
 });
 
-// === 4. PBT: Tag quality properties ===
-describe("PBT: Tag quality invariants", () => {
-  it("tag names never contain HTML entities", () => {
+// === 4. PBT: Topic quality properties ===
+describe("PBT: Topic quality invariants", () => {
+  it("topic names never contain HTML entities", () => {
     fc.assert(
       fc.property(fc.string({ minLength: 20, maxLength: 500 }), (text) => {
-        const tags = extractTags(text + " &#39; &amp; &lt;test&gt;", 10);
-        for (const tag of tags) {
-          expect(tag.name).not.toContain("&#");
-          expect(tag.name).not.toContain("&amp;");
-          expect(tag.name).not.toContain("&lt;");
-          expect(tag.name).not.toContain("&gt;");
+        const topics = extractTopics(text + " &#39; &amp; &lt;test&gt;", 10);
+        for (const topic of topics) {
+          expect(topic.name).not.toContain("&#");
+          expect(topic.name).not.toContain("&amp;");
+          expect(topic.name).not.toContain("&lt;");
+          expect(topic.name).not.toContain("&gt;");
         }
       })
     );
   });
 
-  it("tag slugs always match /^[a-z0-9-]*$/", () => {
+  it("topic slugs always match /^[a-z0-9-]*$/", () => {
     fc.assert(
       fc.property(fc.string({ minLength: 20, maxLength: 500 }), (text) => {
-        const tags = extractTags(text, 10);
-        for (const tag of tags) {
-          expect(tag.slug).toMatch(/^[a-z0-9-]*$/);
+        const topics = extractTopics(text, 10);
+        for (const topic of topics) {
+          expect(topic.slug).toMatch(/^[a-z0-9-]*$/);
         }
       })
     );
   });
 
-  it("no duplicate tag names in output", () => {
+  it("no duplicate topic names in output", () => {
     fc.assert(
       fc.property(fc.string({ minLength: 20, maxLength: 500 }), (text) => {
-        const tags = extractTags(text, 10);
-        const names = tags.map((t) => t.name);
+        const topics = extractTopics(text, 10);
+        const names = topics.map((t) => t.name);
         expect(new Set(names).size).toBe(names.length);
       })
     );
   });
 
-  it("single-word tags are never stopwords", () => {
+  it("single-word topics are never stopwords", () => {
     fc.assert(
       fc.property(fc.string({ minLength: 20, maxLength: 500 }), (text) => {
-        const tags = extractTags(text, 10);
-        for (const tag of tags) {
-          if (!tag.name.includes(" ")) {
-            expect(STOPWORDS.has(tag.name)).toBe(false);
+        const topics = extractTopics(text, 10);
+        for (const topic of topics) {
+          if (!topic.name.includes(" ")) {
+            expect(STOPWORDS.has(topic.name)).toBe(false);
           }
         }
       })
     );
   });
 
-  it("tags with scores always have score > 0", () => {
+  it("topics with scores always have score > 0", () => {
     fc.assert(
       fc.property(fc.string({ minLength: 30, maxLength: 500 }), (text) => {
-        const tags = extractTags(text, 10);
-        for (const tag of tags) {
-          if (tag.score !== undefined) {
-            expect(tag.score).toBeGreaterThan(0);
+        const topics = extractTopics(text, 10);
+        for (const topic of topics) {
+          if (topic.score !== undefined) {
+            expect(topic.score).toBeGreaterThan(0);
           }
         }
       })
@@ -197,8 +197,8 @@ describe("PBT: Tag quality invariants", () => {
   it("is deterministic", () => {
     fc.assert(
       fc.property(fc.string({ minLength: 20, maxLength: 300 }), (text) => {
-        const first = extractTags(text, 10);
-        const second = extractTags(text, 10);
+        const first = extractTopics(text, 10);
+        const second = extractTopics(text, 10);
         expect(first).toEqual(second);
       })
     );
