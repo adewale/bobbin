@@ -90,7 +90,7 @@ search.get("/", async (c) => {
       description="Search the Bits and Bobs archive"
       activePath="/search"
     >
-      <SearchForm query={query} />
+      <SearchForm query={query} autofocus />
 
       {query && (
         <section class="search-results">
