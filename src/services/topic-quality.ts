@@ -16,6 +16,16 @@ const NOISE_WORDS = new Set([
 ]);
 
 /**
+ * Check if a topic name is a noise word that should never be shown standalone.
+ */
+export function isNoiseTopic(name: string): boolean {
+  const lower = name.toLowerCase();
+  if (NOISE_WORDS.has(lower)) return true;
+  if (!lower.includes(" ") && lower.length < 4) return true;
+  return false;
+}
+
+/**
  * Filter and rank topics for display quality.
  * - Removes noise words
  * - Suppresses single words that mostly appear inside phrase topics

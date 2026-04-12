@@ -1,4 +1,5 @@
 import type { EpisodeRow, ChunkRow, TopicRow } from "../types";
+import { isNoiseTopic } from "../services/topic-quality";
 
 export async function getRecentEpisodes(db: D1Database, limit: number): Promise<EpisodeRow[]> {
   const result = await db.prepare(
@@ -25,9 +26,13 @@ export async function getEpisodeTopics(db: D1Database, episodeId: number): Promi
     `SELECT t.* FROM topics t
      JOIN episode_topics et ON t.id = et.topic_id
      WHERE et.episode_id = ?
-     ORDER BY t.usage_count DESC`
+     ORDER BY t.usage_count * CASE
+       WHEN t.distinctiveness > 0 THEN t.distinctiveness
+       WHEN t.name LIKE '% %' THEN 20
+       ELSE 1
+     END DESC`
   ).bind(episodeId).all<TopicRow>();
-  return result.results;
+  return result.results.filter(t => !isNoiseTopic(t.name));
 }
 
 export async function getAllEpisodesGrouped(db: D1Database): Promise<EpisodeRow[]> {

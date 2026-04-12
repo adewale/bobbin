@@ -1,5 +1,5 @@
 import type { TopicRow, WordStatsRow } from "../types";
-import { curateTopics } from "../services/topic-quality";
+import { curateTopics, isNoiseTopic } from "../services/topic-quality";
 
 export interface TrendingTopic {
   name: string;
@@ -38,9 +38,14 @@ export async function getTrendingTopicsForEpisode(db: D1Database, episodeId: num
 
 export async function getTopTopics(db: D1Database, limit: number): Promise<TopicRow[]> {
   const result = await db.prepare(
-    "SELECT * FROM topics WHERE usage_count > 0 ORDER BY usage_count DESC LIMIT ?"
-  ).bind(limit).all<TopicRow>();
-  return result.results;
+    `SELECT * FROM topics WHERE usage_count >= 3
+     ORDER BY usage_count * CASE
+       WHEN distinctiveness > 0 THEN distinctiveness
+       WHEN name LIKE '% %' THEN 20
+       ELSE 1
+     END DESC LIMIT ?`
+  ).bind(limit * 2).all<TopicRow>();
+  return result.results.filter(t => !isNoiseTopic(t.name)).slice(0, limit);
 }
 
 export async function getFilteredTopics(db: D1Database, minUsage: number, limit: number): Promise<TopicRow[]> {

@@ -1,4 +1,5 @@
 import type { ChunkWithEpisode, TopicRow } from "../types";
+import { isNoiseTopic } from "../services/topic-quality";
 
 export async function getChunkBySlug(db: D1Database, slug: string): Promise<ChunkWithEpisode | null> {
   return await db.prepare(
@@ -14,9 +15,13 @@ export async function getChunkTopics(db: D1Database, chunkId: number): Promise<T
     `SELECT t.* FROM topics t
      JOIN chunk_topics ct ON t.id = ct.topic_id
      WHERE ct.chunk_id = ?
-     ORDER BY t.usage_count DESC`
+     ORDER BY t.usage_count * CASE
+       WHEN t.distinctiveness > 0 THEN t.distinctiveness
+       WHEN t.name LIKE '% %' THEN 20
+       ELSE 1
+     END DESC`
   ).bind(chunkId).all<TopicRow>();
-  return result.results;
+  return result.results.filter(t => !isNoiseTopic(t.name));
 }
 
 export async function getRelatedByTopics(db: D1Database, chunkId: number, limit = 5): Promise<any[]> {
