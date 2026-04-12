@@ -33,6 +33,10 @@ export const Layout: FC<LayoutProps> = ({
       )}
       <meta property="og:type" content="website" />
       <meta name="twitter:card" content="summary" />
+      <link rel="preconnect" href="https://fonts.googleapis.com" />
+      <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+      <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@700&display=swap" />
+      <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
       <link rel="stylesheet" href="/styles/main.css" />
     </head>
     <body>
