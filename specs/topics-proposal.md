@@ -218,6 +218,58 @@ Same treatment. Topics in the margin alongside the existing "Related chunks" mar
 
 Search results already show `<mark>` highlighting. No change needed — the topics system inherits this.
 
+### Homepage
+
+The homepage becomes a dense, informative entry point with a clear visual hierarchy.
+
+**Hero + search + latest episode panel:**
+
+```
+  A searchable archive of Alex Komoroske's
+  Bits and Bobs weekly newsletter.
+  [search________________________] [Search]
+
+  ┌─────────────────────────────────────────────────────────────┐
+  │  Latest: Bits and Bobs 4/6/26 · 69 chunks                  │
+  │  agent · llms · coding · ecosystem · swarm                  │
+  │  "An insightful HackerNews comment about code generation"   │
+  │  "I feel like the mama bird feeding my little Claude Codes" │
+  │  "LLMs are great at things that are expensive to generate"  │
+  │  See all →                                                  │
+  └─────────────────────────────────────────────────────────────┘
+```
+
+The latest episode panel sits below search. Shows the episode title, its topics, and the first 3-5 chunk titles as a preview. One link to the full episode.
+
+**Three-column grid (desktop):**
+
+```
+  ┌────────────────────┬────────────────────┬────────────────────┐
+  │  Most Connected    │  Recent Episodes   │  Popular Topics    │
+  │                    │                    │                    │
+  │  The future of     │  4/6/26    69      │  ┌──────────┐     │
+  │  LLMs is agents    │  3/31/26    5 essay│  │▁▂▅▇█▇▆▅ │     │
+  │  2025-12-22        │  3/24/26   72      │  │llms      │     │
+  │                    │  3/17/26   68      │  └──────────┘     │
+  │  Ecosystem         │  3/10/26   71      │  ┌──────────┐     │
+  │  dynamics are      │  3/3/26    65      │  │▁▁▁▂▅▇█▇ │     │
+  │  inevitable        │  2/24/26   70      │  │agent     │     │
+  │  2025-11-03        │  2/17/26   63      │  └──────────┘     │
+  │                    │                    │  ┌──────────┐     │
+  │  Vibe coding is    │                    │  │▁▃▅█▅▃▁▁ │     │
+  │  eating software   │                    │  │resonant  │     │
+  │  2025-10-06        │                    │  └──────────┘     │
+  │                    │                    │                    │
+  │  (5 items)         │  (8 items)         │  (6 sparklines)   │
+  └────────────────────┴────────────────────┴────────────────────┘
+```
+
+- **Most Connected**: top chunks by topic reach (cross-referenced across the corpus). Existing functionality, renamed.
+- **Recent Episodes**: date + chunk count. Quick scan of what's available. Links to episode pages.
+- **Popular Topics**: small multiples sparklines (a compact version of the /topics index grid). Each sparkline is a link to the topic detail page.
+
+**Mobile:** The three columns stack vertically. Latest episode panel stays full-width at top. Columns become sections: Most Connected → Recent Episodes → Popular Topics.
+
 ## Navigation
 
 ```
