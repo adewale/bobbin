@@ -26,8 +26,8 @@ export async function keywordSearch(
   const dateFilters: string[] = [];
   const binds: any[] = [`%${escapeLike(searchTerm)}%`];
 
-  if (parsed.before) { dateFilters.push("e.published_date < ?"); binds.push(parsed.before); }
-  if (parsed.after) { dateFilters.push("e.published_date > ?"); binds.push(parsed.after); }
+  if (parsed.before) { dateFilters.push("e.published_date <= ?"); binds.push(parsed.before); }
+  if (parsed.after) { dateFilters.push("e.published_date >= ?"); binds.push(parsed.after); }
   if (parsed.year) { dateFilters.push("e.year = ?"); binds.push(parsed.year); }
 
   const dateWhere = dateFilters.length > 0 ? "AND " + dateFilters.join(" AND ") : "";

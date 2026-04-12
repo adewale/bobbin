@@ -1,9 +1,9 @@
 import { Hono } from "hono";
 import type { AppEnv, TagRow, ChunkRow } from "../types";
 import { Layout } from "../components/Layout";
-import { escapeXml, getBaseUrl } from "../lib/html";
 import { SearchForm } from "../components/SearchForm";
-import { getFilteredTags, getTagBySlug, getTagChunkCount, getTaggedChunks, getTagSparkline, getTagEpisodes, getTagDiffChunks, getTagFeedChunks } from "../db/tags";
+import { getFilteredTags, getTagBySlug, getTagChunkCount, getTaggedChunks, getTagSparkline, getTagEpisodes, getTagDiffChunks } from "../db/tags";
+import { safeParseInt } from "../lib/html";
 import { TagCloud } from "../components/TagCloud";
 import { ChunkCard } from "../components/ChunkCard";
 import { Breadcrumbs } from "../components/Breadcrumbs";
@@ -69,17 +69,18 @@ tags.get("/", async (c) => {
 
 tags.get("/:slug", async (c) => {
   const slug = c.req.param("slug");
-  const page = Math.max(1, parseInt(c.req.query("page") || "1", 10));
+  const page = Math.max(1, safeParseInt(c.req.query("page"), 1));
   const offset = (page - 1) * PAGE_SIZE;
 
   const tag = await getTagBySlug(c.env.DB, slug);
   if (!tag) return c.notFound();
 
-  const [total, chunksList, episodes, sparkline] = await Promise.all([
+  const [total, chunksList, episodes, sparkline, diffChunks] = await Promise.all([
     getTagChunkCount(c.env.DB, tag.id),
     getTaggedChunks(c.env.DB, tag.id, PAGE_SIZE, offset),
     getTagEpisodes(c.env.DB, tag.id),
     getTagSparkline(c.env.DB, tag.id),
+    getTagDiffChunks(c.env.DB, tag.id),
   ]);
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
@@ -184,7 +185,7 @@ tags.get("/:slug", async (c) => {
       <details class="tag-diff-section">
         <summary>Evolution over time</summary>
         <div class="diff-view">
-          {chunksList.slice(0, 20).map((r: any, i: number) => (
+          {diffChunks.map((r: any, i: number) => (
             <article key={r.id} class="diff-entry">
               <div class="diff-date">
                 <time datetime={r.published_date}>{r.published_date}</time>
@@ -262,42 +263,6 @@ tags.get("/:slug/diff", async (c) => {
       </div>
     </Layout>
   );
-});
-
-// Feature 6: RSS feed per tag
-tags.get("/:slug/feed.xml", async (c) => {
-  const slug = c.req.param("slug");
-  const tag = await getTagBySlug(c.env.DB, slug);
-
-  if (!tag) return c.notFound();
-
-  const feedChunks = await getTagFeedChunks(c.env.DB, tag.id);
-  const baseUrl = getBaseUrl(c.req.url);
-
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<feed xmlns="http://www.w3.org/2005/Atom">
-  <title>Bobbin — Tag: ${escapeXml(tag.name)}</title>
-  <link href="${baseUrl}/tags/${escapeXml(tag.slug)}" />
-  <link href="${baseUrl}/tags/${escapeXml(tag.slug)}/feed.xml" rel="self" />
-  <id>${baseUrl}/tags/${escapeXml(tag.slug)}</id>
-  <updated>${new Date().toISOString()}</updated>
-  <author><name>Alex Komoroske</name></author>
-${feedChunks
-  .map(
-    (r: any) => `  <entry>
-    <title>${escapeXml(r.title)}</title>
-    <link href="${baseUrl}/chunks/${escapeXml(r.slug)}" />
-    <id>${baseUrl}/chunks/${escapeXml(r.slug)}</id>
-    <published>${r.published_date}T00:00:00Z</published>
-    <summary>${escapeXml(r.content_plain.substring(0, 300))}</summary>
-  </entry>`
-  )
-  .join("\n")}
-</feed>`;
-
-  return c.body(xml, {
-    headers: { "Content-Type": "application/atom+xml" },
-  });
 });
 
 export { tags as tagRoutes };

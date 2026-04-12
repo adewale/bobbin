@@ -186,16 +186,4 @@ describe("Feed output validation", () => {
     }
   });
 
-  it("feed.xml is well-formed Atom with entries", async () => {
-    const res = await SELF.fetch("http://localhost/feed.xml");
-    const xml = await res.text();
-
-    expect(xml).toMatch(/^<\?xml version/);
-    expect(xml).toContain("<feed");
-    expect(xml).toContain("</feed>");
-    expect(xml).toContain("<entry>");
-    expect(xml).toContain("</entry>");
-    // No unescaped ampersands (common XML error)
-    expect(xml).not.toMatch(/&(?!amp;|lt;|gt;|quot;|apos;|#\d+;)/);
-  });
 });

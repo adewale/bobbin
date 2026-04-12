@@ -42,29 +42,5 @@ describe("GET /tags/:slug/diff", () => {
   });
 });
 
-// === Feature 6: RSS per tag ===
-describe("GET /tags/:slug/feed.xml", () => {
-  it("returns valid Atom XML", async () => {
-    const res = await SELF.fetch("http://localhost/tags/ecosystem/feed.xml");
-    expect(res.status).toBe(200);
-    expect(res.headers.get("content-type")).toContain("atom+xml");
-    const xml = await res.text();
-    expect(xml).toContain("<feed");
-    expect(xml).toContain("ecosystem");
-  });
-
-  it("includes tagged chunks as entries", async () => {
-    const res = await SELF.fetch("http://localhost/tags/ecosystem/feed.xml");
-    const xml = await res.text();
-    expect(xml).toContain("Ecosystem growth");
-    expect(xml).toContain("Ecosystem decline");
-  });
-
-  it("returns 404 for nonexistent tag", async () => {
-    const res = await SELF.fetch("http://localhost/tags/nonexistent/feed.xml");
-    expect(res.status).toBe(404);
-  });
-});
-
 // === Feature 10: Mobile reading mode ===
 // Reading mode only shows on essay-format chunks (tested in tag-layout.test.ts)

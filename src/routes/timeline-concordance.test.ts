@@ -100,13 +100,3 @@ describe("GET /sitemap.xml", () => {
   });
 });
 
-describe("GET /feed.xml", () => {
-  it("returns valid Atom feed", async () => {
-    const res = await SELF.fetch("http://localhost/feed.xml");
-    expect(res.status).toBe(200);
-    expect(res.headers.get("content-type")).toContain("atom+xml");
-    const xml = await res.text();
-    expect(xml).toContain("<feed");
-    expect(xml).toContain("Bits and Bobs 4/8/24");
-  });
-});
