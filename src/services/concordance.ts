@@ -1,5 +1,11 @@
 import { tokenize } from "../lib/text";
 
+async function batchExec(db: D1Database, stmts: D1PreparedStatement[], size = 50) {
+  for (let i = 0; i < stmts.length; i += size) {
+    await db.batch(stmts.slice(i, i + size));
+  }
+}
+
 export function tokenizeForConcordance(text: string): Map<string, number> {
   const words = tokenize(text);
   const freq = new Map<string, number>();
@@ -30,18 +36,20 @@ export async function updateConcordance(
   }
 
   // Process in batches of 50 to stay within D1 limits
-  for (let i = 0; i < batch.length; i += 50) {
-    await db.batch(batch.slice(i, i + 50));
-  }
+  await batchExec(db, batch);
 }
 
 export async function rebuildConcordanceAggregates(
   db: D1Database
 ): Promise<void> {
   await db.batch([
-    db.prepare("DELETE FROM concordance"),
+    db.prepare("DELETE FROM concordance WHERE word NOT IN (SELECT DISTINCT word FROM chunk_words)"),
     db.prepare(`INSERT INTO concordance (word, total_count, doc_count, updated_at)
       SELECT word, SUM(count) as total_count, COUNT(DISTINCT chunk_id) as doc_count, datetime('now')
-      FROM chunk_words GROUP BY word`),
+      FROM chunk_words GROUP BY word
+      ON CONFLICT(word) DO UPDATE SET
+        total_count = excluded.total_count,
+        doc_count = excluded.doc_count,
+        updated_at = excluded.updated_at`),
   ]);
 }

@@ -8,6 +8,12 @@ import { getExistingDatesForSource, getSourceTag } from "../db/sources";
 import { getUnenrichedChunks, isEnrichmentDone } from "../db/ingestion";
 import type { Bindings, ParsedEpisode } from "../types";
 
+async function batchExec(db: D1Database, stmts: D1PreparedStatement[], size = 50) {
+  for (let i = 0; i < stmts.length; i += size) {
+    await db.batch(stmts.slice(i, i + size));
+  }
+}
+
 /**
  * Phase 1: Fast insert — episodes and chunks only.
  * No tags, no concordance, no embeddings. Designed for the cron path.
@@ -59,9 +65,7 @@ export async function ingestEpisodesOnly(
       );
     }
 
-    for (let i = 0; i < chunkInserts.length; i += 50) {
-      await db.batch(chunkInserts.slice(i, i + 50));
-    }
+    await batchExec(db, chunkInserts);
     chunksAdded += episode.chunks.length;
   }
 
@@ -96,28 +100,17 @@ export async function enrichChunks(
   const tagInserts = [...uniqueTags.entries()].map(([slug, name]) =>
     db.prepare("INSERT OR IGNORE INTO tags (name, slug) VALUES (?, ?)").bind(name, slug)
   );
-  for (let i = 0; i < tagInserts.length; i += 50) {
-    await db.batch(tagInserts.slice(i, i + 50));
-  }
+  await batchExec(db, tagInserts);
 
-  // Batch: chunk_tags + usage_count
+  // Batch: chunk_tags
   const ctStmts: D1PreparedStatement[] = [];
-  const usageStmts: D1PreparedStatement[] = [];
   for (const { chunkId, tagSlug } of chunkTagPairs) {
     ctStmts.push(
       db.prepare("INSERT OR IGNORE INTO chunk_tags (chunk_id, tag_id) SELECT ?, id FROM tags WHERE slug = ?")
         .bind(chunkId, tagSlug)
     );
-    usageStmts.push(
-      db.prepare("UPDATE tags SET usage_count = usage_count + 1 WHERE slug = ?").bind(tagSlug)
-    );
   }
-  for (let i = 0; i < ctStmts.length; i += 50) {
-    await db.batch(ctStmts.slice(i, i + 50));
-  }
-  for (let i = 0; i < usageStmts.length; i += 50) {
-    await db.batch(usageStmts.slice(i, i + 50));
-  }
+  await batchExec(db, ctStmts);
 
   // Batch: episode_tags
   const episodeIds = [...new Set(chunks.map((c) => c.episode_id))];
@@ -130,9 +123,7 @@ export async function enrichChunks(
         ).bind(epId, c.id)
       )
   );
-  for (let i = 0; i < etStmts.length; i += 50) {
-    await db.batch(etStmts.slice(i, i + 50));
-  }
+  await batchExec(db, etStmts);
 
   // Batch: chunk_words
   const wordStmts: D1PreparedStatement[] = [];
@@ -145,17 +136,24 @@ export async function enrichChunks(
       );
     }
   }
-  for (let i = 0; i < wordStmts.length; i += 50) {
-    await db.batch(wordStmts.slice(i, i + 50));
-  }
+  await batchExec(db, wordStmts);
 
-  // Rebuild concordance and precompute chunk reach
+  // Recalculate tag usage counts from actual chunk_tags
+  await db.prepare(
+    "UPDATE tags SET usage_count = (SELECT COUNT(*) FROM chunk_tags WHERE tag_id = tags.id)"
+  ).run();
+
+  // Rebuild concordance (incremental: preserves distinctiveness and in_baseline columns)
   await db.batch([
-    db.prepare("DELETE FROM concordance"),
+    db.prepare("DELETE FROM concordance WHERE word NOT IN (SELECT DISTINCT word FROM chunk_words)"),
     db.prepare(
       `INSERT INTO concordance (word, total_count, doc_count, updated_at)
        SELECT word, SUM(count), COUNT(DISTINCT chunk_id), datetime('now')
-       FROM chunk_words GROUP BY word`
+       FROM chunk_words GROUP BY word
+       ON CONFLICT(word) DO UPDATE SET
+         total_count = excluded.total_count,
+         doc_count = excluded.doc_count,
+         updated_at = excluded.updated_at`
     ),
   ]);
 

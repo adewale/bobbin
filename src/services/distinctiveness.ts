@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
 import { STOPWORDS } from "../lib/text";
+import { ENGLISH_BASELINE } from "../lib/english-baseline";
 
 export interface DistinctivenessResult {
   word: string;
@@ -24,19 +24,9 @@ let cachedBaselineRanks: Map<string, number> | null = null;
  */
 export function loadEnglishBaseline(): Set<string> {
   if (cachedBaseline) return cachedBaseline;
-
-  try {
-    const raw = readFileSync("data/english-top-1000.txt", "utf-8");
-    const words = raw.split("\n").map((w) => w.trim().toLowerCase()).filter(Boolean);
-    cachedBaseline = new Set(words);
-    cachedBaselineRanks = new Map(words.map((w, i) => [w, i + 1]));
-    return cachedBaseline;
-  } catch {
-    // Fallback: hardcoded top 200 English words
-    cachedBaseline = new Set(STOPWORDS);
-    cachedBaselineRanks = new Map();
-    return cachedBaseline;
-  }
+  cachedBaseline = new Set(ENGLISH_BASELINE);
+  cachedBaselineRanks = new Map(ENGLISH_BASELINE.map((w, i) => [w, i + 1]));
+  return cachedBaseline;
 }
 
 function getBaselineRank(word: string): number | null {
