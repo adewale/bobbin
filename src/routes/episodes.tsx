@@ -4,6 +4,7 @@ import { Layout } from "../components/Layout";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { monthName } from "../lib/date";
 import { getAllEpisodesGrouped, getEpisodeBySlug, getChunksByEpisode, getEpisodeTopics } from "../db/episodes";
+import { getTrendingTopicsForEpisode } from "../db/topics";
 
 const episodes = new Hono<AppEnv>();
 
@@ -64,9 +65,10 @@ episodes.get("/:slug", async (c) => {
   const episode = await getEpisodeBySlug(c.env.DB, slug);
   if (!episode) return c.notFound();
 
-  const [chunksList, topicsList] = await Promise.all([
+  const [chunksList, topicsList, trending] = await Promise.all([
     getChunksByEpisode(c.env.DB, episode.id),
     getEpisodeTopics(c.env.DB, episode.id),
+    getTrendingTopicsForEpisode(c.env.DB, episode.id),
   ]);
 
   return c.html(
@@ -90,6 +92,16 @@ episodes.get("/:slug", async (c) => {
                 </a>
               ))}
             </div>
+            {trending.length > 0 && (
+              <div class="trending-topics">
+                <h4>Trending &#x2191;</h4>
+                {trending.map((t) => (
+                  <a key={t.slug} href={`/topics/${t.slug}`} class="trending-item">
+                    {t.name} <span class="trending-ratio">(+{t.spikeRatio.toFixed(1)}&times;)</span>
+                  </a>
+                ))}
+              </div>
+            )}
           </aside>
         )}
 

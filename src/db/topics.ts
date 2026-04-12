@@ -1,5 +1,40 @@
 import type { TopicRow, WordStatsRow } from "../types";
 
+export interface TrendingTopic {
+  name: string;
+  slug: string;
+  spikeRatio: number;
+}
+
+export async function getTrendingTopicsForEpisode(db: D1Database, episodeId: number, limit = 3): Promise<TrendingTopic[]> {
+  // Get topic counts for this episode (only topics with sufficient corpus usage)
+  const epTopics = await db.prepare(
+    `SELECT t.id, t.name, t.slug, COUNT(*) as ep_count, t.usage_count
+     FROM chunk_topics ct
+     JOIN chunks c ON ct.chunk_id = c.id
+     JOIN topics t ON ct.topic_id = t.id
+     WHERE c.episode_id = ? AND t.usage_count >= 5
+     GROUP BY t.id`
+  ).bind(episodeId).all();
+
+  // Get total episode count
+  const totalEps = await db.prepare("SELECT COUNT(*) as c FROM episodes").first<{ c: number }>();
+  const epCount = totalEps?.c || 1;
+
+  // Compute spike ratio: (count in this ep) / (avg count per ep across corpus)
+  const trending = (epTopics.results as any[])
+    .map(t => ({
+      name: t.name as string,
+      slug: t.slug as string,
+      spikeRatio: t.ep_count / (t.usage_count / epCount),
+    }))
+    .filter(t => t.spikeRatio > 2.0)
+    .sort((a, b) => b.spikeRatio - a.spikeRatio)
+    .slice(0, limit);
+
+  return trending;
+}
+
 export async function getTopTopics(db: D1Database, limit: number): Promise<TopicRow[]> {
   const result = await db.prepare(
     "SELECT * FROM topics WHERE usage_count > 0 ORDER BY usage_count DESC LIMIT ?"
