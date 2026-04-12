@@ -5,6 +5,7 @@ import { Breadcrumbs } from "../components/Breadcrumbs";
 import { getCrossReferences } from "../services/cross-refs";
 import { safeJsonForHtml } from "../lib/html";
 import { getChunkBySlug, getChunkTopics, getRelatedByTopics, getThreadChunks, getAdjacentChunks } from "../db/chunks";
+import { getTrendingTopicsForEpisode } from "../db/topics";
 
 const chunks = new Hono<AppEnv>();
 
@@ -15,10 +16,11 @@ chunks.get("/:slug", async (c) => {
 
   const isNotes = chunk.episode_format === "notes";
 
-  const [topics, thread, adjacentResult] = await Promise.all([
+  const [topics, thread, adjacentResult, trending] = await Promise.all([
     getChunkTopics(c.env.DB, chunk.id),
     getThreadChunks(c.env.DB, chunk.id, chunk.episode_id),
     isNotes ? getAdjacentChunks(c.env.DB, chunk.episode_id, chunk.position) : Promise.resolve({ prev: null, next: null }),
+    getTrendingTopicsForEpisode(c.env.DB, chunk.episode_id),
   ]);
 
   // Cross-refs still sequential since they have a fallback
@@ -79,6 +81,16 @@ chunks.get("/:slug", async (c) => {
                   </a>
                 ))}
               </div>
+              {trending.length > 0 && (
+                <div class="trending-topics">
+                  <h4>Trending &#x2191;</h4>
+                  {trending.map((t) => (
+                    <a key={t.slug} href={`/topics/${t.slug}`} class="trending-item">
+                      {t.name} <span class="trending-ratio">(+{t.spikeRatio.toFixed(1)}&times;)</span>
+                    </a>
+                  ))}
+                </div>
+              )}
             </aside>
           )}
 
