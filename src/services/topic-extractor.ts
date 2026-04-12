@@ -1,6 +1,7 @@
 import { tokenize, STOPWORDS } from "../lib/text";
 import { slugify } from "../lib/slug";
 import { decodeHtmlEntities } from "../lib/html";
+import { KNOWN_ENTITIES } from "../data/known-entities";
 
 // Words where trailing 's' is part of the word, not a plural
 const NO_STRIP = new Set([
@@ -50,6 +51,7 @@ export interface TopicResult {
   name: string;
   slug: string;
   score?: number;
+  kind?: "concept" | "entity" | "phrase";
 }
 
 export interface CorpusStats {
@@ -164,23 +166,79 @@ export function extractEntities(text: string): TopicResult[] {
 }
 
 /**
+ * Layer 1: Extract known entities from text by matching against the curated entity list.
+ * Case-insensitive matching against all aliases. Bypasses TF-IDF scoring entirely.
+ * Returns TopicResult with canonical name and slug for each matched entity.
+ */
+export function extractKnownEntities(text: string): TopicResult[] {
+  const lowerText = text.toLowerCase();
+  const results: TopicResult[] = [];
+  const seenNames = new Set<string>();
+
+  for (const entity of KNOWN_ENTITIES) {
+    if (seenNames.has(entity.name)) continue;
+
+    const aliases = entity.aliases || [];
+    // Check canonical name (lowercased) and all aliases against the text
+    const allForms = [entity.name.toLowerCase(), ...aliases];
+
+    let matched = false;
+    for (const form of allForms) {
+      if (lowerText.includes(form)) {
+        matched = true;
+        break;
+      }
+    }
+
+    if (matched) {
+      seenNames.add(entity.name);
+      results.push({
+        name: entity.name,
+        slug: slugify(entity.name),
+        score: 200, // known entities get highest priority
+        kind: "entity",
+      });
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Layer 3: Identify high-distinctiveness non-baseline words as entity candidates.
+ * These are words that appear in the corpus but not in the English baseline,
+ * with distinctiveness >= 15 and length >= 4.
+ */
+export function identifyDistinctiveEntities(
+  wordStats: { word: string; distinctiveness: number; in_baseline: number }[]
+): string[] {
+  return wordStats
+    .filter(w => w.distinctiveness >= 15 && w.in_baseline === 0 && w.word.length >= 4)
+    .map(w => w.word);
+}
+
+/**
  * Extract topics using TF-IDF scoring with entity detection.
+ * Merges three sources: known entities (Layer 1), capitalization heuristics, and TF-IDF keywords.
  *
  * @param text - chunk content
- * @param maxTopics - maximum topics to return (default 5)
+ * @param maxTopics - maximum topics to return (default 15)
  * @param corpusStats - pre-computed IDF stats (optional, falls back to pure TF)
  */
 export function extractTopics(
   text: string,
-  maxTopics: number = 5,
+  maxTopics: number = 15,
   corpusStats?: CorpusStats
 ): TopicResult[] {
   const clean = decodeHtmlEntities(text);
 
-  // Step 1: Extract named entities
-  const entities = extractEntities(text);
+  // Layer 1: Known entities (highest priority, bypass TF-IDF)
+  const knownEntities = extractKnownEntities(text);
+
+  // Step 1: Extract named entities via capitalization heuristics
+  const heuristicEntities = extractEntities(text);
   const entityNames = new Set(
-    entities.flatMap((e) => e.name.toLowerCase().split(" "))
+    heuristicEntities.flatMap((e) => e.name.toLowerCase().split(" "))
   );
 
   // Step 2: Tokenize and compute term frequency
@@ -223,18 +281,28 @@ export function extractTopics(
     })
     .sort((a, b) => b.score - a.score);
 
-  // Step 5: Merge entities + TF-IDF keywords
-  // Entities come first (they're high-signal named things)
+  // Step 5: Merge known entities + heuristic entities + TF-IDF keywords
+  // Known entities always win (highest priority)
   const result: TopicResult[] = [];
   const usedSlugs = new Set<string>();
 
-  for (const entity of entities) {
+  // Layer 1: Known entities first
+  for (const entity of knownEntities) {
     if (result.length >= maxTopics) break;
     if (usedSlugs.has(entity.slug)) continue;
     usedSlugs.add(entity.slug);
-    result.push({ ...entity, score: 100 }); // entities get high score
+    result.push(entity);
   }
 
+  // Heuristic entities next
+  for (const entity of heuristicEntities) {
+    if (result.length >= maxTopics) break;
+    if (usedSlugs.has(entity.slug)) continue;
+    usedSlugs.add(entity.slug);
+    result.push({ ...entity, score: 100 }); // heuristic entities get high score
+  }
+
+  // TF-IDF keywords last
   for (const topic of scored) {
     if (result.length >= maxTopics) break;
     if (usedSlugs.has(topic.slug)) continue;
