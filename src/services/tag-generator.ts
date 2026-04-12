@@ -205,8 +205,9 @@ export function extractTags(
   const N = corpusStats?.totalChunks || 1;
   const scored = [...termFreq.entries()]
     .filter(([word]) => {
-      if (word.length < 4) return false;
-      const slug = slugify(word);
+      const normalized = normalizeTerm(word);
+      if (normalized.length < 4) return false;
+      const slug = slugify(normalized);
       if (!slug || slug.length < 3) return false;
       if (STOPWORDS.has(word)) return false;
       return true;
