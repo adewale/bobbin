@@ -128,6 +128,7 @@ a:hover { text-decoration: underline; }
 .tag .count { opacity: 0.6; font-size: 0.68rem; }
 .tag-cloud { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 .tag-tier { margin: 1.5rem 0; }
+.tag-search-results { display: flex; flex-wrap: wrap; gap: 0.3rem; margin: 0.5rem 0; }
 .tag-tier h2 { font-family: var(--font-ui); font-size: 0.9rem; font-weight: 700; font-style: normal; margin-bottom: 0.5rem; }
 details.tag-tier summary { font-family: var(--font-ui); font-size: 0.85rem; color: var(--text-muted); cursor: pointer; margin-bottom: 0.5rem; }
 details.tag-tier .tag-cloud { margin-top: 0.5rem; }

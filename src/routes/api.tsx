@@ -158,6 +158,18 @@ api.get("/enrich", async (c) => {
   }
 });
 
+// Tag search API
+api.get("/tags", async (c) => {
+  const q = c.req.query("q")?.trim().toLowerCase() || "";
+  if (!q || q.length < 2) return c.json({ tags: [] });
+
+  const result = await c.env.DB.prepare(
+    "SELECT name, slug, usage_count FROM tags WHERE name LIKE ? AND usage_count >= 1 ORDER BY usage_count DESC LIMIT 10"
+  ).bind(`%${q}%`).all();
+
+  return c.json({ tags: result.results });
+});
+
 // Reactive API: concordance with date filtering
 api.get("/concordance", async (c) => {
   const from = c.req.query("from");
