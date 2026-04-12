@@ -5,7 +5,7 @@ export default defineConfig({
   plugins: [
     cloudflareTest({
       main: "./src/index.tsx",
-      wrangler: { configPath: "./wrangler.jsonc" },
+      wrangler: { configPath: "./wrangler.test.jsonc" },
     }),
   ],
   test: {
