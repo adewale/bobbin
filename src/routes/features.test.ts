@@ -15,33 +15,33 @@ async function seedRichData() {
     env.DB.prepare("INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (2, 'eco-feb-0', 'More ecosystems', 'Ecosystem health depends on ecosystem diversity.', 'Ecosystem health depends on ecosystem diversity.', 0)"),
     env.DB.prepare("INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (2, 'llm-feb-1', 'LLM thoughts', 'LLMs transform software creation.', 'LLMs transform software creation.', 1)"),
     env.DB.prepare("INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (3, 'eco-mar-0', 'Ecosystem collapse', 'When ecosystem collapse occurs, platforms adapt.', 'When ecosystem collapse occurs, platforms adapt.', 0)"),
-    // Tags
-    env.DB.prepare("INSERT INTO tags (name, slug, usage_count) VALUES ('ecosystem', 'ecosystem', 3)"),
-    env.DB.prepare("INSERT INTO tags (name, slug, usage_count) VALUES ('platform', 'platform', 2)"),
-    env.DB.prepare("INSERT INTO tags (name, slug, usage_count) VALUES ('llms', 'llms', 1)"),
-    // Chunk-tag associations
-    env.DB.prepare("INSERT INTO chunk_tags (chunk_id, tag_id) VALUES (1, 1)"),
-    env.DB.prepare("INSERT INTO chunk_tags (chunk_id, tag_id) VALUES (2, 2)"),
-    env.DB.prepare("INSERT INTO chunk_tags (chunk_id, tag_id) VALUES (3, 1)"),
-    env.DB.prepare("INSERT INTO chunk_tags (chunk_id, tag_id) VALUES (4, 3)"),
-    env.DB.prepare("INSERT INTO chunk_tags (chunk_id, tag_id) VALUES (5, 1)"),
-    env.DB.prepare("INSERT INTO chunk_tags (chunk_id, tag_id) VALUES (5, 2)"),
-    // Episode-tag associations
-    env.DB.prepare("INSERT INTO episode_tags (episode_id, tag_id) VALUES (1, 1)"),
-    env.DB.prepare("INSERT INTO episode_tags (episode_id, tag_id) VALUES (1, 2)"),
-    env.DB.prepare("INSERT INTO episode_tags (episode_id, tag_id) VALUES (2, 1)"),
-    env.DB.prepare("INSERT INTO episode_tags (episode_id, tag_id) VALUES (2, 3)"),
-    env.DB.prepare("INSERT INTO episode_tags (episode_id, tag_id) VALUES (3, 1)"),
-    env.DB.prepare("INSERT INTO episode_tags (episode_id, tag_id) VALUES (3, 2)"),
-    // Concordance word counts per chunk
+    // Topics
+    env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('ecosystem', 'ecosystem', 3)"),
+    env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('platform', 'platform', 2)"),
+    env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('llms', 'llms', 1)"),
+    // Chunk-topic associations
+    env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 1)"),
+    env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (2, 2)"),
+    env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (3, 1)"),
+    env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (4, 3)"),
+    env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (5, 1)"),
+    env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (5, 2)"),
+    // Episode-topic associations
+    env.DB.prepare("INSERT INTO episode_topics (episode_id, topic_id) VALUES (1, 1)"),
+    env.DB.prepare("INSERT INTO episode_topics (episode_id, topic_id) VALUES (1, 2)"),
+    env.DB.prepare("INSERT INTO episode_topics (episode_id, topic_id) VALUES (2, 1)"),
+    env.DB.prepare("INSERT INTO episode_topics (episode_id, topic_id) VALUES (2, 3)"),
+    env.DB.prepare("INSERT INTO episode_topics (episode_id, topic_id) VALUES (3, 1)"),
+    env.DB.prepare("INSERT INTO episode_topics (episode_id, topic_id) VALUES (3, 2)"),
+    // Word stats word counts per chunk
     env.DB.prepare("INSERT INTO chunk_words (chunk_id, word, count) VALUES (1, 'ecosystem', 1)"),
     env.DB.prepare("INSERT INTO chunk_words (chunk_id, word, count) VALUES (3, 'ecosystem', 2)"),
     env.DB.prepare("INSERT INTO chunk_words (chunk_id, word, count) VALUES (5, 'ecosystem', 1)"),
     env.DB.prepare("INSERT INTO chunk_words (chunk_id, word, count) VALUES (2, 'platform', 1)"),
     env.DB.prepare("INSERT INTO chunk_words (chunk_id, word, count) VALUES (5, 'platform', 1)"),
-    // Concordance aggregates
-    env.DB.prepare("INSERT INTO concordance (word, total_count, doc_count) VALUES ('ecosystem', 4, 3)"),
-    env.DB.prepare("INSERT INTO concordance (word, total_count, doc_count) VALUES ('platform', 2, 2)"),
+    // Word stats aggregates
+    env.DB.prepare("INSERT INTO word_stats (word, total_count, doc_count) VALUES ('ecosystem', 4, 3)"),
+    env.DB.prepare("INSERT INTO word_stats (word, total_count, doc_count) VALUES ('platform', 2, 2)"),
   ]);
 }
 
@@ -51,9 +51,9 @@ beforeEach(async () => {
 });
 
 // === Feature 1: Word usage over time ===
-describe("Word usage timeline on /concordance/:word", () => {
+describe("Word usage timeline on /word-stats/:word", () => {
   it("includes a timeline data attribute with per-episode counts", async () => {
-    const res = await SELF.fetch("http://localhost/concordance/ecosystem");
+    const res = await SELF.fetch("http://localhost/word-stats/ecosystem");
     expect(res.status).toBe(200);
     const html = await res.text();
     // Should contain a data structure for the sparkline
@@ -65,7 +65,7 @@ describe("Word usage timeline on /concordance/:word", () => {
   });
 
   it("shows counts per episode in the timeline", async () => {
-    const res = await SELF.fetch("http://localhost/concordance/ecosystem");
+    const res = await SELF.fetch("http://localhost/word-stats/ecosystem");
     const html = await res.text();
     // The timeline should show the counts per episode
     // Jan: 1, Feb: 2, Mar: 1
@@ -90,37 +90,37 @@ describe("Margin annotations on /chunks/:slug", () => {
   });
 });
 
-// === Feature 3: Ladder of abstraction for tag browsing ===
-describe("Ladder of abstraction on /tags/:slug", () => {
+// === Feature 3: Ladder of abstraction for topic browsing ===
+describe("Ladder of abstraction on /topics/:slug", () => {
   it("shows corpus-level sparkline", async () => {
-    const res = await SELF.fetch("http://localhost/tags/ecosystem");
+    const res = await SELF.fetch("http://localhost/topics/ecosystem");
     expect(res.status).toBe(200);
     const html = await res.text();
-    expect(html).toContain("tag-sparkline");
+    expect(html).toContain("topic-sparkline");
   });
 
   it("shows episode-level timeline", async () => {
-    const res = await SELF.fetch("http://localhost/tags/ecosystem");
+    const res = await SELF.fetch("http://localhost/topics/ecosystem");
     const html = await res.text();
-    expect(html).toContain("tag-episode-timeline");
-    // Should list all 3 episodes that have this tag
+    expect(html).toContain("topic-episode-timeline");
+    // Should list all 3 episodes that have this topic
     expect(html).toContain("2024-01-15");
     expect(html).toContain("2024-02-12");
     expect(html).toContain("2024-03-18");
   });
 
   it("shows chunk-level list", async () => {
-    const res = await SELF.fetch("http://localhost/tags/ecosystem");
+    const res = await SELF.fetch("http://localhost/topics/ecosystem");
     const html = await res.text();
-    expect(html).toContain("tag-chunks");
+    expect(html).toContain("topic-chunks");
     expect(html).toContain("Ecosystem dynamics");
     expect(html).toContain("More ecosystems");
     expect(html).toContain("Ecosystem collapse");
   });
 
   it("shows collapsible evolution section", async () => {
-    const res = await SELF.fetch("http://localhost/tags/ecosystem");
+    const res = await SELF.fetch("http://localhost/topics/ecosystem");
     const html = await res.text();
-    expect(html).toContain("tag-diff-section");
+    expect(html).toContain("topic-diff-section");
   });
 });

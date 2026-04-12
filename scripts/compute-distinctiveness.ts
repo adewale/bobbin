@@ -43,7 +43,7 @@ for (const text of allTexts) {
 const results = computeDistinctiveness(freq, totalWords, baseline);
 
 // Output SQL to update the concordance table
-console.log("-- Distinctiveness scores computed from local corpus");
+console.log("-- Distinctiveness scores computed from local corpus (word_stats)");
 console.log(`-- Corpus: ${allTexts.length} chunks, ${totalWords} tokens, ${freq.size} unique words`);
 console.log();
 
@@ -51,7 +51,7 @@ for (const r of results) {
   const inBaseline = r.baselineRank !== null ? 1 : 0;
   const escaped = r.word.replace(/'/g, "''");
   console.log(
-    `UPDATE concordance SET distinctiveness = ${r.distinctiveness.toFixed(4)}, in_baseline = ${inBaseline} WHERE word = '${escaped}';`
+    `UPDATE word_stats SET distinctiveness = ${r.distinctiveness.toFixed(4)}, in_baseline = ${inBaseline} WHERE word = '${escaped}';`
   );
 }
 

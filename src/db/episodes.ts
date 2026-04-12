@@ -1,4 +1,4 @@
-import type { EpisodeRow, ChunkRow, TagRow } from "../types";
+import type { EpisodeRow, ChunkRow, TopicRow } from "../types";
 
 export async function getRecentEpisodes(db: D1Database, limit: number): Promise<EpisodeRow[]> {
   const result = await db.prepare(
@@ -20,13 +20,13 @@ export async function getChunksByEpisode(db: D1Database, episodeId: number): Pro
   return result.results;
 }
 
-export async function getEpisodeTags(db: D1Database, episodeId: number): Promise<TagRow[]> {
+export async function getEpisodeTopics(db: D1Database, episodeId: number): Promise<TopicRow[]> {
   const result = await db.prepare(
-    `SELECT t.* FROM tags t
-     JOIN episode_tags et ON t.id = et.tag_id
+    `SELECT t.* FROM topics t
+     JOIN episode_topics et ON t.id = et.topic_id
      WHERE et.episode_id = ?
      ORDER BY t.usage_count DESC`
-  ).bind(episodeId).all<TagRow>();
+  ).bind(episodeId).all<TopicRow>();
   return result.results;
 }
 

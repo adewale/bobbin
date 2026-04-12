@@ -1,7 +1,7 @@
-// Bostock-inspired reactive concordance: interactive date filtering and live updates.
-// Brush-select a time range on the timeline to filter the concordance table to that period.
+// Bostock-inspired reactive word stats: interactive date filtering and live updates.
+// Brush-select a time range on the timeline to filter the word stats table to that period.
 (function () {
-  const table = document.querySelector(".concordance-table");
+  const table = document.querySelector(".word-stats-table");
   if (!table) return;
 
   // State
@@ -88,7 +88,7 @@
 
         statusEl.textContent = `Showing ${fromDate.slice(0, 7)} to ${toDate.slice(0, 7)}`;
         resetBtn.hidden = false;
-        updateConcordance();
+        updateWordStats();
       }
     });
 
@@ -101,15 +101,15 @@
         .forEach((b) => b.classList.remove("brush-selected", "brush-active"));
       statusEl.textContent = "Showing all time";
       resetBtn.hidden = true;
-      updateConcordance();
+      updateWordStats();
     });
   }
 
-  async function updateConcordance() {
+  async function updateWordStats() {
     const tbody = table.querySelector("tbody");
     tbody.innerHTML = '<tr><td colspan="4" class="loading">Loading...</td></tr>';
 
-    let url = "/api/concordance?limit=200";
+    let url = "/api/word-stats?limit=200";
     if (fromDate) url += `&from=${fromDate}`;
     if (toDate) url += `&to=${toDate}`;
 
@@ -120,7 +120,7 @@
     tbody.innerHTML = data.words
       .map(
         (w) => `<tr>
-          <td><a href="/concordance/${encodeURIComponent(w.word)}">${esc(w.word)}</a></td>
+          <td><a href="/word-stats/${encodeURIComponent(w.word)}">${esc(w.word)}</a></td>
           <td>${w.total_count}</td>
           <td>${w.doc_count} chunk${w.doc_count !== 1 ? "s" : ""}</td>
         </tr>`

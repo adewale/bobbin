@@ -4,9 +4,9 @@ import { Layout } from "./components/Layout";
 import { homeRoutes } from "./routes/home";
 import { episodeRoutes } from "./routes/episodes";
 import { chunkRoutes } from "./routes/chunks";
-import { tagRoutes } from "./routes/tags";
+import { topicRoutes } from "./routes/topics";
 import { searchRoutes } from "./routes/search";
-import { concordanceRoutes } from "./routes/concordance";
+import { wordStatsRoutes } from "./routes/word-stats";
 import { apiRoutes } from "./routes/api";
 import { runRefresh } from "./jobs/refresh";
 
@@ -32,9 +32,9 @@ app.use("*", async (c, next) => {
 app.route("/", homeRoutes);
 app.route("/episodes", episodeRoutes);
 app.route("/chunks", chunkRoutes);
-app.route("/tags", tagRoutes);
+app.route("/topics", topicRoutes);
 app.route("/search", searchRoutes);
-app.route("/concordance", concordanceRoutes);
+app.route("/word-stats", wordStatsRoutes);
 app.route("/api", apiRoutes);
 
 // 404 handler — uses Layout for consistency

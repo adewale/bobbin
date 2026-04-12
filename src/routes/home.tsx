@@ -2,18 +2,18 @@ import { Hono } from "hono";
 import type { AppEnv } from "../types";
 import { Layout } from "../components/Layout";
 import { EpisodeCard } from "../components/EpisodeCard";
-import { TagCloud } from "../components/TagCloud";
+import { TopicCloud } from "../components/TopicCloud";
 import { SearchForm } from "../components/SearchForm";
 import { getRecentEpisodes } from "../db/episodes";
-import { getTopTags } from "../db/tags";
-import { getMostConnected } from "../db/concordance";
+import { getTopTopics } from "../db/topics";
+import { getMostConnected } from "../db/word-stats";
 
 const home = new Hono<AppEnv>();
 
 home.get("/", async (c) => {
-  const [episodes, tags, connected] = await Promise.all([
+  const [episodes, topics, connected] = await Promise.all([
     getRecentEpisodes(c.env.DB, 10),
-    getTopTags(c.env.DB, 30),
+    getTopTopics(c.env.DB, 30),
     getMostConnected(c.env.DB, 8),
   ]);
 
@@ -61,10 +61,10 @@ home.get("/", async (c) => {
         )}
       </section>
 
-      {tags.length > 0 && (
-        <section class="tag-section">
-          <h2>Popular Tags</h2>
-          <TagCloud tags={tags} />
+      {topics.length > 0 && (
+        <section class="topic-section">
+          <h2>Popular Topics</h2>
+          <TopicCloud topics={topics} />
         </section>
       )}
     </Layout>

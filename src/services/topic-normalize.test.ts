@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import fc from "fast-check";
-import { normalizeTerm } from "./tag-generator";
+import { normalizeTerm } from "./topic-extractor";
 
 describe("normalizeTerm (plural → singular)", () => {
   it("strips trailing 's' from regular plurals", () => {

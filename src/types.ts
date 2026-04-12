@@ -51,14 +51,16 @@ export interface ChunkRow {
   updated_at: string;
 }
 
-export interface TagRow {
+export interface TopicRow {
   id: number;
   name: string;
   slug: string;
   usage_count: number;
+  kind: string;
+  related_slugs: string | null;
 }
 
-export interface ConcordanceRow {
+export interface WordStatsRow {
   id: number;
   word: string;
   total_count: number;

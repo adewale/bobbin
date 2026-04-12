@@ -1,5 +1,5 @@
 /**
- * Decode common HTML entities. Consolidated from html-parser, tag-generator, text.
+ * Decode common HTML entities. Consolidated from html-parser, topic-extractor, text.
  */
 export function decodeHtmlEntities(html: string): string {
   return html

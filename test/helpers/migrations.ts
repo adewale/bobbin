@@ -1,9 +1,9 @@
 const DROPS = [
   "DROP TABLE IF EXISTS chunk_words",
-  "DROP TABLE IF EXISTS concordance",
-  "DROP TABLE IF EXISTS episode_tags",
-  "DROP TABLE IF EXISTS chunk_tags",
-  "DROP TABLE IF EXISTS tags",
+  "DROP TABLE IF EXISTS word_stats",
+  "DROP TABLE IF EXISTS episode_topics",
+  "DROP TABLE IF EXISTS chunk_topics",
+  "DROP TABLE IF EXISTS topics",
   "DROP TABLE IF EXISTS chunks",
   "DROP TABLE IF EXISTS episodes",
   "DROP TABLE IF EXISTS ingestion_log",
@@ -50,23 +50,25 @@ const CREATES = [
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   )`,
-  `CREATE TABLE tags (
+  `CREATE TABLE topics (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
     slug TEXT NOT NULL UNIQUE,
-    usage_count INTEGER NOT NULL DEFAULT 0
+    usage_count INTEGER NOT NULL DEFAULT 0,
+    kind TEXT NOT NULL DEFAULT 'concept',
+    related_slugs TEXT
   )`,
-  `CREATE TABLE chunk_tags (
+  `CREATE TABLE chunk_topics (
     chunk_id INTEGER NOT NULL REFERENCES chunks(id) ON DELETE CASCADE,
-    tag_id INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
-    PRIMARY KEY (chunk_id, tag_id)
+    topic_id INTEGER NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
+    PRIMARY KEY (chunk_id, topic_id)
   )`,
-  `CREATE TABLE episode_tags (
+  `CREATE TABLE episode_topics (
     episode_id INTEGER NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
-    tag_id INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
-    PRIMARY KEY (episode_id, tag_id)
+    topic_id INTEGER NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
+    PRIMARY KEY (episode_id, topic_id)
   )`,
-  `CREATE TABLE concordance (
+  `CREATE TABLE word_stats (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     word TEXT NOT NULL UNIQUE,
     total_count INTEGER NOT NULL DEFAULT 0,
@@ -95,13 +97,13 @@ const CREATES = [
   "CREATE INDEX IF NOT EXISTS idx_episodes_year_month ON episodes(year, month)",
   "CREATE INDEX IF NOT EXISTS idx_chunks_episode ON chunks(episode_id)",
   "CREATE INDEX IF NOT EXISTS idx_chunks_vector ON chunks(vector_id)",
-  "CREATE INDEX IF NOT EXISTS idx_tags_usage ON tags(usage_count DESC)",
-  "CREATE INDEX IF NOT EXISTS idx_chunk_tags_tag ON chunk_tags(tag_id)",
-  "CREATE INDEX IF NOT EXISTS idx_episode_tags_tag ON episode_tags(tag_id)",
-  "CREATE INDEX IF NOT EXISTS idx_concordance_count ON concordance(total_count DESC)",
+  "CREATE INDEX IF NOT EXISTS idx_topics_usage ON topics(usage_count DESC)",
+  "CREATE INDEX IF NOT EXISTS idx_chunk_topics_topic ON chunk_topics(topic_id)",
+  "CREATE INDEX IF NOT EXISTS idx_episode_topics_topic ON episode_topics(topic_id)",
+  "CREATE INDEX IF NOT EXISTS idx_word_stats_count ON word_stats(total_count DESC)",
   "CREATE INDEX IF NOT EXISTS idx_chunk_words_word ON chunk_words(word)",
   "CREATE INDEX IF NOT EXISTS idx_chunks_reach ON chunks(reach DESC)",
-  "CREATE INDEX IF NOT EXISTS idx_concordance_distinctiveness ON concordance(distinctiveness DESC)",
+  "CREATE INDEX IF NOT EXISTS idx_word_stats_distinctiveness ON word_stats(distinctiveness DESC)",
 ];
 
 export async function applyTestMigrations(db: D1Database): Promise<void> {

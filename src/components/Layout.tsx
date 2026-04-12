@@ -9,8 +9,7 @@ type LayoutProps = PropsWithChildren<{
 
 const NAV_ITEMS = [
   { href: "/episodes", label: "Episodes" },
-  { href: "/tags", label: "Tags" },
-  { href: "/concordance", label: "Concordance" },
+  { href: "/topics", label: "Topics" },
 ];
 
 export const Layout: FC<LayoutProps> = ({

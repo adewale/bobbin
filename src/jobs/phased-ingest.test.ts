@@ -26,12 +26,12 @@ describe("Phase 1: ingestEpisodesOnly", () => {
     expect(dbEps.results).toHaveLength(3);
   });
 
-  it("does NOT create tags", async () => {
+  it("does NOT create topics", async () => {
     const episodes = parseHtmlDocument(sampleEssays);
     await ingestEpisodesOnly(env.DB, 1, episodes);
 
-    const tags = await env.DB.prepare("SELECT COUNT(*) as c FROM tags").first();
-    expect((tags as any).c).toBe(0);
+    const topics = await env.DB.prepare("SELECT COUNT(*) as c FROM topics").first();
+    expect((topics as any).c).toBe(0);
   });
 
   it("does NOT create chunk_words", async () => {
@@ -42,12 +42,12 @@ describe("Phase 1: ingestEpisodesOnly", () => {
     expect((words as any).c).toBe(0);
   });
 
-  it("does NOT create concordance", async () => {
+  it("does NOT create word_stats", async () => {
     const episodes = parseHtmlDocument(sampleEssays);
     await ingestEpisodesOnly(env.DB, 1, episodes);
 
-    const conc = await env.DB.prepare("SELECT COUNT(*) as c FROM concordance").first();
-    expect((conc as any).c).toBe(0);
+    const ws = await env.DB.prepare("SELECT COUNT(*) as c FROM word_stats").first();
+    expect((ws as any).c).toBe(0);
   });
 
   it("is idempotent", async () => {
@@ -81,30 +81,30 @@ describe("Phase 2: enrichChunks", () => {
     await ingestEpisodesOnly(env.DB, 1, episodes);
   });
 
-  it("creates tags for a batch of unenriched chunks", async () => {
+  it("creates topics for a batch of unenriched chunks", async () => {
     const result = await enrichChunks(env.DB, 10);
 
     expect(result.chunksProcessed).toBeGreaterThan(0);
 
-    const tags = await env.DB.prepare("SELECT COUNT(*) as c FROM tags").first();
-    expect((tags as any).c).toBeGreaterThan(0);
+    const topics = await env.DB.prepare("SELECT COUNT(*) as c FROM topics").first();
+    expect((topics as any).c).toBeGreaterThan(0);
 
-    const chunkTags = await env.DB.prepare("SELECT COUNT(*) as c FROM chunk_tags").first();
-    expect((chunkTags as any).c).toBeGreaterThan(0);
+    const chunkTopics = await env.DB.prepare("SELECT COUNT(*) as c FROM chunk_topics").first();
+    expect((chunkTopics as any).c).toBeGreaterThan(0);
   });
 
-  it("creates chunk_words for concordance", async () => {
+  it("creates chunk_words for word stats", async () => {
     await enrichChunks(env.DB, 100);
 
     const words = await env.DB.prepare("SELECT COUNT(*) as c FROM chunk_words").first();
     expect((words as any).c).toBeGreaterThan(0);
   });
 
-  it("updates concordance aggregates", async () => {
+  it("updates word_stats aggregates", async () => {
     await enrichChunks(env.DB, 100);
 
-    const conc = await env.DB.prepare("SELECT COUNT(*) as c FROM concordance").first();
-    expect((conc as any).c).toBeGreaterThan(0);
+    const ws = await env.DB.prepare("SELECT COUNT(*) as c FROM word_stats").first();
+    expect((ws as any).c).toBeGreaterThan(0);
   });
 
   it("processes only the requested batch size", async () => {
@@ -114,19 +114,19 @@ describe("Phase 2: enrichChunks", () => {
 
   it("is idempotent — re-enriching already-enriched chunks is a no-op", async () => {
     await enrichChunks(env.DB, 100);
-    const firstTags = await env.DB.prepare("SELECT COUNT(*) as c FROM tags").first();
+    const firstTopics = await env.DB.prepare("SELECT COUNT(*) as c FROM topics").first();
 
     const result = await enrichChunks(env.DB, 100);
     expect(result.chunksProcessed).toBe(0);
 
-    const secondTags = await env.DB.prepare("SELECT COUNT(*) as c FROM tags").first();
-    expect((secondTags as any).c).toBe((firstTags as any).c);
+    const secondTopics = await env.DB.prepare("SELECT COUNT(*) as c FROM topics").first();
+    expect((secondTopics as any).c).toBe((firstTopics as any).c);
   });
 });
 
 // === isEnrichmentComplete ===
 describe("isEnrichmentComplete", () => {
-  it("returns false when chunks have no tags", async () => {
+  it("returns false when chunks have no topics", async () => {
     const episodes = parseHtmlDocument(sampleEssays);
     await ingestEpisodesOnly(env.DB, 1, episodes);
 
@@ -144,7 +144,7 @@ describe("isEnrichmentComplete", () => {
 
 // === E2E: Full phased pipeline ===
 describe("E2E: Phase 1 → Phase 2 produces same result as old pipeline", () => {
-  it("after both phases, DB has episodes, chunks, tags, concordance", async () => {
+  it("after both phases, DB has episodes, chunks, topics, word_stats", async () => {
     const episodes = parseHtmlDocument(sampleEssays);
 
     // Phase 1
@@ -157,14 +157,14 @@ describe("E2E: Phase 1 → Phase 2 produces same result as old pipeline", () => 
     // Verify everything exists
     const eps = await env.DB.prepare("SELECT COUNT(*) as c FROM episodes").first();
     const chunks = await env.DB.prepare("SELECT COUNT(*) as c FROM chunks").first();
-    const tags = await env.DB.prepare("SELECT COUNT(*) as c FROM tags WHERE usage_count > 0").first();
-    const conc = await env.DB.prepare("SELECT COUNT(*) as c FROM concordance").first();
-    const ct = await env.DB.prepare("SELECT COUNT(*) as c FROM chunk_tags").first();
+    const topics = await env.DB.prepare("SELECT COUNT(*) as c FROM topics WHERE usage_count > 0").first();
+    const ws = await env.DB.prepare("SELECT COUNT(*) as c FROM word_stats").first();
+    const ct = await env.DB.prepare("SELECT COUNT(*) as c FROM chunk_topics").first();
 
     expect((eps as any).c).toBe(3);
     expect((chunks as any).c).toBeGreaterThan(0);
-    expect((tags as any).c).toBeGreaterThan(0);
-    expect((conc as any).c).toBeGreaterThan(0);
+    expect((topics as any).c).toBeGreaterThan(0);
+    expect((ws as any).c).toBeGreaterThan(0);
     expect((ct as any).c).toBeGreaterThan(0);
   });
 

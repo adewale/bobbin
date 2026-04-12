@@ -1,41 +1,41 @@
 import { Hono } from "hono";
-import type { AppEnv, TagRow, ChunkRow } from "../types";
+import type { AppEnv, TopicRow, ChunkRow } from "../types";
 import { Layout } from "../components/Layout";
 import { SearchForm } from "../components/SearchForm";
-import { getFilteredTags, getTagBySlug, getTagChunkCount, getTaggedChunks, getTagSparkline, getTagEpisodes, getTagDiffChunks } from "../db/tags";
+import { getFilteredTopics, getTopicBySlug, getTopicChunkCount, getTopicChunks, getTopicSparkline, getTopicEpisodes, getTopicDiffChunks } from "../db/topics";
 import { safeParseInt } from "../lib/html";
-import { TagCloud } from "../components/TagCloud";
+import { TopicCloud } from "../components/TopicCloud";
 import { ChunkCard } from "../components/ChunkCard";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { Pagination } from "../components/Pagination";
 
-const tags = new Hono<AppEnv>();
+const topics = new Hono<AppEnv>();
 const PAGE_SIZE = 20;
 
-tags.get("/", async (c) => {
+topics.get("/", async (c) => {
   // Three tiers: multi-word entities, proper nouns, domain concepts
   const [multiWord, properNouns, conceptResults] = await Promise.all([
     // Multi-word entities: "claude code", "simon willison"
     c.env.DB.prepare(
-      "SELECT * FROM tags WHERE usage_count >= 3 AND name LIKE '% %' ORDER BY usage_count DESC LIMIT 20"
-    ).all<TagRow>(),
+      "SELECT * FROM topics WHERE usage_count >= 3 AND name LIKE '% %' ORDER BY usage_count DESC LIMIT 20"
+    ).all<TopicRow>(),
     // Distinctive domain terms: not in baseline, high distinctiveness
     c.env.DB.prepare(
-      `SELECT t.* FROM tags t
-       JOIN concordance c ON c.word = t.name
+      `SELECT t.* FROM topics t
+       JOIN word_stats c ON c.word = t.name
        WHERE t.usage_count >= 5 AND t.name NOT LIKE '% %'
          AND c.in_baseline = 0 AND c.distinctiveness >= 10
        ORDER BY c.distinctiveness DESC LIMIT 20`
-    ).all<TagRow>(),
+    ).all<TopicRow>(),
     // Domain concepts: ranked by usage × distinctiveness
     c.env.DB.prepare(
       `SELECT t.*, COALESCE(c.distinctiveness, 0) as dist
-       FROM tags t
-       LEFT JOIN concordance c ON c.word = t.name
+       FROM topics t
+       LEFT JOIN word_stats c ON c.word = t.name
        WHERE t.usage_count >= 3 AND t.name NOT LIKE '% %'
        ORDER BY t.usage_count * COALESCE(c.distinctiveness, 1) DESC
        LIMIT 80`
-    ).all<TagRow>(),
+    ).all<TopicRow>(),
   ]);
   const entities = multiWord.results;
   const entitySlugs = new Set(entities.map(t => t.slug));
@@ -47,19 +47,19 @@ tags.get("/", async (c) => {
     .slice(0, 80);
 
   return c.html(
-    <Layout title="Tags" description="Browse Bits and Bobs by topic" activePath="/tags">
+    <Layout title="Topics" description="Browse Bits and Bobs by topic" activePath="/topics">
       <SearchForm />
 
       {entities.length > 0 && (
-        <section class="tag-tier">
+        <section class="topic-tier">
           <h2>People, Products &amp; Phrases</h2>
-          <TagCloud tags={entities} />
+          <TopicCloud topics={entities} />
         </section>
       )}
 
-      <section class="tag-tier">
+      <section class="topic-tier">
         <h2>Key Concepts</h2>
-        <TagCloud tags={concepts} />
+        <TopicCloud topics={concepts} />
       </section>
 
       <script src="/scripts/tag-filter.js" defer></script>
@@ -67,20 +67,20 @@ tags.get("/", async (c) => {
   );
 });
 
-tags.get("/:slug", async (c) => {
+topics.get("/:slug", async (c) => {
   const slug = c.req.param("slug");
   const page = Math.max(1, safeParseInt(c.req.query("page"), 1));
   const offset = (page - 1) * PAGE_SIZE;
 
-  const tag = await getTagBySlug(c.env.DB, slug);
-  if (!tag) return c.notFound();
+  const topic = await getTopicBySlug(c.env.DB, slug);
+  if (!topic) return c.notFound();
 
   const [total, chunksList, episodes, sparkline, diffChunks] = await Promise.all([
-    getTagChunkCount(c.env.DB, tag.id),
-    getTaggedChunks(c.env.DB, tag.id, PAGE_SIZE, offset),
-    getTagEpisodes(c.env.DB, tag.id),
-    getTagSparkline(c.env.DB, tag.id),
-    getTagDiffChunks(c.env.DB, tag.id),
+    getTopicChunkCount(c.env.DB, topic.id),
+    getTopicChunks(c.env.DB, topic.id, PAGE_SIZE, offset),
+    getTopicEpisodes(c.env.DB, topic.id),
+    getTopicSparkline(c.env.DB, topic.id),
+    getTopicDiffChunks(c.env.DB, topic.id),
   ]);
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
@@ -88,17 +88,17 @@ tags.get("/:slug", async (c) => {
 
   return c.html(
     <Layout
-      title={`Tag: ${tag.name}`}
-      description={`Exploring "${tag.name}" across Bits and Bobs — ${total} chunks across ${episodes.length} episodes`}
-      activePath="/tags"
+      title={`Topic: ${topic.name}`}
+      description={`Exploring "${topic.name}" across Bits and Bobs — ${total} chunks across ${episodes.length} episodes`}
+      activePath="/topics"
     >
       <Breadcrumbs
         crumbs={[
-          { label: "Tags", href: "/tags" },
-          { label: tag.name },
+          { label: "Topics", href: "/topics" },
+          { label: topic.name },
         ]}
       />
-      <h1>Tag: {tag.name}</h1>
+      <h1>Topic: {topic.name}</h1>
       <p>
         {total} chunk{total !== 1 ? "s" : ""} across {episodes.length} episode
         {episodes.length !== 1 ? "s" : ""}
@@ -131,8 +131,8 @@ tags.get("/:slug", async (c) => {
         ];
 
         return (
-          <section class="tag-sparkline">
-            <svg viewBox={`0 0 ${w} ${h + 16}`} class="tag-spark-svg">
+          <section class="topic-sparkline">
+            <svg viewBox={`0 0 ${w} ${h + 16}`} class="topic-spark-svg">
               {/* Mean reference line */}
               <line x1={pad} y1={meanY} x2={w - pad} y2={meanY}
                 stroke="var(--border)" stroke-width="1" stroke-dasharray="4,3" />
@@ -165,24 +165,24 @@ tags.get("/:slug", async (c) => {
 
 
       {/* Episode level: horizontal density bars */}
-      <section class="tag-episode-timeline">
+      <section class="topic-episode-timeline">
         <h2>Episodes</h2>
         {episodes.map((ep: any) => {
-          const barWidth = Math.round((ep.tag_chunk_count / Math.max(...episodes.map((e: any) => e.tag_chunk_count), 1)) * 100);
+          const barWidth = Math.round((ep.topic_chunk_count / Math.max(...episodes.map((e: any) => e.topic_chunk_count), 1)) * 100);
           return (
             <a key={ep.id} href={`/episodes/${ep.slug}`} class="ep-density-row">
               <time datetime={ep.published_date}>{ep.published_date}</time>
               <div class="ep-density-bar">
                 <div class="ep-density-fill" style={`width:${Math.max(barWidth, 2)}%`} />
               </div>
-              <span class="ep-density-count">{ep.tag_chunk_count}</span>
+              <span class="ep-density-count">{ep.topic_chunk_count}</span>
             </a>
           );
         })}
       </section>
 
       {/* Diff: collapsible evolution view */}
-      <details class="tag-diff-section">
+      <details class="topic-diff-section">
         <summary>Evolution over time</summary>
         <div class="diff-view">
           {diffChunks.map((r: any, i: number) => (
@@ -199,7 +199,7 @@ tags.get("/:slug", async (c) => {
       </details>
 
       {/* Observation list */}
-      <section class="tag-chunks">
+      <section class="topic-chunks">
         <h2>Observations</h2>
         {chunksList.map((r) => (
           <ChunkCard
@@ -213,7 +213,7 @@ tags.get("/:slug", async (c) => {
         <Pagination
           currentPage={page}
           totalPages={totalPages}
-          baseUrl={`/tags/${slug}`}
+          baseUrl={`/topics/${slug}`}
         />
       </section>
 
@@ -221,4 +221,4 @@ tags.get("/:slug", async (c) => {
   );
 });
 
-export { tags as tagRoutes };
+export { topics as topicRoutes };

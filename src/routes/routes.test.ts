@@ -24,16 +24,16 @@ async function seedTestData() {
       "INSERT INTO chunks (episode_id, slug, title, content, content_plain, position, word_count) VALUES (2, 'whale-falls-2024-03-25', 'Whale falls', 'Dead platforms become ecosystems.', 'Dead platforms become ecosystems.', 0, 5)"
     ),
     env.DB.prepare(
-      "INSERT INTO tags (name, slug, usage_count) VALUES ('ecosystem', 'ecosystem', 2)"
+      "INSERT INTO topics (name, slug, usage_count) VALUES ('ecosystem', 'ecosystem', 2)"
     ),
     env.DB.prepare(
-      "INSERT INTO tags (name, slug, usage_count) VALUES ('platform', 'platform', 1)"
+      "INSERT INTO topics (name, slug, usage_count) VALUES ('platform', 'platform', 1)"
     ),
-    env.DB.prepare("INSERT INTO chunk_tags (chunk_id, tag_id) VALUES (1, 1)"),
-    env.DB.prepare("INSERT INTO chunk_tags (chunk_id, tag_id) VALUES (2, 1)"),
-    env.DB.prepare("INSERT INTO chunk_tags (chunk_id, tag_id) VALUES (2, 2)"),
-    env.DB.prepare("INSERT INTO episode_tags (episode_id, tag_id) VALUES (1, 1)"),
-    env.DB.prepare("INSERT INTO episode_tags (episode_id, tag_id) VALUES (1, 2)"),
+    env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 1)"),
+    env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (2, 1)"),
+    env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (2, 2)"),
+    env.DB.prepare("INSERT INTO episode_topics (episode_id, topic_id) VALUES (1, 1)"),
+    env.DB.prepare("INSERT INTO episode_topics (episode_id, topic_id) VALUES (1, 2)"),
   ]);
 }
 

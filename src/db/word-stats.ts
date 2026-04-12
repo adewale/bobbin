@@ -1,23 +1,23 @@
-import type { ConcordanceRow } from "../types";
+import type { WordStatsRow } from "../types";
 
-export async function getTopConcordance(
+export async function getTopWordStats(
   db: D1Database,
   sortBy: "distinctive" | "count" = "distinctive",
   limit = 200
-): Promise<ConcordanceRow[]> {
+): Promise<WordStatsRow[]> {
   const orderCol = sortBy === "count" ? "total_count" : "distinctiveness";
   const result = await db.prepare(
-    `SELECT * FROM concordance
+    `SELECT * FROM word_stats
      WHERE doc_count >= 2 AND total_count >= 3 AND length(word) >= 4
      ORDER BY ${orderCol} DESC
      LIMIT ?`
-  ).bind(limit).all<ConcordanceRow>();
+  ).bind(limit).all<WordStatsRow>();
   return result.results;
 }
 
-export async function getConcordanceWord(db: D1Database, word: string): Promise<ConcordanceRow | null> {
-  return await db.prepare("SELECT * FROM concordance WHERE word = ?")
-    .bind(word).first<ConcordanceRow>();
+export async function getWordStats(db: D1Database, word: string): Promise<WordStatsRow | null> {
+  return await db.prepare("SELECT * FROM word_stats WHERE word = ?")
+    .bind(word).first<WordStatsRow>();
 }
 
 export async function getWordChunks(db: D1Database, word: string, limit = 100) {
@@ -103,8 +103,8 @@ export async function getMostConnected(db: D1Database, limit = 8) {
             e.slug as episode_slug, e.published_date,
             SUM(t.usage_count) as reach
      FROM chunks c
-     JOIN chunk_tags ct ON c.id = ct.chunk_id
-     JOIN tags t ON ct.tag_id = t.id
+     JOIN chunk_topics ct ON c.id = ct.chunk_id
+     JOIN topics t ON ct.topic_id = t.id
      JOIN episodes e ON c.episode_id = e.id
      GROUP BY c.id
      ORDER BY reach DESC

@@ -44,12 +44,12 @@ describe("ingestParsedEpisodes", () => {
     expect((chunks.results[0] as any).content).toContain("software");
   });
 
-  it("generates tags for chunks", async () => {
+  it("generates topics for chunks", async () => {
     const testEnv = { ...env, AI: null as any, VECTORIZE: null as any };
     await ingestParsedEpisodes(testEnv, 1, parsedEpisodes);
 
-    const tags = await env.DB.prepare("SELECT * FROM tags").all();
-    expect(tags.results.length).toBeGreaterThan(0);
+    const topics = await env.DB.prepare("SELECT * FROM topics").all();
+    expect(topics.results.length).toBeGreaterThan(0);
   });
 
   it("is idempotent — re-ingesting same episodes adds no duplicates", async () => {
@@ -63,13 +63,13 @@ describe("ingestParsedEpisodes", () => {
     expect(second.chunksAdded).toBe(0);
   });
 
-  it("updates concordance after ingestion", async () => {
+  it("updates word_stats after ingestion", async () => {
     const testEnv = { ...env, AI: null as any, VECTORIZE: null as any };
     await ingestParsedEpisodes(testEnv, 1, parsedEpisodes);
 
-    const concordance = await env.DB.prepare(
-      "SELECT * FROM concordance ORDER BY total_count DESC LIMIT 5"
+    const wordStats = await env.DB.prepare(
+      "SELECT * FROM word_stats ORDER BY total_count DESC LIMIT 5"
     ).all();
-    expect(concordance.results.length).toBeGreaterThan(0);
+    expect(wordStats.results.length).toBeGreaterThan(0);
   });
 });

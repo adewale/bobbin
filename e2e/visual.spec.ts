@@ -132,24 +132,24 @@ test.describe("Visual: Chunk detail", () => {
   });
 });
 
-test.describe("Visual: Concordance", () => {
+test.describe("Visual: Word Stats", () => {
   test("data visualization is clear and understandable", async () => {
-    ab(["open", `${BASE_URL}/concordance`]);
+    ab(["open", `${BASE_URL}/word-stats`]);
     ab(["wait", "--load", "networkidle"]);
 
     const answer = askAI(
-      "Is the data visualization on this concordance page clear? " +
+      "Is the data visualization on this word stats page clear? " +
         "Can I understand what the most distinctive words are? Is the " +
         "information well-organized and easy to scan? Answer YES if the " +
         "visualization is clear, NO if there are problems. Then briefly explain."
     );
 
-    console.log("AI assessment (concordance):", answer);
+    console.log("AI assessment (word-stats):", answer);
 
     const lower = answer.toLowerCase();
     expect(
       lower.includes("yes") || lower.includes("clear"),
-      `AI reported visualization issues on concordance: ${answer}`
+      `AI reported visualization issues on word-stats: ${answer}`
     ).toBeTruthy();
   });
 });
