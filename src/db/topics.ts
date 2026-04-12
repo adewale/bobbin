@@ -111,6 +111,86 @@ export async function getTopicWordStats(db: D1Database, topicName: string) {
   ).bind(topicName.toLowerCase()).first<Pick<WordStatsRow, "total_count" | "doc_count" | "distinctiveness" | "in_baseline">>();
 }
 
+export async function getTopicKWIC(db: D1Database, topicName: string, limit = 10) {
+  const result = await db.prepare(
+    `SELECT c.content_plain, c.slug, e.published_date
+     FROM chunk_words cw
+     JOIN chunks c ON cw.chunk_id = c.id
+     JOIN episodes e ON c.episode_id = e.id
+     WHERE cw.word = ?
+     ORDER BY cw.count DESC
+     LIMIT ?`
+  ).bind(topicName.toLowerCase(), limit).all();
+  return result.results as { content_plain: string; slug: string; published_date: string }[];
+}
+
+export async function getThemeRiverData(db: D1Database, topicLimit = 8) {
+  // Get top topics
+  const topTopics = await db.prepare(
+    "SELECT id, name, slug FROM topics WHERE usage_count >= 5 ORDER BY usage_count DESC LIMIT ?"
+  ).bind(topicLimit).all<{ id: number; name: string; slug: string }>();
+
+  if (!topTopics.results.length) return { topics: [], episodes: [], data: [] };
+
+  // Get all episodes ordered by date
+  const episodes = await db.prepare(
+    "SELECT id, published_date FROM episodes ORDER BY published_date ASC"
+  ).all<{ id: number; published_date: string }>();
+
+  // Get counts: topic x episode
+  const topicIds = topTopics.results.map(t => t.id);
+  const placeholders = topicIds.map(() => "?").join(",");
+  const counts = await db.prepare(
+    `SELECT ct.topic_id, c.episode_id, COUNT(*) as count
+     FROM chunk_topics ct
+     JOIN chunks c ON ct.chunk_id = c.id
+     WHERE ct.topic_id IN (${placeholders})
+     GROUP BY ct.topic_id, c.episode_id`
+  ).bind(...topicIds).all();
+
+  // Build matrix: topics x episodes
+  const countMap = new Map<string, number>();
+  for (const r of counts.results as any[]) {
+    countMap.set(`${r.topic_id}-${r.episode_id}`, r.count);
+  }
+
+  const data = topTopics.results.map(topic => ({
+    name: topic.name,
+    slug: topic.slug,
+    values: episodes.results.map(ep => countMap.get(`${topic.id}-${ep.id}`) || 0),
+  }));
+
+  return {
+    topics: topTopics.results,
+    episodes: episodes.results.map(e => e.published_date),
+    data,
+  };
+}
+
+export async function getTopicRanksByYear(db: D1Database) {
+  const result = await db.prepare(
+    `SELECT t.id, t.name, t.slug, e.year, COUNT(*) as year_count
+     FROM chunk_topics ct
+     JOIN topics t ON ct.topic_id = t.id
+     JOIN chunks c ON ct.chunk_id = c.id
+     JOIN episodes e ON c.episode_id = e.id
+     GROUP BY t.id, e.year
+     ORDER BY e.year, year_count DESC`
+  ).all();
+
+  // Group by year, rank within each year
+  const byYear = new Map<number, { id: number; name: string; slug: string; count: number; rank: number }[]>();
+  for (const r of result.results as any[]) {
+    if (!byYear.has(r.year)) byYear.set(r.year, []);
+    byYear.get(r.year)!.push({ id: r.id, name: r.name, slug: r.slug, count: r.year_count, rank: 0 });
+  }
+  // Assign ranks (already sorted by count DESC)
+  for (const [, topics] of byYear) {
+    topics.forEach((t, i) => t.rank = i + 1);
+  }
+  return byYear;
+}
+
 export async function getTopTopicsWithSparklines(db: D1Database, limit = 20) {
   const topTopics = await db.prepare(
     "SELECT id, name, slug, usage_count FROM topics WHERE usage_count >= 3 ORDER BY usage_count DESC LIMIT ?"
