@@ -16,7 +16,11 @@ tags.get("/", async (c) => {
   // Query entities and concepts separately so entities aren't crowded out
   const [entityResults, conceptResults] = await Promise.all([
     c.env.DB.prepare(
-      "SELECT * FROM tags WHERE usage_count >= 3 AND name LIKE '% %' ORDER BY usage_count DESC LIMIT 20"
+      `SELECT t.* FROM tags t
+       LEFT JOIN concordance c ON c.word = t.name
+       WHERE t.usage_count >= 3
+         AND (t.name LIKE '% %' OR (c.in_baseline = 0 AND t.usage_count >= 8))
+       ORDER BY t.usage_count DESC LIMIT 30`
     ).all<TagRow>(),
     c.env.DB.prepare(
       `SELECT t.*, COALESCE(c.distinctiveness, 0) as dist
