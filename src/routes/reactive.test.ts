@@ -43,18 +43,6 @@ describe("GET /api/concordance", () => {
   });
 });
 
-describe("GET /api/timeline", () => {
-  it("returns episode counts per month as JSON", async () => {
-    const res = await SELF.fetch("http://localhost/api/timeline");
-    expect(res.status).toBe(200);
-    const data = (await res.json()) as any;
-    expect(data.months.length).toBeGreaterThan(0);
-    expect(data.months[0]).toHaveProperty("year");
-    expect(data.months[0]).toHaveProperty("month");
-    expect(data.months[0]).toHaveProperty("count");
-  });
-});
-
 describe("GET /concordance (interactive)", () => {
   it("includes the reactive JS bundle", async () => {
     const res = await SELF.fetch("http://localhost/concordance");

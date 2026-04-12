@@ -163,27 +163,3 @@ describe("Data consistency after ingestion", () => {
   });
 });
 
-// === Feed validation ===
-describe("Feed output validation", () => {
-  beforeEach(async () => {
-    const episodes = parseHtmlDocument(sampleHtml);
-    const testEnv = { ...env, AI: null as any, VECTORIZE: null as any };
-    await ingestParsedEpisodes(testEnv, 1, episodes);
-  });
-
-  it("sitemap.xml is well-formed XML with all episode URLs", async () => {
-    const res = await SELF.fetch("http://localhost/sitemap.xml");
-    const xml = await res.text();
-
-    expect(xml).toMatch(/^<\?xml version/);
-    expect(xml).toContain("<urlset");
-    expect(xml).toContain("</urlset>");
-
-    // Every episode slug should appear
-    const episodes = await env.DB.prepare("SELECT slug FROM episodes").all();
-    for (const ep of episodes.results as any[]) {
-      expect(xml).toContain(`/episodes/${ep.slug}`);
-    }
-  });
-
-});

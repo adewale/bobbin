@@ -20,51 +20,6 @@ beforeEach(async () => {
   await seedTestData();
 });
 
-describe("GET /timeline", () => {
-  it("returns 200 with years", async () => {
-    const res = await SELF.fetch("http://localhost/timeline");
-    expect(res.status).toBe(200);
-    const html = await res.text();
-    expect(html).toContain("2024");
-  });
-});
-
-describe("GET /timeline/:year", () => {
-  it("returns 200 with months for year", async () => {
-    const res = await SELF.fetch("http://localhost/timeline/2024");
-    expect(res.status).toBe(200);
-    const html = await res.text();
-    expect(html).toContain("April");
-    expect(html).toContain("March");
-  });
-
-  it("returns 200 with empty state for year without episodes", async () => {
-    const res = await SELF.fetch("http://localhost/timeline/1999");
-    expect(res.status).toBe(200);
-    const html = await res.text();
-    expect(html).toContain("No episodes in 1999");
-  });
-});
-
-describe("GET /timeline/:year/:month", () => {
-  it("returns 200 with episodes for month", async () => {
-    const res = await SELF.fetch("http://localhost/timeline/2024/04");
-    expect(res.status).toBe(200);
-    const html = await res.text();
-    expect(html).toContain("Bits and Bobs 4/8/24");
-  });
-});
-
-describe("GET /timeline/:year/:month/:day", () => {
-  it("redirects to episode page", async () => {
-    const res = await SELF.fetch("http://localhost/timeline/2024/04/08", {
-      redirect: "manual",
-    });
-    expect(res.status).toBe(301);
-    expect(res.headers.get("location")).toContain("/episodes/2024-04-08");
-  });
-});
-
 describe("GET /concordance", () => {
   it("returns 200 with word table", async () => {
     const res = await SELF.fetch("http://localhost/concordance");
@@ -89,14 +44,4 @@ describe("GET /concordance/:word", () => {
   });
 });
 
-describe("GET /sitemap.xml", () => {
-  it("returns valid XML sitemap", async () => {
-    const res = await SELF.fetch("http://localhost/sitemap.xml");
-    expect(res.status).toBe(200);
-    expect(res.headers.get("content-type")).toContain("application/xml");
-    const xml = await res.text();
-    expect(xml).toContain("<urlset");
-    expect(xml).toContain("/episodes/2024-04-08");
-  });
-});
 

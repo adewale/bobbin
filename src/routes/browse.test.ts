@@ -50,16 +50,6 @@ describe("GET /episodes (unified browse)", () => {
   });
 });
 
-// /timeline still works as redirect/alias
-describe("GET /timeline redirects or works", () => {
-  it("GET /timeline/:year/:month/:day still redirects to episode", async () => {
-    const res = await SELF.fetch("http://localhost/timeline/2024/04/08", {
-      redirect: "manual",
-    });
-    expect(res.status).toBe(301);
-  });
-});
-
 // Search icon in header
 describe("Header search icon", () => {
   it("header contains search icon link, not text 'Search'", async () => {

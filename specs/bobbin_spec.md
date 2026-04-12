@@ -8,25 +8,26 @@ Core Problem: it has interesting stuff but there's too much to digest.
 Ingest all of Komoroske's content.
 Insert it into a Vectorize database.
 
-Offer a timeline UI for seeing every episode.
+Browse episodes grouped by year and month (accordion navigation).
 Expose tags for every episode.
 
-Expose a search interface.
+Expose a search interface (hybrid FTS5 + Vectorize with search operators).
 
 Expose every chunk with its own URL.
-Show related chunks for every chunk.
+Show related chunks for every chunk (Vectorize cross-references, tag-based fallback).
 Expose tags on every chunk.
-Allow browsing by tag.
+Allow browsing by tag (three-tier tag cloud: entities, proper nouns, concepts).
 
-
-Allow browsing by time.
-Use year, month and publication day. Enable URL hacking and calendar browsing.
-
-Optimise for SEO.
-
-Offer a concordance view.
+Offer a concordance view (word frequency, distinctiveness scoring).
 
 Use the Cloudflare platform and skill: https://github.com/cloudflare/skills
+
+## Removed features
+
+- Timeline UI (redundant — episodes page already groups by year/month)
+- Sitemap.xml (removed to reduce surface area)
+- RSS/Atom feeds (archive of finished newsletter, not a live content stream)
+- Tag diff page (redundant — tag detail page has inline "Evolution over time" section)
 
 ## Implementation notes
 

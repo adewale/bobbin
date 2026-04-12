@@ -192,13 +192,4 @@ api.get("/concordance", async (c) => {
   return c.json({ words: results.results });
 });
 
-// Reactive API: timeline data
-api.get("/timeline", async (c) => {
-  const results = await c.env.DB.prepare(
-    `SELECT year, month, COUNT(*) as count, SUM(chunk_count) as total_chunks
-     FROM episodes GROUP BY year, month ORDER BY year, month`
-  ).all();
-  return c.json({ months: results.results });
-});
-
 export { api as apiRoutes };

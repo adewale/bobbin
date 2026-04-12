@@ -6,9 +6,7 @@ import { episodeRoutes } from "./routes/episodes";
 import { chunkRoutes } from "./routes/chunks";
 import { tagRoutes } from "./routes/tags";
 import { searchRoutes } from "./routes/search";
-import { timelineRoutes } from "./routes/timeline";
 import { concordanceRoutes } from "./routes/concordance";
-import { feedRoutes } from "./routes/feeds";
 import { apiRoutes } from "./routes/api";
 import { runRefresh } from "./jobs/refresh";
 
@@ -36,9 +34,7 @@ app.route("/episodes", episodeRoutes);
 app.route("/chunks", chunkRoutes);
 app.route("/tags", tagRoutes);
 app.route("/search", searchRoutes);
-app.route("/timeline", timelineRoutes);
 app.route("/concordance", concordanceRoutes);
-app.route("/", feedRoutes);
 app.route("/api", apiRoutes);
 
 // 404 handler — uses Layout for consistency

@@ -59,19 +59,6 @@ describe("B3: Bad query params", () => {
   });
 });
 
-// B6: NaN in timeline
-describe("B6: Timeline with non-numeric params", () => {
-  it("GET /timeline/abc returns 404", async () => {
-    const res = await SELF.fetch("http://localhost/timeline/abc");
-    expect(res.status).toBe(404);
-  });
-
-  it("GET /timeline/2024/abc returns 404", async () => {
-    const res = await SELF.fetch("http://localhost/timeline/2024/abc");
-    expect(res.status).toBe(404);
-  });
-});
-
 // S5: Error messages should be generic
 describe("S5: Generic error messages", () => {
   it("API errors do not leak internal details", async () => {
@@ -86,16 +73,3 @@ describe("S5: Generic error messages", () => {
   });
 });
 
-// D3: Consistent BASE_URL
-describe("D3: BASE_URL consistency", () => {
-  it("sitemap and feed do not contain old bobbin.pages.dev URL", async () => {
-    const [sitemap, feed] = await Promise.all([
-      SELF.fetch("http://localhost/sitemap.xml").then((r) => r.text()),
-      SELF.fetch("http://localhost/feed.xml").then((r) => r.text()),
-    ]);
-    expect(sitemap).not.toContain("bobbin.pages.dev");
-    expect(feed).not.toContain("bobbin.pages.dev");
-    expect(sitemap).not.toContain("bobbin.example.com");
-    expect(feed).not.toContain("bobbin.example.com");
-  });
-});

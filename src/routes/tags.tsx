@@ -221,48 +221,4 @@ tags.get("/:slug", async (c) => {
   );
 });
 
-// Feature 4: Diff-over-time view for a tag
-tags.get("/:slug/diff", async (c) => {
-  const slug = c.req.param("slug");
-  const tag = await getTagBySlug(c.env.DB, slug);
-
-  if (!tag) return c.notFound();
-
-  const diffChunks = await getTagDiffChunks(c.env.DB, tag.id);
-
-  return c.html(
-    <Layout
-      title={`"${tag.name}" over time`}
-      activePath="/tags"
-      description={`How Komoroske's thinking on "${tag.name}" has evolved`}
-    >
-      <Breadcrumbs
-        crumbs={[
-          { label: "Tags", href: "/tags" },
-          { label: tag.name, href: `/tags/${tag.slug}` },
-          { label: "Diff" },
-        ]}
-      />
-      <h1>&ldquo;{tag.name}&rdquo; over time</h1>
-      <div class="diff-view">
-        {diffChunks.map((r, i) => (
-          <article key={r.id} class="diff-entry">
-            <div class="diff-date">
-              <time datetime={r.published_date}>{r.published_date}</time>
-              <a href={`/episodes/${r.episode_slug}`}>{r.episode_title}</a>
-            </div>
-            <div class="diff-content">
-              <h2><a href={`/chunks/${r.slug}`}>{r.title}</a></h2>
-              <p>{r.content_plain}</p>
-            </div>
-            {i < diffChunks.length - 1 && (
-              <div class="diff-connector" aria-hidden="true" />
-            )}
-          </article>
-        ))}
-      </div>
-    </Layout>
-  );
-});
-
 export { tags as tagRoutes };
