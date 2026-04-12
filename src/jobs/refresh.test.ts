@@ -12,16 +12,8 @@ describe("runRefresh", () => {
     const before = await env.DB.prepare("SELECT COUNT(*) as c FROM sources").first();
     expect((before as any).c).toBe(0);
 
-    const promise = runRefresh({ ...env, ADMIN_SECRET: "" } as any);
-    const timeout = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("timeout")), 3000)
-    );
-
-    try {
-      await Promise.race([promise, timeout]);
-    } catch {
-      // Expected: fetch will fail in test environment
-    }
+    // runRefresh catches fetch errors internally via failIngestionLog
+    await runRefresh({ ...env, ADMIN_SECRET: "" } as any);
 
     const after = await env.DB.prepare("SELECT * FROM sources ORDER BY id").all();
     expect(after.results.length).toBe(1);
@@ -36,16 +28,8 @@ describe("runRefresh", () => {
       "INSERT INTO sources (google_doc_id, title) VALUES ('1xRiCqpy3LMAgEsHdX-IA23j6nUISdT5nAJmtKbk9wNA', 'Current')"
     ).run();
 
-    const promise = runRefresh({ ...env, ADMIN_SECRET: "" } as any);
-    const timeout = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("timeout")), 3000)
-    );
-
-    try {
-      await Promise.race([promise, timeout]);
-    } catch {
-      // Expected
-    }
+    // runRefresh catches fetch errors internally via failIngestionLog
+    await runRefresh({ ...env, ADMIN_SECRET: "" } as any);
 
     const logs = await env.DB.prepare("SELECT * FROM ingestion_log").all();
     expect(logs.results.length).toBe(1);
