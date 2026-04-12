@@ -23,7 +23,7 @@ tags.get("/", async (c) => {
        FROM tags t
        LEFT JOIN concordance c ON c.word = t.name
        WHERE t.usage_count >= 3 AND t.name NOT LIKE '% %'
-       ORDER BY CASE WHEN c.in_baseline = 0 THEN dist ELSE 0 END DESC, t.usage_count DESC
+       ORDER BY t.usage_count * COALESCE(c.distinctiveness, 1) DESC
        LIMIT 60`
     ).all<TagRow>(),
   ]);
