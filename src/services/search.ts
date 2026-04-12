@@ -1,4 +1,5 @@
 import type { ParsedQuery } from "../lib/query-parser";
+import { applyTopicFilter } from "./search-topics";
 
 export interface BoostConfig {
   title: number;
@@ -63,6 +64,17 @@ export async function ftsSearch(
     ? "AND " + dateFilters.join(" AND ")
     : "";
 
+  // Topic filter: resolve topic slugs to chunk IDs
+  let topicWhere = "";
+  let topicBinds: any[] = [];
+  if (parsed.topics && parsed.topics.length > 0) {
+    const allowedChunkIds = await applyTopicFilter(db, parsed.topics);
+    if (allowedChunkIds.length === 0) return [];
+    const placeholders = allowedChunkIds.map(() => "?").join(",");
+    topicWhere = `AND c.id IN (${placeholders})`;
+    topicBinds = allowedChunkIds;
+  }
+
   const results = await db
     .prepare(
       `SELECT c.id, c.slug, c.title, c.summary, c.content_plain,
@@ -73,10 +85,11 @@ export async function ftsSearch(
        JOIN episodes e ON c.episode_id = e.id
        WHERE chunks_fts MATCH ?
        ${dateWhere}
+       ${topicWhere}
        ORDER BY rank
        LIMIT ?`
     )
-    .bind(-boosts.title, -boosts.content, ftsQuery, ...dateBinds, limit)
+    .bind(-boosts.title, -boosts.content, ftsQuery, ...dateBinds, ...topicBinds, limit)
     .all();
 
   const rows = results.results as any[];

@@ -7,6 +7,9 @@ import { Breadcrumbs } from "../components/Breadcrumbs";
 import { ftsSearch, mergeAndRerank, type ScoredResult } from "../services/search";
 import { parseSearchQuery } from "../lib/query-parser";
 import { keywordSearch } from "../db/search";
+import { applyTopicBoost } from "../services/search-topics";
+import { expandEntityAliases } from "../lib/entity-aliases";
+import { KNOWN_ENTITIES } from "../data/known-entities";
 
 const search = new Hono<AppEnv>();
 
@@ -17,6 +20,17 @@ search.get("/", async (c) => {
 
   if (query) {
     const parsed = parseSearchQuery(query);
+
+    // Entity alias expansion: if query matches a known entity, expand to include all aliases
+    const entityAliases = expandEntityAliases(parsed.text, KNOWN_ENTITIES);
+    if (entityAliases.length > 0) {
+      // Add alias terms to the parsed text for broader FTS matching
+      const uniqueTerms = new Set([
+        parsed.text.toLowerCase(),
+        ...entityAliases,
+      ]);
+      parsed.text = [...uniqueTerms].filter(Boolean).join(" OR ");
+    }
 
     // FTS5 search with field boosting + date filters (primary)
     let ftsResults: ScoredResult[] = [];
@@ -82,6 +96,11 @@ search.get("/", async (c) => {
 
     // Merge and rerank
     results = mergeAndRerank(ftsResults, vectorResults);
+
+    // Topic boost: if query text matches a topic, boost chunks assigned to it
+    if (parsed.text) {
+      results = await applyTopicBoost(c.env.DB, parsed.text, results);
+    }
   }
 
   return c.html(

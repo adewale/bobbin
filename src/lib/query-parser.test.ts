@@ -62,6 +62,43 @@ describe("parseSearchQuery", () => {
   });
 });
 
+describe("parseSearchQuery topic: operator", () => {
+  it("extracts a single topic operator", () => {
+    const q = parseSearchQuery("agents topic:coding");
+    expect(q.text).toBe("agents");
+    expect(q.topics).toEqual(["coding"]);
+  });
+
+  it("extracts multiple topic operators", () => {
+    const q = parseSearchQuery("topic:openai LLMs topic:agent");
+    expect(q.text).toBe("LLMs");
+    expect(q.topics).toEqual(["openai", "agent"]);
+  });
+
+  it("returns undefined topics when none specified", () => {
+    const q = parseSearchQuery("just text");
+    expect(q.topics).toBeUndefined();
+  });
+
+  it("lowercases topic slugs", () => {
+    const q = parseSearchQuery("topic:OpenAI topic:AGENT");
+    expect(q.topics).toEqual(["openai", "agent"]);
+  });
+
+  it("handles topic operator with no other text", () => {
+    const q = parseSearchQuery("topic:ecosystem");
+    expect(q.text).toBe("");
+    expect(q.topics).toEqual(["ecosystem"]);
+  });
+
+  it("combines topic operator with other operators", () => {
+    const q = parseSearchQuery("llms topic:coding year:2025");
+    expect(q.text).toBe("llms");
+    expect(q.topics).toEqual(["coding"]);
+    expect(q.year).toBe(2025);
+  });
+});
+
 describe("PBT: parseSearchQuery invariants", () => {
   it("never loses the year value", () => {
     fc.assert(
@@ -95,6 +132,30 @@ describe("PBT: parseSearchQuery invariants", () => {
         const q = parseSearchQuery(input);
         expect(q.text).toBe(q.text.trim());
       })
+    );
+  });
+
+  it("never throws on arbitrary input", () => {
+    fc.assert(
+      fc.property(fc.string({ minLength: 0, maxLength: 100 }), (input) => {
+        // Should never throw, regardless of input
+        const q = parseSearchQuery(input);
+        expect(q).toBeDefined();
+        expect(typeof q.text).toBe("string");
+      })
+    );
+  });
+
+  it("topic: operators are always removed from text", () => {
+    fc.assert(
+      fc.property(
+        fc.string({ minLength: 1, maxLength: 10 }).filter(s => /^[a-z]+$/.test(s)),
+        (slug) => {
+          const q = parseSearchQuery(`hello topic:${slug} world`);
+          expect(q.text).not.toContain("topic:");
+          expect(q.topics).toEqual([slug]);
+        }
+      )
     );
   });
 });

@@ -1,5 +1,6 @@
 import type { ParsedQuery } from "../lib/query-parser";
 import { escapeLike } from "../lib/html";
+import { applyTopicFilter } from "../services/search-topics";
 
 export interface KeywordResult {
   id: number;
@@ -32,13 +33,25 @@ export async function keywordSearch(
 
   const dateWhere = dateFilters.length > 0 ? "AND " + dateFilters.join(" AND ") : "";
 
+  // Topic filter: resolve topic slugs to chunk IDs
+  let topicWhere = "";
+  const topicBinds: any[] = [];
+  if (parsed.topics && parsed.topics.length > 0) {
+    const allowedChunkIds = await applyTopicFilter(db, parsed.topics);
+    if (allowedChunkIds.length === 0) return [];
+    const placeholders = allowedChunkIds.map(() => "?").join(",");
+    topicWhere = `AND c.id IN (${placeholders})`;
+    topicBinds.push(...allowedChunkIds);
+  }
+
   const result = await db.prepare(
     `SELECT c.*, e.slug as episode_slug, e.title as episode_title, e.published_date
      FROM chunks c JOIN episodes e ON c.episode_id = e.id
      WHERE c.content_plain LIKE ? ESCAPE '\\'
      ${dateWhere}
+     ${topicWhere}
      ORDER BY e.published_date DESC LIMIT ?`
-  ).bind(...binds, limit).all<KeywordResult>();
+  ).bind(...binds, ...topicBinds, limit).all<KeywordResult>();
 
   return result.results;
 }
