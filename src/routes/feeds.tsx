@@ -1,17 +1,14 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../types";
 import { escapeXml, getBaseUrl } from "../lib/html";
+import { getSitemapData, getFeedEpisodes } from "../db/feeds";
 
 const feeds = new Hono<AppEnv>();
 
 feeds.get("/sitemap.xml", async (c) => {
   const baseUrl = getBaseUrl(c.req.url);
 
-  const [episodes, chunks, tags] = await Promise.all([
-    c.env.DB.prepare("SELECT slug, updated_at FROM episodes").all(),
-    c.env.DB.prepare("SELECT slug, updated_at FROM chunks LIMIT 5000").all(),
-    c.env.DB.prepare("SELECT slug FROM tags WHERE usage_count > 0").all(),
-  ]);
+  const { episodes, chunks, tags } = await getSitemapData(c.env.DB);
 
   const urls: { loc: string; lastmod?: string; priority: string }[] = [
     { loc: baseUrl, priority: "1.0" },
@@ -19,17 +16,17 @@ feeds.get("/sitemap.xml", async (c) => {
     { loc: `${baseUrl}/tags`, priority: "0.6" },
     { loc: `${baseUrl}/concordance`, priority: "0.5" },
     { loc: `${baseUrl}/timeline`, priority: "0.6" },
-    ...(episodes.results as any[]).map((e) => ({
+    ...episodes.map((e) => ({
       loc: `${baseUrl}/episodes/${escapeXml(e.slug)}`,
       lastmod: e.updated_at,
       priority: "0.8",
     })),
-    ...(chunks.results as any[]).map((ch) => ({
+    ...chunks.map((ch) => ({
       loc: `${baseUrl}/chunks/${escapeXml(ch.slug)}`,
       lastmod: ch.updated_at,
       priority: "0.7",
     })),
-    ...(tags.results as any[]).map((t) => ({
+    ...tags.map((t) => ({
       loc: `${baseUrl}/tags/${escapeXml(t.slug)}`,
       priority: "0.5",
     })),
@@ -54,14 +51,7 @@ ${urls
 feeds.get("/feed.xml", async (c) => {
   const baseUrl = getBaseUrl(c.req.url);
 
-  const episodes = await c.env.DB.prepare(
-    `SELECT e.*, GROUP_CONCAT(c.title, ', ') as chunk_titles
-     FROM episodes e
-     LEFT JOIN chunks c ON e.id = c.episode_id
-     GROUP BY e.id
-     ORDER BY e.published_date DESC
-     LIMIT 20`
-  ).all();
+  const feedEpisodes = await getFeedEpisodes(c.env.DB);
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
@@ -71,9 +61,9 @@ feeds.get("/feed.xml", async (c) => {
   <id>${baseUrl}/</id>
   <updated>${new Date().toISOString()}</updated>
   <author><name>Alex Komoroske</name></author>
-${(episodes.results as any[])
+${feedEpisodes
     .map(
-      (ep) => `  <entry>
+      (ep: any) => `  <entry>
     <title>${escapeXml(ep.title)}</title>
     <link href="${baseUrl}/episodes/${escapeXml(ep.slug)}" />
     <id>${baseUrl}/episodes/${escapeXml(ep.slug)}</id>

@@ -1,28 +1,24 @@
 import { Hono } from "hono";
-import type { AppEnv, EpisodeRow } from "../types";
+import type { AppEnv } from "../types";
 import { Layout } from "../components/Layout";
 import { EpisodeCard } from "../components/EpisodeCard";
 import { Breadcrumbs } from "../components/Breadcrumbs";
+import { getYears, getMonths, getEpisodesByMonth } from "../db/timeline";
 import { monthName } from "../lib/date";
 
 const timeline = new Hono<AppEnv>();
 
 // GET /timeline — list of years
 timeline.get("/", async (c) => {
-  const years = await c.env.DB.prepare(
-    `SELECT year, COUNT(*) as count
-     FROM episodes
-     GROUP BY year
-     ORDER BY year DESC`
-  ).all();
+  const yearList = await getYears(c.env.DB);
 
   return c.html(
     <Layout title="Timeline" description="Browse Bits and Bobs by date">
       <Breadcrumbs crumbs={[{ label: "Home", href: "/" }, { label: "Timeline" }]} />
       <h1>Timeline</h1>
-      {years.results.length === 0 && <p>No episodes yet.</p>}
+      {yearList.length === 0 && <p>No episodes yet.</p>}
       <ul class="timeline-years">
-        {(years.results as any[]).map((y) => (
+        {(yearList as any[]).map((y) => (
           <li key={y.year}>
             <a href={`/timeline/${y.year}`}>
               {y.year}
@@ -40,15 +36,7 @@ timeline.get("/:year", async (c) => {
   const year = parseInt(c.req.param("year"), 10);
   if (isNaN(year)) return c.notFound();
 
-  const months = await c.env.DB.prepare(
-    `SELECT month, COUNT(*) as count
-     FROM episodes
-     WHERE year = ?
-     GROUP BY month
-     ORDER BY month`
-  )
-    .bind(year)
-    .all();
+  const monthList = await getMonths(c.env.DB, year);
 
   return c.html(
     <Layout title={`${year}`} description={`Bits and Bobs episodes from ${year}`}>
@@ -59,9 +47,9 @@ timeline.get("/:year", async (c) => {
         ]}
       />
       <h1>{year}</h1>
-      {months.results.length === 0 && <p>No episodes in {year}.</p>}
+      {monthList.length === 0 && <p>No episodes in {year}.</p>}
       <ul class="timeline-months">
-        {(months.results as any[]).map((m) => (
+        {(monthList as any[]).map((m) => (
           <li key={m.month}>
             <a href={`/timeline/${year}/${String(m.month).padStart(2, "0")}`}>
               {monthName(m.month)}
@@ -80,13 +68,7 @@ timeline.get("/:year/:month", async (c) => {
   const month = parseInt(c.req.param("month"), 10);
   if (isNaN(year) || isNaN(month)) return c.notFound();
 
-  const episodes = await c.env.DB.prepare(
-    `SELECT * FROM episodes
-     WHERE year = ? AND month = ?
-     ORDER BY published_date DESC`
-  )
-    .bind(year, month)
-    .all();
+  const episodeList = await getEpisodesByMonth(c.env.DB, year, month);
 
   return c.html(
     <Layout
@@ -101,8 +83,8 @@ timeline.get("/:year/:month", async (c) => {
         ]}
       />
       <h1>{monthName(month)} {year}</h1>
-      {episodes.results.length === 0 && <p>No episodes.</p>}
-      {(episodes.results as unknown as EpisodeRow[]).map((ep) => (
+      {episodeList.length === 0 && <p>No episodes.</p>}
+      {(episodeList).map((ep) => (
         <EpisodeCard key={ep.id} episode={ep} />
       ))}
     </Layout>

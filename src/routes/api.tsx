@@ -1,11 +1,10 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../types";
-import { fetchGoogleDocHtml } from "../services/google-docs";
-import { parseHtmlDocument } from "../services/html-parser";
-import { ingestParsedEpisodes, enrichChunks, isEnrichmentComplete } from "../jobs/ingest";
+import { fetchGoogleDoc, parseHtmlDocument, ingestParsedEpisodes, enrichChunks, isEnrichmentComplete } from "../crawler";
 import { ftsSearch } from "../services/search";
 import { parseSearchQuery } from "../lib/query-parser";
-import { safeParseInt, escapeLike } from "../lib/html";
+import { keywordSearch } from "../db/search";
+import { safeParseInt } from "../lib/html";
 
 const api = new Hono<AppEnv>();
 
@@ -30,17 +29,8 @@ api.get("/search", async (c) => {
     const parsed = parseSearchQuery(query);
     results = await ftsSearch(c.env.DB, parsed);
   } catch {
-    // FTS not available, fall back to LIKE with escaped metacharacters (S2)
-    const kwResults = await c.env.DB.prepare(
-      `SELECT c.id, c.slug, c.title, c.summary, c.content_plain,
-              e.slug as episode_slug, e.title as episode_title, e.published_date
-       FROM chunks c JOIN episodes e ON c.episode_id = e.id
-       WHERE c.content_plain LIKE ? ESCAPE '\\'
-       ORDER BY e.published_date DESC LIMIT 20`
-    )
-      .bind(`%${escapeLike(query)}%`)
-      .all();
-    results = kwResults.results;
+    const parsed = parseSearchQuery(query);
+    results = await keywordSearch(c.env.DB, parsed);
   }
 
   return c.json({ results, query, count: results.length });
@@ -73,8 +63,8 @@ api.get("/ingest", async (c) => {
 
     if (!source) return c.json({ error: "No source found" }, 404);
 
-    const html = await fetchGoogleDocHtml(source.google_doc_id);
-    const allEpisodes = parseHtmlDocument(html);
+    const fetched = await fetchGoogleDoc(source.google_doc_id);
+    const allEpisodes = parseHtmlDocument(fetched.html);
 
     const existing = await c.env.DB.prepare(
       "SELECT published_date FROM episodes WHERE source_id = ?"
