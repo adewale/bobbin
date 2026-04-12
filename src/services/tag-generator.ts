@@ -2,6 +2,50 @@ import { tokenize, STOPWORDS } from "../lib/text";
 import { slugify } from "../lib/slug";
 import { decodeHtmlEntities } from "../lib/html";
 
+// Words where trailing 's' is part of the word, not a plural
+const NO_STRIP = new Set([
+  "llms", "process", "analysis", "basis", "crisis", "thesis",
+  "diagnosis", "emphasis", "hypothesis", "synopsis", "atlas",
+  "bus", "plus", "thus", "status", "focus", "bonus", "campus",
+  "virus", "versus", "chaos", "canvas", "bias",
+]);
+
+/**
+ * Normalize a term: lowercase + strip simple plurals.
+ * "systems" → "system", "Grubby Truffles" → "grubby truffle"
+ */
+export function normalizeTerm(term: string): string {
+  const lower = term.toLowerCase().trim();
+
+  // Multi-word: normalize each word
+  if (lower.includes(" ")) {
+    return lower.split(/\s+/).map((w) => normalizeSingleWord(w)).join(" ");
+  }
+
+  return normalizeSingleWord(lower);
+}
+
+function normalizeSingleWord(word: string): string {
+  if (word.length <= 4) return word;
+  if (NO_STRIP.has(word)) return word;
+
+  // -ies → -y (e.g., "strategies" → "strategy")
+  if (word.endsWith("ies") && word.length > 5) {
+    return word.slice(0, -3) + "y";
+  }
+  // -ses, -xes, -zes, -ches, -shes → strip -es
+  if (word.endsWith("ses") || word.endsWith("xes") || word.endsWith("zes") ||
+      word.endsWith("ches") || word.endsWith("shes")) {
+    return word.slice(0, -2);
+  }
+  // -s (but not -ss, -us, -is)
+  if (word.endsWith("s") && !word.endsWith("ss") && !word.endsWith("us") && !word.endsWith("is")) {
+    return word.slice(0, -1);
+  }
+
+  return word;
+}
+
 export interface TagResult {
   name: string;
   slug: string;
@@ -93,17 +137,19 @@ export function extractEntities(text: string): TagResult[] {
 
         if (entityWords.length >= 2 && !seen.has(normalized)) {
           seen.add(normalized);
+          const norm = normalizeTerm(entityName);
           entities.push({
-            name: entityName,
-            slug: slugify(entityName),
+            name: norm,
+            slug: slugify(norm),
           });
         } else if (entityWords.length === 1 && !STOPWORDS.has(normalized) && !ENTITY_SKIP.has(normalized) && normalized.length > 3 && !seen.has(normalized)) {
           // Single capitalized word — likely a product/company name
           // Only include if it doesn't look like a common word
           seen.add(normalized);
+          const norm = normalizeTerm(entityName);
           entities.push({
-            name: entityName,
-            slug: slugify(entityName),
+            name: norm,
+            slug: slugify(norm),
           });
         }
 
@@ -171,7 +217,8 @@ export function extractTags(
         const df = corpusStats.docFreq.get(word) || 1;
         idf = Math.log(N / df);
       }
-      return { name: word, slug: slugify(word), score: tf * idf };
+      const normalized = normalizeTerm(word);
+      return { name: normalized, slug: slugify(normalized), score: tf * idf };
     })
     .sort((a, b) => b.score - a.score);
 

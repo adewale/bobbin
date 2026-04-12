@@ -60,8 +60,8 @@ describe("Multi-word entity detection", () => {
       "Jeremie Miller said that Claude Code is transforming how we build software."
     );
     const names = entities.map((e) => e.name);
-    expect(names).toContain("Jeremie Miller");
-    expect(names).toContain("Claude Code");
+    expect(names).toContain("jeremie miller");
+    expect(names).toContain("claude code");
   });
 
   it("does not treat sentence-start capitalization as entities", () => {
@@ -79,8 +79,8 @@ describe("Multi-word entity detection", () => {
       "OpenAI released ChatGPT and it changed everything. Meta acquired Gizmo."
     );
     const names = entities.map((e) => e.name);
-    expect(names).toContain("ChatGPT");
-    expect(names).toContain("OpenAI");
+    expect(names).toContain("chatgpt");
+    expect(names).toContain("openai");
   });
 
   it("entity tags are included in extractTags output", () => {
@@ -89,7 +89,7 @@ describe("Multi-word entity detection", () => {
       10
     );
     const names = tags.map((t) => t.name);
-    expect(names).toContain("Jeremie Miller");
+    expect(names).toContain("jeremie miller");
   });
 
   it("does not produce 'jeremie' and 'miller' as separate tags when entity exists", () => {
@@ -99,7 +99,7 @@ describe("Multi-word entity detection", () => {
     );
     const names = tags.map((t) => t.name);
     // Should have the entity, not the parts
-    if (names.includes("Jeremie Miller")) {
+    if (names.includes("jeremie miller")) {
       expect(names).not.toContain("jeremie");
       expect(names).not.toContain("miller");
     }

@@ -48,6 +48,6 @@ describe("extractTags", () => {
       "platform markets are growing. platform markets will expand. platform markets dominate. platform markets lead."
     );
     const names = tags.map((t) => t.name);
-    expect(names).toContain("platform markets");
+    expect(names).toContain("platform market");
   });
 });
