@@ -238,6 +238,8 @@ mark { background: color-mix(in srgb, var(--accent-light) 60%, transparent); col
 .episode-notes summary { display: flex; align-items: baseline; gap: 0.5rem; padding: 0.6rem 0; cursor: pointer; list-style: none; min-height: 2.75rem; }
 .episode-notes summary::-webkit-details-marker { display: none; }
 .episode-notes summary::marker { display: none; content: ""; }
+.episode-notes summary::after { content: "›"; font-family: var(--font-ui); font-size: 0.85rem; color: var(--text-light); margin-left: auto; flex-shrink: 0; transition: transform 0.15s ease; }
+.episode-notes details[open] summary::after { transform: rotate(90deg); }
 .episode-notes .obs-num { font-family: var(--font-ui); font-size: 0.7rem; color: var(--text-light); min-width: 1.5rem; text-align: right; flex-shrink: 0; }
 .episode-notes .obs-title { font-family: var(--font-body); font-size: 0.92rem; color: var(--text); line-height: 1.5; }
 .episode-notes details[open] .obs-title { color: var(--accent-dark); }

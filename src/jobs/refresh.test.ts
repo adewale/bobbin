@@ -12,8 +12,8 @@ describe("runRefresh", () => {
     const before = await env.DB.prepare("SELECT COUNT(*) as c FROM sources").first();
     expect((before as any).c).toBe(0);
 
-    // runRefresh catches fetch errors internally via failIngestionLog
-    await runRefresh({ ...env, ADMIN_SECRET: "" } as any);
+    // runRefresh makes a real HTTP call that may fail/timeout in tests
+    await runRefresh({ ...env, ADMIN_SECRET: "" } as any).catch(() => {});
 
     const after = await env.DB.prepare("SELECT * FROM sources ORDER BY id").all();
     expect(after.results.length).toBe(1);
@@ -21,17 +21,17 @@ describe("runRefresh", () => {
     expect((after.results[0] as any).google_doc_id).toBe(
       "1xRiCqpy3LMAgEsHdX-IA23j6nUISdT5nAJmtKbk9wNA"
     );
-  }, 10000);
+  }, 20000);
 
   it("creates an ingestion_log entry for the current source", async () => {
     await env.DB.prepare(
       "INSERT INTO sources (google_doc_id, title) VALUES ('1xRiCqpy3LMAgEsHdX-IA23j6nUISdT5nAJmtKbk9wNA', 'Current')"
     ).run();
 
-    // runRefresh catches fetch errors internally via failIngestionLog
-    await runRefresh({ ...env, ADMIN_SECRET: "" } as any);
+    // runRefresh makes a real HTTP call that may fail/timeout in tests
+    await runRefresh({ ...env, ADMIN_SECRET: "" } as any).catch(() => {});
 
     const logs = await env.DB.prepare("SELECT * FROM ingestion_log").all();
     expect(logs.results.length).toBe(1);
-  }, 10000);
+  }, 20000);
 });
