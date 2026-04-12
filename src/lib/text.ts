@@ -19,7 +19,7 @@ export const STOPWORDS = new Set([
   "because", "before", "between", "both", "each", "few", "more", "most",
   "some", "such", "same", "other", "own", "many", "every", "into",
   "through", "over", "out", "up", "off", "down", "away",
-  // Common generic words that aren't useful as tags
+  // Common generic words that aren't useful as topics
   "thing", "things", "something", "everything", "nothing", "anything",
   "way", "ways", "lot", "lots", "point", "kind", "sort", "part",
   "time", "times", "people", "person", "everyone", "someone", "world",
@@ -56,7 +56,7 @@ export const STOPWORDS = new Set([
   "you'll", "we'll", "they'll", "i'll", "he'll", "she'll",
   "you'd", "we'd", "they'd", "i'd", "he'd", "she'd",
   "let's", "here's", "there's", "what's", "that's", "who's",
-  // Generic nouns/adjectives that don't make useful tags
+  // Generic nouns/adjectives that don't make useful topics
   "example", "imagine", "week", "today", "yesterday", "tomorrow",
   "year", "years", "month", "months", "day", "days",
   "number", "amount", "level", "case", "fact", "idea",
@@ -83,7 +83,7 @@ export const STOPWORDS = new Set([
   "understand", "understands", "understood",
   "actually", "essentially", "particularly", "especially",
   "pretty", "quite", "really", "super", "totally",
-  // More generic words found in concordance/tag noise
+  // More generic words found in word stats/topic noise
   "without", "along", "across", "until", "since", "toward", "towards",
   "within", "among", "against", "beyond", "during", "except",
   "around", "inside", "outside", "beneath", "beside", "besides",
@@ -101,7 +101,7 @@ export const STOPWORDS = new Set([
   "especially", "particularly", "specifically", "generally",
   "often", "sometimes", "usually", "rarely", "frequently",
   "simply", "merely", "slightly", "roughly", "approximately",
-  // Additional noise words from word stats analysis
+  // Additional noise words from word statistics analysis
   "gets", "getting", "another", "itself", "myself", "yourself", "themselves",
   "ourselves", "having", "whole", "little", "fast", "faster", "fastest",
   "easier", "easiest", "possible", "impossible",

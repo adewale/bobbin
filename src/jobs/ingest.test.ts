@@ -40,7 +40,7 @@ describe("ingestParsedEpisodes", () => {
 
     const chunks = await env.DB.prepare("SELECT * FROM chunks ORDER BY id").all();
     expect(chunks.results.length).toBeGreaterThan(0);
-    // First chunk is from the first observation in the first episode
+    // First chunk is from the first chunk in the first episode
     expect((chunks.results[0] as any).content).toContain("software");
   });
 

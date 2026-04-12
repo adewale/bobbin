@@ -14,7 +14,7 @@ function stripHtml(html: string): string {
 
 function generateTitle(text: string): string {
   // Use the full first sentence as the title. Komoroske writes in aphorisms —
-  // the first sentence IS the observation. Don't truncate.
+  // the first sentence IS the chunk. Don't truncate.
   const firstLine = text.split(/\n/)[0].trim();
 
   // Find the first sentence boundary (.!? followed by space or end)
@@ -34,8 +34,8 @@ function generateTitle(text: string): string {
  * Structure:
  * - <h1> tags contain episode dates
  * - Each episode is a single list with items at different nesting levels:
- *   - margin-left:36pt  = level 0: a standalone observation (chunk boundary)
- *   - margin-left:72pt  = level 1: sub-point of the current observation
+ *   - margin-left:36pt  = level 0: a standalone chunk (chunk boundary)
+ *   - margin-left:72pt  = level 1: sub-point of the current chunk
  *   - margin-left:108pt = level 2: sub-sub-point
  * - Each level-0 item + its sub-points = one chunk
  */

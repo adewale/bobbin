@@ -41,11 +41,11 @@ topics.get("/", async (c) => {
 
               return (
                 <a key={topic.id} href={`/topics/${topic.slug}`} class="multiple-cell">
+                  <span class="multiple-name">{topic.name}</span>
+                  <span class="multiple-count">{topic.usage_count}</span>
                   <svg viewBox={`0 0 ${w} ${h}`} class="multiple-spark">
                     <polyline points={points} fill="none" stroke="var(--accent)" stroke-width="1.5" />
                   </svg>
-                  <span class="multiple-name">{topic.name}</span>
-                  <span class="multiple-count">{topic.usage_count}</span>
                 </a>
               );
             })}
@@ -131,7 +131,7 @@ topics.get("/", async (c) => {
         </section>
       )}
 
-      <script src="/scripts/tag-filter.js" defer></script>
+      <script src="/scripts/topic-filter.js" defer></script>
     </Layout>
   );
 });
@@ -316,9 +316,9 @@ topics.get("/:slug", async (c) => {
               {topicYearData.map((d, i) => {
                 if (i === 0) return null;
                 const x1 = padX + (i - 1) * colWidth;
-                const y1 = padY + ((topicYearData[i - 1].rank - 1) / (maxRank - 1)) * (svgH - padY * 2);
+                const y1 = padY + ((topicYearData[i - 1].rank - 1) / (Math.max(maxRank - 1, 1))) * (svgH - padY * 2);
                 const x2 = padX + i * colWidth;
-                const y2 = padY + ((d.rank - 1) / (maxRank - 1)) * (svgH - padY * 2);
+                const y2 = padY + ((d.rank - 1) / (Math.max(maxRank - 1, 1))) * (svgH - padY * 2);
                 return (
                   <line key={`line-${i}`} x1={x1} y1={y1} x2={x2} y2={y2}
                     stroke="var(--accent)" stroke-width="2" opacity="0.6" />
@@ -327,7 +327,7 @@ topics.get("/:slug", async (c) => {
               {/* Dots and rank labels */}
               {topicYearData.map((d, i) => {
                 const x = padX + i * colWidth;
-                const y = padY + ((d.rank - 1) / (maxRank - 1)) * (svgH - padY * 2);
+                const y = padY + ((d.rank - 1) / (Math.max(maxRank - 1, 1))) * (svgH - padY * 2);
                 return (
                   <g key={`dot-${i}`}>
                     <circle cx={x} cy={y} r="4" fill="var(--accent)" />

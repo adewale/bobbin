@@ -13,31 +13,31 @@ async function seedTopicSearchData() {
     env.DB.prepare(
       "INSERT INTO episodes (source_id, slug, title, published_date, year, month, day, chunk_count) VALUES (1, '2024-04-08', 'Ep 1', '2024-04-08', 2024, 4, 8, 4)"
     ),
-    // Chunk 1: mentions "ecosystem" in text AND is tagged with ecosystem topic
+    // Chunk 1: mentions "ecosystem" in text AND is assigned to ecosystem topic
     env.DB.prepare(
       "INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (1, 'eco-tagged', 'Ecosystem dynamics', 'The ecosystem evolves through ecosystem pressures.', 'The ecosystem evolves through ecosystem pressures.', 0)"
     ),
-    // Chunk 2: mentions "ecosystem" in text but NOT tagged with ecosystem topic
+    // Chunk 2: mentions "ecosystem" in text but NOT assigned to ecosystem topic
     env.DB.prepare(
       "INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (1, 'eco-untagged', 'Platform markets', 'The ecosystem is changing rapidly.', 'The ecosystem is changing rapidly.', 1)"
     ),
-    // Chunk 3: tagged with ecosystem topic but uses different words (no "ecosystem" in text)
+    // Chunk 3: assigned to ecosystem topic but uses different words (no "ecosystem" in text)
     env.DB.prepare(
       "INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (1, 'eco-synonyms', 'Platform dynamics', 'Platform dynamics shape market evolution.', 'Platform dynamics shape market evolution.', 2)"
     ),
-    // Chunk 4: tagged with agent topic only
+    // Chunk 4: assigned to agent topic only
     env.DB.prepare(
       "INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (1, 'agent-chunk', 'Agent systems', 'Autonomous agents orchestrate tasks using LLMs.', 'Autonomous agents orchestrate tasks using LLMs.', 3)"
     ),
-    // Topics (using tags table since that's the current schema)
+    // Topics
     env.DB.prepare(
       "INSERT INTO topics (name, slug, usage_count) VALUES ('ecosystem', 'ecosystem', 10)"
     ),
     env.DB.prepare(
       "INSERT INTO topics (name, slug, usage_count) VALUES ('agent', 'agent', 5)"
     ),
-    // chunk_tags assignments
-    env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 1)"), // eco-tagged -> ecosystem
+    // chunk_topics assignments
+    env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 1)"), // eco-assigned -> ecosystem
     env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (3, 1)"), // eco-synonyms -> ecosystem
     env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (4, 2)"), // agent-chunk -> agent
   ]);
@@ -65,7 +65,7 @@ describe("applyTopicBoost", () => {
     // Apply topic boost
     const boosted = await applyTopicBoost(env.DB, "ecosystem", ftsResults);
 
-    // eco-tagged should be boosted (it has the ecosystem tag)
+    // eco-tagged should be boosted (it has the ecosystem topic)
     const taggedResult = boosted.find((r) => r.slug === "eco-tagged");
     const untaggedResult = boosted.find((r) => r.slug === "eco-untagged");
     expect(taggedResult).toBeDefined();
@@ -92,11 +92,11 @@ describe("applyTopicBoost", () => {
 });
 
 describe("applyTopicFilter", () => {
-  it("filters results to only chunks tagged with the specified topic", async () => {
+  it("filters results to only chunks assigned to the specified topic", async () => {
     const parsed = parseSearchQuery("topic:ecosystem");
     const filtered = await applyTopicFilter(env.DB, parsed.topics!);
 
-    // Should return chunk IDs for eco-tagged and eco-synonyms (both tagged with ecosystem)
+    // Should return chunk IDs for eco-tagged and eco-synonyms (both assigned to ecosystem)
     expect(filtered).toContain(1); // eco-tagged
     expect(filtered).toContain(3); // eco-synonyms
     expect(filtered).not.toContain(2); // eco-untagged
@@ -104,7 +104,7 @@ describe("applyTopicFilter", () => {
   });
 
   it("returns intersection when multiple topics specified", async () => {
-    // Only chunks tagged with BOTH ecosystem and agent — none exist in seed data
+    // Only chunks assigned to BOTH ecosystem and agent — none exist in seed data
     const filtered = await applyTopicFilter(env.DB, [
       "ecosystem",
       "agent",
@@ -139,7 +139,7 @@ describe("ftsSearch with topic filter", () => {
   it("returns empty when text matches but topic does not", async () => {
     const parsed = parseSearchQuery("ecosystem topic:agent");
     // "ecosystem" matches text in eco-tagged and eco-untagged,
-    // but neither is tagged with "agent"
+    // but neither is assigned to "agent"
     const results = await ftsSearch(env.DB, parsed);
     expect(results).toHaveLength(0);
   });

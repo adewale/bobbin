@@ -71,6 +71,26 @@ describe("Topics index - small multiples grid", () => {
     expect(html).toContain('href="/topics/llms"');
     expect(html).toContain('href="/topics/agent"');
   });
+
+  it("does not show topics with usage < 3 in the grid", async () => {
+    // Insert a low-usage topic that should be excluded from the grid
+    await env.DB.prepare(
+      "INSERT INTO topics (name, slug, usage_count) VALUES ('rare-topic', 'rare-topic', 2)"
+    ).run();
+    const res = await SELF.fetch("http://localhost/topics");
+    const html = await res.text();
+    expect(html).not.toContain("rare-topic");
+  });
+
+  it("shows usage_count in the HTML for each topic cell", async () => {
+    const res = await SELF.fetch("http://localhost/topics");
+    const html = await res.text();
+    // The seed data has topics with usage counts 10, 8, 7, 6, 5
+    expect(html).toContain("multiple-count");
+    // Verify specific usage counts from seeded data appear
+    expect(html).toContain(">10<");
+    expect(html).toContain(">8<");
+  });
 });
 
 describe("Topics index - entity tier", () => {

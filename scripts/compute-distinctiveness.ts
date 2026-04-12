@@ -1,5 +1,5 @@
 /**
- * Compute distinctiveness scores for concordance words and output SQL.
+ * Compute distinctiveness scores for word stats entries and output SQL.
  * Run with: npx tsx scripts/compute-distinctiveness.ts | pbcopy
  * Then paste into wrangler d1 execute.
  */
@@ -42,7 +42,7 @@ for (const text of allTexts) {
 
 const results = computeDistinctiveness(freq, totalWords, baseline);
 
-// Output SQL to update the concordance table
+// Output SQL to update the word_stats table
 console.log("-- Distinctiveness scores computed from local corpus (word_stats)");
 console.log(`-- Corpus: ${allTexts.length} chunks, ${totalWords} tokens, ${freq.size} unique words`);
 console.log();

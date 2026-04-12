@@ -113,6 +113,14 @@ describe("Phase 8: Enrichment pipeline improvements", () => {
         "SELECT name, distinctiveness FROM topics WHERE distinctiveness > 0"
       ).all();
       expect(topicsWithDist.results.length).toBeGreaterThan(0);
+
+      // Verify the specific seeded distinctiveness value propagated
+      const ecosystemTopic = await env.DB.prepare(
+        "SELECT distinctiveness FROM topics WHERE name = 'ecosystem'"
+      ).first<{ distinctiveness: number }>();
+      if (ecosystemTopic) {
+        expect(ecosystemTopic.distinctiveness).toBe(25.5);
+      }
     });
   });
 

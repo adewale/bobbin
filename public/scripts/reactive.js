@@ -116,7 +116,6 @@
     const res = await fetch(url);
     const data = await res.json();
 
-    const tbody = table.querySelector("tbody");
     tbody.innerHTML = data.words
       .map(
         (w) => `<tr>

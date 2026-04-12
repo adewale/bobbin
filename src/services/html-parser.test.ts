@@ -19,12 +19,12 @@ describe("parseHtmlDocument", () => {
     expect(episodes[0].title).toBe("Bits and Bobs 4/6/26");
   });
 
-  it("extracts chunks (observations) from each episode", () => {
-    // Episode 1: 3 level-0 observations
+  it("extracts chunks from each episode", () => {
+    // Episode 1: 3 level-0 chunks
     expect(episodes[0].chunks.length).toBe(3);
-    // Episode 2: 2 level-0 observations
+    // Episode 2: 2 level-0 chunks
     expect(episodes[1].chunks.length).toBe(2);
-    // Episode 3: 1 observation
+    // Episode 3: 1 chunk
     expect(episodes[2].chunks.length).toBe(1);
   });
 
@@ -36,7 +36,7 @@ describe("parseHtmlDocument", () => {
     expect(firstChunk.contentPlain).toContain("latter");
   });
 
-  it("generates meaningful titles from main observation text", () => {
+  it("generates meaningful titles from main chunk text", () => {
     const title = episodes[0].chunks[0].title;
     expect(title.length).toBeGreaterThan(5);
     // Full sentence titles — no arbitrary length cap
@@ -51,11 +51,11 @@ describe("parseHtmlDocument", () => {
     expect(episodes[0].chunks[2].position).toBe(2);
   });
 
-  it("separates observations correctly - second chunk is independent", () => {
+  it("separates chunks correctly - second chunk is independent", () => {
     const secondChunk = episodes[0].chunks[1];
     expect(secondChunk.contentPlain).toContain("house that is on fire");
     expect(secondChunk.contentPlain).toContain("fundamentals");
-    // Should NOT contain text from observation 1
+    // Should NOT contain text from chunk 1
     expect(secondChunk.contentPlain).not.toContain("software provider");
   });
 });

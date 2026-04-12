@@ -127,7 +127,8 @@ export async function getTopicKWIC(db: D1Database, topicName: string, limit = 10
 export async function getThemeRiverData(db: D1Database, topicLimit = 8) {
   // Get top topics
   const topTopics = await db.prepare(
-    "SELECT id, name, slug FROM topics WHERE usage_count >= 5 ORDER BY usage_count DESC LIMIT ?"
+    `SELECT id, name, slug FROM topics WHERE usage_count >= 5
+     ORDER BY usage_count * CASE WHEN distinctiveness > 0 THEN distinctiveness ELSE 1 END DESC LIMIT ?`
   ).bind(topicLimit).all<{ id: number; name: string; slug: string }>();
 
   if (!topTopics.results.length) return { topics: [], episodes: [], data: [] };
@@ -192,8 +193,14 @@ export async function getTopicRanksByYear(db: D1Database) {
 }
 
 export async function getTopTopicsWithSparklines(db: D1Database, limit = 20) {
+  // Rank by usage × distinctiveness to surface interesting topics, not just frequent ones.
+  // Multi-word topics (entities/phrases) get a boost since they're higher quality.
   const topTopics = await db.prepare(
-    "SELECT id, name, slug, usage_count FROM topics WHERE usage_count >= 3 ORDER BY usage_count DESC LIMIT ?"
+    `SELECT id, name, slug, usage_count, distinctiveness FROM topics
+     WHERE usage_count >= 3
+     ORDER BY usage_count * CASE WHEN distinctiveness > 0 THEN distinctiveness ELSE 1 END
+       * CASE WHEN name LIKE '% %' THEN 2 ELSE 1 END DESC
+     LIMIT ?`
   ).bind(limit).all<TopicRow>();
 
   if (!topTopics.results.length) return [];

@@ -3,7 +3,7 @@ import type { ScoredResult } from "./search";
 /**
  * Apply a score boost to search results that are assigned to a topic
  * matching the query text. Chunks where the concept is thematically
- * central (tagged) get a +0.15 bonus over chunks that merely mention
+ * central (assigned) get a +0.15 bonus over chunks that merely mention
  * the word in passing.
  */
 export async function applyTopicBoost(
@@ -42,7 +42,7 @@ export async function applyTopicBoost(
 }
 
 /**
- * Resolve topic slugs to a set of chunk IDs that are tagged with ALL
+ * Resolve topic slugs to a set of chunk IDs that are assigned to ALL
  * of the specified topics (intersection). Used by the topic: search
  * operator to filter results.
  */
@@ -72,7 +72,7 @@ export async function applyTopicFilter(
     return chunks.results.map((r) => r.chunk_id);
   }
 
-  // Intersection: chunks tagged with ALL specified topics
+  // Intersection: chunks assigned to ALL specified topics
   const placeholders = topicIds.map(() => "?").join(",");
   const chunks = await db
     .prepare(

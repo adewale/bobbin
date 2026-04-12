@@ -24,7 +24,7 @@ async function seedWithTopics() {
     env.DB.prepare(
       "INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (2, 'bare-note-2025-01-13', 'A bare note', 'A bare note.\nNo topics here.', 'A bare note. No topics here.', 0)"
     ),
-    // Topics (tags table)
+    // Topics
     env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('llms', 'llms', 10)"),
     env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('agent', 'agent', 8)"),
     env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('vibe coding', 'vibe-coding', 5)"),
@@ -51,7 +51,7 @@ describe("Episode page topic marginalia", () => {
     expect(res.status).toBe(200);
     // Has the marginalia wrapper
     expect(html).toContain("topics-margin");
-    // Does NOT have a details/summary accordion for tags
+    // Does NOT have a details/summary accordion for topics
     // Extract the topics-margin aside element (up to its closing tag)
     const marginStart = html.indexOf("topics-margin");
     const marginEnd = html.indexOf("</aside>", marginStart);
@@ -77,7 +77,7 @@ describe("Chunk page topic marginalia", () => {
     expect(res.status).toBe(200);
     // Has the marginalia wrapper
     expect(html).toContain("topics-margin");
-    // Does NOT have a details/summary accordion for tags
+    // Does NOT have a details/summary accordion for topics
     const marginStart = html.indexOf("topics-margin");
     const marginEnd = html.indexOf("</aside>", marginStart);
     const marginSection = html.substring(marginStart, marginEnd);

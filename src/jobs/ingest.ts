@@ -8,32 +8,6 @@ import { getExistingDatesForSource, getSourceTag } from "../db/sources";
 import { getUnenrichedChunks, isEnrichmentDone } from "../db/ingestion";
 import type { Bindings, ParsedEpisode } from "../types";
 
-/**
- * Layer 2: AI-powered entity extraction (placeholder for Phase 8).
- * Uses env.AI to extract people, companies, and products that the curated
- * entity list misses. Results merge with Layer 1 — curated list is authoritative,
- * AI fills gaps.
- *
- * @param ai - Workers AI binding
- * @param text - chunk plain text content
- * @returns extracted entities as { people: string[], companies: string[], products: string[] }
- */
-export async function extractEntitiesWithAI(
-  _ai: Ai,
-  _text: string
-): Promise<{ people: string[]; companies: string[]; products: string[] }> {
-  // TODO: Phase 8 — implement AI-powered entity extraction using env.AI
-  // Example call:
-  //   const result = await ai.run("@cf/meta/llama-3.1-8b-instruct", {
-  //     messages: [{
-  //       role: "user",
-  //       content: `Extract people, companies, and products mentioned in this text.
-  //                  Return JSON: {"people":[],"companies":[],"products":[]}.
-  //                  Only include proper nouns, not generic concepts.\n\n${text}`
-  //     }]
-  //   });
-  return { people: [], companies: [], products: [] };
-}
 
 async function batchExec(db: D1Database, stmts: D1PreparedStatement[], size = 50) {
   for (let i = 0; i < stmts.length; i += size) {
@@ -301,13 +275,6 @@ export async function ingestParsedEpisodes(
     await enrichChunks(env.DB, 10000);
 
     // Layer 2: AI-powered entity extraction (Phase 8 placeholder)
-    // Runs in background after enrichment, not on the hot path.
-    // Gate behind env.AI since Workers AI runtime isn't available in all environments.
-    if (env.AI) {
-      // TODO: Phase 8 — call extractEntitiesWithAI for unenriched chunks
-      // and merge results with Layer 1 known entities.
-      // Curated entity list is authoritative; AI fills gaps for long-tail entities.
-    }
 
     // Embeddings (optional, may fail)
     try {
