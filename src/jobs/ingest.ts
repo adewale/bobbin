@@ -193,7 +193,90 @@ export async function enrichChunks(
      ) WHERE id IN (SELECT chunk_id FROM chunk_topics)`
   ).run();
 
+  // Auto-merge split concepts based on co-occurrence
+  await mergeCoOccurringTopics(db);
+
+  // Precompute distinctiveness from word_stats
+  await db.prepare(
+    `UPDATE topics SET distinctiveness = COALESCE(
+      (SELECT w.distinctiveness FROM word_stats w WHERE w.word = topics.name), 0
+    )`
+  ).run();
+
+  // Precompute related_slugs (top 5 co-occurring topics as JSON)
+  const allTopics = await db.prepare(
+    "SELECT id, slug FROM topics WHERE usage_count >= 3"
+  ).all<{ id: number; slug: string }>();
+
+  for (const topic of allTopics.results) {
+    const related = await db.prepare(
+      `SELECT t.slug FROM chunk_topics ct1
+       JOIN chunk_topics ct2 ON ct1.chunk_id = ct2.chunk_id AND ct1.topic_id != ct2.topic_id
+       JOIN topics t ON ct2.topic_id = t.id
+       WHERE ct1.topic_id = ?
+       GROUP BY ct2.topic_id
+       ORDER BY COUNT(*) DESC
+       LIMIT 5`
+    ).bind(topic.id).all<{ slug: string }>();
+
+    const slugs = JSON.stringify(related.results.map(r => r.slug));
+    await db.prepare(
+      "UPDATE topics SET related_slugs = ? WHERE id = ?"
+    ).bind(slugs, topic.id).run();
+  }
+
   return { chunksProcessed: chunks.length };
+}
+
+/**
+ * Auto-merge split concepts based on co-occurrence.
+ */
+async function mergeCoOccurringTopics(db: D1Database) {
+  const mergeRules = [
+    { parts: ["prompt", "injection"], merged: "prompt injection" },
+    { parts: ["cognitive", "labor"], merged: "cognitive labor" },
+    { parts: ["vibe", "coding"], merged: "vibe coding" },
+    { parts: ["agent", "swarm"], merged: "agent swarm" },
+    { parts: ["tech", "industry"], merged: "tech industry" },
+  ];
+
+  for (const rule of mergeRules) {
+    const mergedSlug = rule.merged.replace(/\s+/g, "-").toLowerCase();
+
+    const partIds: number[] = [];
+    for (const part of rule.parts) {
+      const t = await db.prepare("SELECT id FROM topics WHERE slug = ?").bind(part).first<{ id: number }>();
+      if (t) partIds.push(t.id);
+    }
+    if (partIds.length !== rule.parts.length) continue;
+
+    await db.prepare(
+      "INSERT OR IGNORE INTO topics (name, slug, kind) VALUES (?, ?, 'phrase')"
+    ).bind(rule.merged, mergedSlug).run();
+
+    const mergedTopic = await db.prepare(
+      "SELECT id FROM topics WHERE slug = ?"
+    ).bind(mergedSlug).first<{ id: number }>();
+    if (!mergedTopic) continue;
+
+    const placeholders = partIds.map(() => "?").join(",");
+    const sharedChunks = await db.prepare(
+      `SELECT chunk_id FROM chunk_topics
+       WHERE topic_id IN (${placeholders})
+       GROUP BY chunk_id
+       HAVING COUNT(DISTINCT topic_id) = ?`
+    ).bind(...partIds, partIds.length).all<{ chunk_id: number }>();
+
+    const stmts = sharedChunks.results.map(r =>
+      db.prepare("INSERT OR IGNORE INTO chunk_topics (chunk_id, topic_id) VALUES (?, ?)")
+        .bind(r.chunk_id, mergedTopic.id)
+    );
+    await batchExec(db, stmts);
+
+    await db.prepare(
+      "UPDATE topics SET usage_count = (SELECT COUNT(*) FROM chunk_topics WHERE topic_id = ?) WHERE id = ?"
+    ).bind(mergedTopic.id, mergedTopic.id).run();
+  }
 }
 
 /**

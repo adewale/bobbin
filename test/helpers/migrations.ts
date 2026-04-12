@@ -56,6 +56,7 @@ const CREATES = [
     slug TEXT NOT NULL UNIQUE,
     usage_count INTEGER NOT NULL DEFAULT 0,
     kind TEXT NOT NULL DEFAULT 'concept',
+    distinctiveness REAL NOT NULL DEFAULT 0,
     related_slugs TEXT
   )`,
   `CREATE TABLE chunk_topics (
