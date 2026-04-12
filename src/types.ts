@@ -56,6 +56,7 @@ export interface TopicRow {
   name: string;
   slug: string;
   usage_count: number;
+  distinctiveness: number;
   kind: string;
   related_slugs: string | null;
 }

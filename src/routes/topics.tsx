@@ -1,11 +1,10 @@
 import { Hono } from "hono";
-import type { AppEnv, TopicRow } from "../types";
+import type { AppEnv } from "../types";
 import { Layout } from "../components/Layout";
 import { SearchForm } from "../components/SearchForm";
 import { ThemeRiver } from "../components/ThemeRiver";
 import { getTopicBySlug, getTopicChunkCount, getTopicChunks, getTopicSparkline, getTopicEpisodes, getTopicDiffChunks, getRelatedTopics, getTopicWordStats, getTopTopicsWithSparklines, getTopicKWIC, getThemeRiverData, getTopicRanksByYear } from "../db/topics";
 import { safeParseInt } from "../lib/html";
-import { TopicCloud } from "../components/TopicCloud";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { Pagination } from "../components/Pagination";
 import { highlightInExcerpt, extractKWIC } from "../lib/highlight";
@@ -14,19 +13,15 @@ const topics = new Hono<AppEnv>();
 const PAGE_SIZE = 20;
 
 topics.get("/", async (c) => {
-  const [topicsWithSparklines, multiWord, themeRiver] = await Promise.all([
+  const [topicsWithSparklines, themeRiver] = await Promise.all([
     getTopTopicsWithSparklines(c.env.DB, 20),
-    c.env.DB.prepare(
-      "SELECT * FROM topics WHERE usage_count >= 3 AND name LIKE '% %' ORDER BY usage_count DESC LIMIT 20"
-    ).all<TopicRow>(),
     getThemeRiverData(c.env.DB, 6),
   ]);
-
-  const entities = multiWord.results;
 
   return c.html(
     <Layout title="Topics" description="Browse Bits and Bobs by topic" activePath="/topics">
       <SearchForm />
+      <p class="page-intro">The concepts Komoroske returns to most, ranked by how distinctive they are to this corpus.</p>
 
       {topicsWithSparklines.length > 0 && (
         <section class="topic-multiples">
@@ -55,13 +50,6 @@ topics.get("/", async (c) => {
       )}
 
       <ThemeRiver data={themeRiver.data} dates={themeRiver.episodes} />
-
-      {entities.length > 0 && (
-        <section class="topic-tier">
-          <h2>People, Products &amp; Phrases</h2>
-          <TopicCloud topics={entities} />
-        </section>
-      )}
 
       <script src="/scripts/topic-filter.js" defer></script>
     </Layout>
