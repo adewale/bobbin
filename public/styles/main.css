@@ -133,17 +133,17 @@ a:hover { text-decoration: underline; }
 details.tag-tier summary { font-family: var(--font-ui); font-size: 0.85rem; color: var(--text-muted); cursor: pointer; margin-bottom: 0.5rem; }
 details.tag-tier .tag-cloud { margin-top: 0.5rem; }
 
-/* Tags as Tufte marginalia (desktop) / accordion (mobile) */
+/* Tags/Topics as Tufte marginalia (desktop) / below content (mobile) */
 .tags-margin { font-family: var(--font-ui); }
-.tags-margin summary { font-size: 0.75rem; color: var(--text-light); cursor: pointer; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; }
-.tags-margin details[open] summary { margin-bottom: 0.3rem; }
+.tags-margin h3 { font-size: 0.7rem; font-family: var(--font-ui); color: var(--text-light); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; margin-bottom: 0.3rem; }
+
+/* Desktop: float in right margin */
 @media (min-width: 769px) {
   .tags-margin { float: right; width: 12rem; margin: 0 -14rem 1rem 1rem; font-size: 0.78rem; }
-  .tags-margin details { open: true; }
-  .tags-margin details[open] { display: block; }
-  .tags-margin summary { display: none; }
-  .tags-margin .tags { display: flex; }
+  .tags-margin .tags { display: flex; flex-wrap: wrap; gap: 0.3rem; }
 }
+
+/* Mobile: below content */
 @media (max-width: 768px) {
   .tags-margin { margin: 1.5rem 0 0; padding-top: 1rem; border-top: 1px solid var(--border); order: 99; }
 }
