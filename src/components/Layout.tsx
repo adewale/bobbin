@@ -34,12 +34,6 @@ export const Layout: FC<LayoutProps> = ({
       <meta property="og:type" content="website" />
       <meta name="twitter:card" content="summary" />
       <link rel="stylesheet" href="/styles/main.css" />
-      <link
-        rel="alternate"
-        type="application/atom+xml"
-        href="/feed.xml"
-        title="Bobbin RSS Feed"
-      />
     </head>
     <body>
       <header>
@@ -66,8 +60,6 @@ export const Layout: FC<LayoutProps> = ({
       <footer>
         <p>
           <a href="https://komoroske.com/bits-and-bobs">Bits and Bobs</a> by Alex Komoroske
-          {" "}&middot;{" "}
-          <a href="/feed.xml">RSS</a>
         </p>
       </footer>
     </body>

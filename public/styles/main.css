@@ -54,7 +54,7 @@ header .search-icon:hover { color: var(--accent); }
 
 main { max-width: var(--max-width); margin: 1.5rem auto 2.5rem; padding: 0 1.5rem; }
 
-footer { border-top: 1px solid var(--border); padding: 1.5rem 1.5rem; text-align: center; color: var(--text-light); font-size: 0.65rem; font-family: var(--font-ui); margin-top: 3rem; letter-spacing: 0.02em; }
+footer { border-top: 1px solid var(--border); padding: 0.75rem 1rem; text-align: center; color: var(--text-light); font-size: 0.6rem; font-family: var(--font-ui); margin-top: 1.5rem; letter-spacing: 0.02em; }
 footer a { color: var(--accent); }
 
 /* === Typography === */

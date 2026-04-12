@@ -88,7 +88,7 @@ chunks.get("/:slug", async (c) => {
             {paragraphs.map((para, i) => (
               <div key={i} class="para-with-margin">
                 <p>{para}</p>
-                {relatedItems[i] && relatedItems[i].slug && (
+                {relatedItems[i]?.slug && (
                   <aside class="margin-note">
                     <a href={`/chunks/${relatedItems[i].slug}`}>
                       {relatedItems[i].title}
@@ -98,7 +98,7 @@ chunks.get("/:slug", async (c) => {
                 )}
               </div>
             ))}
-            {relatedItems.slice(paragraphs.length).map((r: any) => (
+            {paragraphs.length > 0 && relatedItems.slice(paragraphs.length).filter((r: any) => r.slug).map((r: any) => (
               <aside key={r.id} class="margin-note margin-note-trailing">
                 <a href={`/chunks/${r.slug}`}>{r.title}</a>
                 <time>{r.rel_date}</time>
