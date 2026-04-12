@@ -4,6 +4,8 @@ import { countWords } from "../lib/text";
 import { extractTags } from "../services/tag-generator";
 import { tokenizeForConcordance } from "../services/concordance";
 import { generateEmbeddings } from "../services/embeddings";
+import { getExistingDatesForSource, getSourceTag } from "../db/sources";
+import { getUnenrichedChunks, isEnrichmentDone } from "../db/ingestion";
 import type { Bindings, ParsedEpisode } from "../types";
 
 /**
@@ -18,19 +20,8 @@ export async function ingestEpisodesOnly(
   let episodesAdded = 0;
   let chunksAdded = 0;
 
-  const existing = await db.prepare(
-    "SELECT published_date FROM episodes WHERE source_id = ?"
-  )
-    .bind(sourceId)
-    .all();
-  const existingDates = new Set(
-    (existing.results as any[]).map((r) => r.published_date)
-  );
-
-  const source = await db.prepare("SELECT google_doc_id FROM sources WHERE id = ?")
-    .bind(sourceId)
-    .first<{ google_doc_id: string }>();
-  const sourceTag = source ? source.google_doc_id.substring(0, 6) : String(sourceId);
+  const existingDates = await getExistingDatesForSource(db, sourceId);
+  const sourceTag = await getSourceTag(db, sourceId);
 
   for (const episode of episodes) {
     const dateStr = formatDate(episode.parsedDate);
@@ -86,19 +77,8 @@ export async function enrichChunks(
   db: D1Database,
   batchSize: number = 50
 ): Promise<{ chunksProcessed: number }> {
-  // Find chunks that haven't been tagged yet
-  const unenriched = await db.prepare(
-    `SELECT c.id, c.episode_id, c.content_plain
-     FROM chunks c
-     WHERE c.id NOT IN (SELECT DISTINCT chunk_id FROM chunk_tags)
-     LIMIT ?`
-  )
-    .bind(batchSize)
-    .all();
-
-  if (!unenriched.results.length) return { chunksProcessed: 0 };
-
-  const chunks = unenriched.results as any[];
+  const chunks = await getUnenrichedChunks(db, batchSize);
+  if (!chunks.length) return { chunksProcessed: 0 };
 
   // Collect all tags
   const uniqueTags = new Map<string, string>();
@@ -195,11 +175,7 @@ export async function enrichChunks(
  * Check if all chunks have been enriched (have tags).
  */
 export async function isEnrichmentComplete(db: D1Database): Promise<boolean> {
-  const result = await db.prepare(
-    `SELECT COUNT(*) as c FROM chunks
-     WHERE id NOT IN (SELECT DISTINCT chunk_id FROM chunk_tags)`
-  ).first();
-  return (result as any).c === 0;
+  return isEnrichmentDone(db);
 }
 
 /**

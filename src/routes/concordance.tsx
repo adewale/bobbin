@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { AppEnv, ConcordanceRow } from "../types";
 import { Layout } from "../components/Layout";
 import { Breadcrumbs } from "../components/Breadcrumbs";
-import { getTopConcordance, getConcordanceWord } from "../db/concordance";
+import { getTopConcordance, getConcordanceWord, getWordChunks, getWordTimeline, getSparklineDataForWords } from "../db/concordance";
 import { escapeRegex } from "../lib/html";
 
 const concordance = new Hono<AppEnv>();
@@ -14,35 +14,8 @@ concordance.get("/", async (c) => {
   const maxDist = Math.max(...words.map((w) => w.distinctiveness), 1);
 
   // Fetch per-episode sparkline data for the top 50 words
-  const top50Words = words.slice(0, 30).map((w) => w.word);
-  const sparklineData = new Map<string, number[]>();
-
-  if (top50Words.length > 0) {
-    const placeholders = top50Words.map(() => "?").join(",");
-    const timeline = await c.env.DB.prepare(
-      `SELECT cw.word, e.published_date, SUM(cw.count) as ep_count
-       FROM chunk_words cw
-       JOIN chunks c ON cw.chunk_id = c.id
-       JOIN episodes e ON c.episode_id = e.id
-       WHERE cw.word IN (${placeholders})
-       GROUP BY cw.word, e.id
-       ORDER BY e.published_date ASC`
-    ).bind(...top50Words).all();
-
-    // Get all unique dates for consistent x-axis
-    const allDates = [...new Set((timeline.results as any[]).map((r) => r.published_date))].sort();
-    const dateIdx = new Map(allDates.map((d, i) => [d, i]));
-
-    for (const word of top50Words) {
-      const points = new Array(allDates.length).fill(0);
-      for (const r of timeline.results as any[]) {
-        if (r.word === word) {
-          points[dateIdx.get(r.published_date)!] = r.ep_count;
-        }
-      }
-      sparklineData.set(word, points);
-    }
-  }
+  const top30Words = words.slice(0, 30).map((w) => w.word);
+  const sparklineData = await getSparklineDataForWords(c.env.DB, top30Words);
 
   return c.html(
     <Layout title="Concordance" description="Distinctive words in the Bits and Bobs archive" activePath="/concordance">
@@ -123,29 +96,12 @@ concordance.get("/:word", async (c) => {
   const wordData = await getConcordanceWord(c.env.DB, word);
   if (!wordData) return c.notFound();
 
-  const [chunks, timeline] = await Promise.all([
-    c.env.DB.prepare(
-      `SELECT c.*, cw.count as word_count_in_chunk,
-              e.slug as episode_slug, e.title as episode_title, e.published_date
-       FROM chunk_words cw
-       JOIN chunks c ON cw.chunk_id = c.id
-       JOIN episodes e ON c.episode_id = e.id
-       WHERE cw.word = ?
-       ORDER BY cw.count DESC, e.published_date DESC
-       LIMIT 100`
-    ).bind(word).all(),
-    c.env.DB.prepare(
-      `SELECT e.published_date, e.title, SUM(cw.count) as episode_count
-       FROM chunk_words cw
-       JOIN chunks c ON cw.chunk_id = c.id
-       JOIN episodes e ON c.episode_id = e.id
-       WHERE cw.word = ?
-       GROUP BY e.id
-       ORDER BY e.published_date ASC`
-    ).bind(word).all(),
+  const [wordChunks, wordTimeline] = await Promise.all([
+    getWordChunks(c.env.DB, word),
+    getWordTimeline(c.env.DB, word),
   ]);
 
-  const timelineData = (timeline.results as any[]).map((r) => ({
+  const timelineData = wordTimeline.map((r: any) => ({
     date: r.published_date,
     count: r.episode_count,
     title: r.title,
@@ -187,7 +143,7 @@ concordance.get("/:word", async (c) => {
       </div>
 
       <div class="concordance-results">
-        {(chunks.results as any[]).map((r) => (
+        {wordChunks.map((r) => (
           <article key={r.id} class="concordance-entry">
             <h2>
               <a href={`/chunks/${r.slug}`}>{r.title}</a>

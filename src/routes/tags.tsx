@@ -3,7 +3,7 @@ import type { AppEnv, TagRow, ChunkRow } from "../types";
 import { Layout } from "../components/Layout";
 import { escapeXml, getBaseUrl } from "../lib/html";
 import { SearchForm } from "../components/SearchForm";
-import { getFilteredTags, getTagBySlug, getTagChunkCount, getTaggedChunks, getTagSparkline, getTagEpisodes } from "../db/tags";
+import { getFilteredTags, getTagBySlug, getTagChunkCount, getTaggedChunks, getTagSparkline, getTagEpisodes, getTagDiffChunks, getTagFeedChunks } from "../db/tags";
 import { TagCloud } from "../components/TagCloud";
 import { ChunkCard } from "../components/ChunkCard";
 import { Breadcrumbs } from "../components/Breadcrumbs";
@@ -223,22 +223,11 @@ tags.get("/:slug", async (c) => {
 // Feature 4: Diff-over-time view for a tag
 tags.get("/:slug/diff", async (c) => {
   const slug = c.req.param("slug");
-  const tag = await c.env.DB.prepare("SELECT * FROM tags WHERE slug = ?")
-    .bind(slug)
-    .first<TagRow>();
+  const tag = await getTagBySlug(c.env.DB, slug);
 
   if (!tag) return c.notFound();
 
-  const chunks = await c.env.DB.prepare(
-    `SELECT c.*, e.slug as episode_slug, e.title as episode_title, e.published_date
-     FROM chunks c
-     JOIN chunk_tags ct ON c.id = ct.chunk_id
-     JOIN episodes e ON c.episode_id = e.id
-     WHERE ct.tag_id = ?
-     ORDER BY e.published_date ASC`
-  )
-    .bind(tag.id)
-    .all();
+  const diffChunks = await getTagDiffChunks(c.env.DB, tag.id);
 
   return c.html(
     <Layout
@@ -255,7 +244,7 @@ tags.get("/:slug/diff", async (c) => {
       />
       <h1>&ldquo;{tag.name}&rdquo; over time</h1>
       <div class="diff-view">
-        {(chunks.results as any[]).map((r, i) => (
+        {diffChunks.map((r, i) => (
           <article key={r.id} class="diff-entry">
             <div class="diff-date">
               <time datetime={r.published_date}>{r.published_date}</time>
@@ -265,7 +254,7 @@ tags.get("/:slug/diff", async (c) => {
               <h2><a href={`/chunks/${r.slug}`}>{r.title}</a></h2>
               <p>{r.content_plain}</p>
             </div>
-            {i < (chunks.results as any[]).length - 1 && (
+            {i < diffChunks.length - 1 && (
               <div class="diff-connector" aria-hidden="true" />
             )}
           </article>
@@ -278,24 +267,11 @@ tags.get("/:slug/diff", async (c) => {
 // Feature 6: RSS feed per tag
 tags.get("/:slug/feed.xml", async (c) => {
   const slug = c.req.param("slug");
-  const tag = await c.env.DB.prepare("SELECT * FROM tags WHERE slug = ?")
-    .bind(slug)
-    .first<TagRow>();
+  const tag = await getTagBySlug(c.env.DB, slug);
 
   if (!tag) return c.notFound();
 
-  const chunks = await c.env.DB.prepare(
-    `SELECT c.*, e.slug as episode_slug, e.published_date
-     FROM chunks c
-     JOIN chunk_tags ct ON c.id = ct.chunk_id
-     JOIN episodes e ON c.episode_id = e.id
-     WHERE ct.tag_id = ?
-     ORDER BY e.published_date DESC
-     LIMIT 50`
-  )
-    .bind(tag.id)
-    .all();
-
+  const feedChunks = await getTagFeedChunks(c.env.DB, tag.id);
   const baseUrl = getBaseUrl(c.req.url);
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -306,9 +282,9 @@ tags.get("/:slug/feed.xml", async (c) => {
   <id>${baseUrl}/tags/${escapeXml(tag.slug)}</id>
   <updated>${new Date().toISOString()}</updated>
   <author><name>Alex Komoroske</name></author>
-${(chunks.results as any[])
+${feedChunks
   .map(
-    (r) => `  <entry>
+    (r: any) => `  <entry>
     <title>${escapeXml(r.title)}</title>
     <link href="${baseUrl}/chunks/${escapeXml(r.slug)}" />
     <id>${baseUrl}/chunks/${escapeXml(r.slug)}</id>

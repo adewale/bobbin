@@ -52,6 +52,31 @@ export async function getTagSparkline(db: D1Database, tagId: number) {
   return result.results as any[];
 }
 
+export async function getTagDiffChunks(db: D1Database, tagId: number) {
+  const result = await db.prepare(
+    `SELECT c.*, e.slug as episode_slug, e.title as episode_title, e.published_date
+     FROM chunks c
+     JOIN chunk_tags ct ON c.id = ct.chunk_id
+     JOIN episodes e ON c.episode_id = e.id
+     WHERE ct.tag_id = ?
+     ORDER BY e.published_date ASC`
+  ).bind(tagId).all();
+  return result.results as any[];
+}
+
+export async function getTagFeedChunks(db: D1Database, tagId: number, limit = 50) {
+  const result = await db.prepare(
+    `SELECT c.*, e.slug as episode_slug, e.published_date
+     FROM chunks c
+     JOIN chunk_tags ct ON c.id = ct.chunk_id
+     JOIN episodes e ON c.episode_id = e.id
+     WHERE ct.tag_id = ?
+     ORDER BY e.published_date DESC
+     LIMIT ?`
+  ).bind(tagId, limit).all();
+  return result.results as any[];
+}
+
 export async function getTagEpisodes(db: D1Database, tagId: number) {
   const result = await db.prepare(
     `SELECT e.*, COUNT(ct.chunk_id) as tag_chunk_count
