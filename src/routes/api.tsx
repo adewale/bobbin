@@ -5,6 +5,9 @@ import { ftsSearch } from "../services/search";
 import { parseSearchQuery } from "../lib/query-parser";
 import { keywordSearch } from "../db/search";
 import { safeParseInt, escapeLike } from "../lib/html";
+import { applyTopicBoost } from "../services/search-topics";
+import { expandEntityAliases } from "../lib/entity-aliases";
+import { KNOWN_ENTITIES } from "../data/known-entities";
 
 const api = new Hono<AppEnv>();
 
@@ -27,7 +30,23 @@ api.get("/search", async (c) => {
   let results;
   try {
     const parsed = parseSearchQuery(query);
+
+    // Entity alias expansion
+    const entityAliases = expandEntityAliases(parsed.text, KNOWN_ENTITIES);
+    if (entityAliases.length > 0) {
+      const uniqueTerms = new Set([
+        parsed.text.toLowerCase(),
+        ...entityAliases,
+      ]);
+      parsed.text = [...uniqueTerms].filter(Boolean).join(" OR ");
+    }
+
     results = await ftsSearch(c.env.DB, parsed);
+
+    // Topic boost
+    if (parsed.text) {
+      results = await applyTopicBoost(c.env.DB, query.toLowerCase(), results);
+    }
   } catch {
     const parsed = parseSearchQuery(query);
     results = await keywordSearch(c.env.DB, parsed);

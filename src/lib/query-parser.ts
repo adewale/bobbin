@@ -4,6 +4,7 @@ export interface ParsedQuery {
   before?: string;    // before:YYYY-MM-DD
   after?: string;     // after:YYYY-MM-DD
   year?: number;      // year:YYYY
+  topics?: string[];  // topic:slug filters
 }
 
 /**
@@ -46,11 +47,20 @@ export function parseSearchQuery(raw: string): ParsedQuery {
     return "";
   });
 
+  // Extract topic: operators
+  let topics: string[] | undefined;
+  text = text.replace(/topic:(\S+)/gi, (_, slug) => {
+    if (!topics) topics = [];
+    topics.push(slug.toLowerCase());
+    return "";
+  });
+
   return {
     text: text.replace(/\s+/g, " ").trim(),
     phrases,
     before,
     after,
     year,
+    topics,
   };
 }
