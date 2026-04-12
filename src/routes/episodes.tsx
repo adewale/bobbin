@@ -101,7 +101,10 @@ episodes.get("/:slug", async (c) => {
               <article key={chunk.id} class="essay" id={chunk.slug}>
                 <h2><a href={`/chunks/${chunk.slug}`}>{chunk.title}</a></h2>
                 <div class="essay-content">
-                  {chunk.content.split("\n").map((line, i) => (
+                  {chunk.content.split("\n").filter((line, i) => {
+                    if (i === 0 && line.trim() === chunk.title.trim()) return false;
+                    return true;
+                  }).map((line, i) => (
                     line.trim() ? <p key={i}>{line}</p> : null
                   ))}
                 </div>

@@ -97,17 +97,59 @@ describe("Essay episode: full content preserved", () => {
     ).run();
   });
 
-  it("does not strip any content from essay chunks", async () => {
+  it("strips duplicate title but preserves essay body content", async () => {
     const res = await SELF.fetch("http://localhost/episodes/2024-03-25-t");
     const html = await res.text();
-    // Essay renders all content including first line (title is an <h2>, content is separate)
+    // Title in <h2>, body content preserved
     expect(html).toContain("Consumer AI is converging");
     expect(html).toContain("The big players are all building the same thing.");
     expect(html).toContain("Differentiation is shrinking.");
-    // The title text should appear at least twice: once in <h2>, once in content
+    // Title should appear once (in <h2>), not duplicated in body
     const titleText = "Consumer AI is converging";
     const occurrences = html.split(titleText).length - 1;
-    expect(occurrences).toBeGreaterThanOrEqual(2);
+    expect(occurrences).toBe(1);
+  });
+});
+
+// Chunk detail page: title not repeated in body
+describe("Chunk detail page: title not repeated in body", () => {
+  beforeEach(async () => {
+    await env.DB.prepare(
+      `INSERT INTO chunks (episode_id, slug, title, content, content_plain, position)
+       VALUES (1, 'obs-1-2024-04-08-t-0', 'LLMs are great at cheap generation.', 'LLMs are great at cheap generation.\nThey struggle with things that need deep reasoning.', 'LLMs are great at cheap generation.\nThey struggle with things that need deep reasoning.', 0)`
+    ).run();
+  });
+
+  it("strips duplicate title from chunk body", async () => {
+    const res = await SELF.fetch("http://localhost/chunks/obs-1-2024-04-08-t-0");
+    const html = await res.text();
+    expect(html).toContain("LLMs are great at cheap generation.");
+    expect(html).toContain("They struggle with things that need deep reasoning.");
+    // Title in <h1> + should NOT appear again as a <p>
+    const titleText = "LLMs are great at cheap generation.";
+    const inBody = html.split("chunk-content")[1] || "";
+    expect(inBody).not.toContain(`<p>${titleText}</p>`);
+  });
+});
+
+// Essay episode page: title not repeated in essay body
+describe("Essay episode: title not repeated in body", () => {
+  beforeEach(async () => {
+    await env.DB.prepare(
+      `INSERT INTO chunks (episode_id, slug, title, content, content_plain, position)
+       VALUES (2, 'essay-1-2024-03-25-t-0', 'Consumer AI is converging', 'Consumer AI is converging\nThe big players are all building the same thing.\nDifferentiation is shrinking.', 'Consumer AI is converging\nThe big players are all building the same thing.\nDifferentiation is shrinking.', 0)`
+    ).run();
+  });
+
+  it("strips duplicate title from essay content body", async () => {
+    const res = await SELF.fetch("http://localhost/episodes/2024-03-25-t");
+    const html = await res.text();
+    // Title appears in <h2>
+    expect(html).toContain("Consumer AI is converging");
+    expect(html).toContain("The big players are all building the same thing.");
+    // The essay-content div should NOT contain the title as a <p>
+    const essayBody = html.split("essay-content")[1] || "";
+    expect(essayBody).not.toContain(`<p>Consumer AI is converging</p>`);
   });
 });
 

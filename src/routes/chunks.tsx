@@ -40,7 +40,10 @@ chunks.get("/:slug", async (c) => {
 
   const prevChunk = adjacentResult.prev;
   const nextChunk = adjacentResult.next;
-  const paragraphs = chunk.content.split("\n").filter((p) => p.trim());
+  const paragraphs = chunk.content.split("\n").filter((line, i) => {
+    if (i === 0 && line.trim() === chunk.title.trim()) return false;
+    return line.trim();
+  });
 
   return c.html(
     <Layout
