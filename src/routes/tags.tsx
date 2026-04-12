@@ -34,7 +34,7 @@ tags.get("/", async (c) => {
        LEFT JOIN concordance c ON c.word = t.name
        WHERE t.usage_count >= 3 AND t.name NOT LIKE '% %'
        ORDER BY t.usage_count * COALESCE(c.distinctiveness, 1) DESC
-       LIMIT 60`
+       LIMIT 80`
     ).all<TagRow>(),
   ]);
   const entities = multiWord.results;
@@ -44,7 +44,7 @@ tags.get("/", async (c) => {
   const extraNouns = properNouns.results.filter(t => !entitySlugs.has(t.slug) && !conceptSlugs.has(t.slug));
   const concepts = [...conceptResults.results, ...extraNouns]
     .filter(t => !entitySlugs.has(t.slug))
-    .slice(0, 60);
+    .slice(0, 80);
 
   return c.html(
     <Layout title="Tags" description="Browse Bits and Bobs by topic" activePath="/tags">
