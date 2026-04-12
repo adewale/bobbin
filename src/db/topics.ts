@@ -259,23 +259,21 @@ export async function getTopTopicsWithSparklines(db: D1Database, limit = 20) {
     "SELECT name, usage_count FROM topics WHERE name LIKE '% %' AND usage_count >= 5"
   ).all<{ name: string; usage_count: number }>();
 
-  // Rank by usage x distinctiveness to surface interesting topics, not just frequent ones.
-  // Multi-word topics (entities/phrases) get a boost since they're higher quality.
-  // Fetch 3x to account for quality filtering.
+  // Fetch a wide pool of candidates — we'll rank by temporal interest after computing sparklines
   const candidates = await db.prepare(
     `SELECT id, name, slug, usage_count, distinctiveness FROM topics
-     WHERE usage_count >= 3
+     WHERE usage_count >= 5
      ORDER BY usage_count * CASE
          WHEN distinctiveness > 0 THEN distinctiveness
          WHEN name LIKE '% %' THEN 20
          ELSE 1
        END DESC
      LIMIT ?`
-  ).bind(limit * 3).all<TopicRow>();
+  ).bind(limit * 4).all<TopicRow>();
 
   if (!candidates.results.length) return [];
 
-  // Apply quality curation then take top N
+  // Apply quality curation
   const curated = curateTopics(
     candidates.results.map(t => ({
       name: t.name,
@@ -284,16 +282,16 @@ export async function getTopTopicsWithSparklines(db: D1Database, limit = 20) {
       distinctiveness: t.distinctiveness ?? 0,
     })),
     phrases.results
-  ).slice(0, limit);
+  );
 
-  // Map back to full TopicRow objects (need id for sparkline query)
   const curatedSlugs = new Set(curated.map(t => t.slug));
-  const topTopics = candidates.results.filter(t => curatedSlugs.has(t.slug)).slice(0, limit);
+  const pool = candidates.results.filter(t => curatedSlugs.has(t.slug));
 
-  if (!topTopics.length) return [];
+  if (!pool.length) return [];
 
-  const topicIds = topTopics.map(t => t.id);
-  const placeholders = topicIds.map(() => "?").join(",");
+  // Build sparklines for the entire pool
+  const poolIds = pool.map(t => t.id);
+  const placeholders = poolIds.map(() => "?").join(",");
   const timeline = await db.prepare(
     `SELECT ct.topic_id, e.published_date, COUNT(*) as count
      FROM chunk_topics ct
@@ -302,15 +300,32 @@ export async function getTopTopicsWithSparklines(db: D1Database, limit = 20) {
      WHERE ct.topic_id IN (${placeholders})
      GROUP BY ct.topic_id, e.id
      ORDER BY e.published_date ASC`
-  ).bind(...topicIds).all();
+  ).bind(...poolIds).all();
 
   const allDates = [...new Set((timeline.results as any[]).map(r => r.published_date))].sort();
 
-  return topTopics.map(topic => {
+  const withSparklines = pool.map(topic => {
     const points = allDates.map(date => {
       const match = (timeline.results as any[]).find(r => r.topic_id === topic.id && r.published_date === date);
       return match ? match.count : 0;
     });
     return { ...topic, sparkline: points, dates: allDates };
   });
+
+  // Rank by temporal interest: coefficient of variation (std/mean)
+  // Topics with spiky, interesting patterns rank higher than flat lines
+  const ranked = withSparklines.map(t => {
+    const nonZero = t.sparkline.filter(v => v > 0);
+    if (nonZero.length < 2) return { ...t, interest: 0 };
+    const mean = nonZero.reduce((a, b) => a + b, 0) / nonZero.length;
+    const variance = nonZero.reduce((sum, v) => sum + (v - mean) ** 2, 0) / nonZero.length;
+    const cv = Math.sqrt(variance) / (mean || 1);
+    // Combine temporal interest with distinctiveness for a final score
+    // CV alone would over-rank rare topics that spiked once. Multiply by log(usage) for balance.
+    const interest = cv * Math.log2(t.usage_count + 1) * (t.name.includes(" ") ? 1.5 : 1);
+    return { ...t, interest };
+  });
+
+  ranked.sort((a, b) => b.interest - a.interest);
+  return ranked.slice(0, limit);
 }

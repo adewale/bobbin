@@ -100,66 +100,19 @@ beforeEach(async () => {
   await seedMultiYearData();
 });
 
-describe("ThemeRiver on homepage", () => {
-  it("contains theme-river-svg when topics exist", async () => {
-    const res = await SELF.fetch("http://localhost/");
-    expect(res.status).toBe(200);
-    const html = await res.text();
-    expect(html).toContain("theme-river-svg");
-  });
-
-  it("has path elements for each top topic", async () => {
+describe("Homepage does not show ThemeRiver", () => {
+  it("homepage does not contain theme-river-svg", async () => {
     const res = await SELF.fetch("http://localhost/");
     const html = await res.text();
-    expect(html).toContain("theme-river-svg");
-    // Should have <path> elements inside the SVG
-    expect(html).toContain("<path");
-  });
-
-  it("contains a legend section with links to topic pages", async () => {
-    const res = await SELF.fetch("http://localhost/");
-    const html = await res.text();
-    expect(html).toContain("theme-river-legend");
-    expect(html).toContain("river-legend-item");
-    // Legend items link to topic detail pages
-    expect(html).toContain('href="/topics/llms"');
-    expect(html).toContain('href="/topics/agent"');
+    expect(html).not.toContain("theme-river-svg");
   });
 });
 
-describe("ThemeRiver on topics index", () => {
-  it("contains theme-river-svg on /topics", async () => {
-    const res = await SELF.fetch("http://localhost/topics");
-    expect(res.status).toBe(200);
-    const html = await res.text();
-    expect(html).toContain("theme-river-svg");
-  });
-
-  it("has path elements for each top topic", async () => {
+describe("Topics index does not show ThemeRiver", () => {
+  it("/topics does not contain theme-river-svg", async () => {
     const res = await SELF.fetch("http://localhost/topics");
     const html = await res.text();
-    // 4 topics with usage >= 5: llms, agent, coding, vibe
-    const pathMatches = html.match(/<path /g);
-    expect(pathMatches).not.toBeNull();
-    expect(pathMatches!.length).toBeGreaterThanOrEqual(4);
-  });
-
-  it("links each stream to the topic detail page", async () => {
-    const res = await SELF.fetch("http://localhost/topics");
-    const html = await res.text();
-    // The ThemeRiver paths are wrapped in <a> tags linking to topic pages
-    expect(html).toContain('href="/topics/llms"');
-    expect(html).toContain('href="/topics/agent"');
-  });
-
-  it("contains a legend section with links to topic pages", async () => {
-    const res = await SELF.fetch("http://localhost/topics");
-    const html = await res.text();
-    expect(html).toContain("theme-river-legend");
-    expect(html).toContain("river-legend-item");
-    // Legend items link to topic detail pages
-    expect(html).toContain('href="/topics/llms"');
-    expect(html).toContain('href="/topics/agent"');
+    expect(html).not.toContain("theme-river-svg");
   });
 });
 

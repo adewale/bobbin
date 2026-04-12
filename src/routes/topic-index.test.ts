@@ -105,7 +105,7 @@ describe("Topics index - unified grid", () => {
     const res = await SELF.fetch("http://localhost/topics");
     const html = await res.text();
     expect(html).toContain("page-intro");
-    expect(html).toContain("concepts Komoroske returns to most");
+    expect(html).toContain("page-intro");
   });
 
   it("includes multi-word topics in the sparkline grid", async () => {

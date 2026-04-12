@@ -409,26 +409,32 @@ mark { background: color-mix(in srgb, var(--accent-light) 60%, transparent); col
 .topic-slopegraph h2 { font-family: var(--font-ui); font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-light); margin-bottom: 0.5rem; }
 .slopegraph-svg { width: 100%; max-width: 300px; }
 
+/* === Homepage layout with margin === */
+.home-with-margin { display: grid; grid-template-columns: 1fr 12rem; gap: 2rem; margin-top: 1rem; }
+.home-main { min-width: 0; }
+.home-margin { font-family: var(--font-ui); padding-top: 0.5rem; }
+.home-margin h3 { font-size: 0.7rem; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; margin-bottom: 0.5rem; }
+.home-margin .topic-cloud { display: flex; flex-direction: column; gap: 0.2rem; }
+@media (max-width: 768px) {
+  .home-with-margin { grid-template-columns: 1fr; }
+  .home-margin { border-top: 1px solid var(--border); padding-top: 1rem; margin-top: 1rem; }
+}
+
 /* === Latest episode panel === */
-.latest-episode-panel { display: flex; gap: 1.5rem; padding: 1rem; margin: 1.5rem 0; background: var(--bg-warm); border: 1px solid var(--border); border-radius: 6px; }
-.latest-content { flex: 1; }
-.latest-content h2 { font-family: var(--font-ui); font-size: 0.95rem; font-weight: 600; font-style: normal; margin-bottom: 0.5rem; }
-.latest-content h2 a { color: var(--text); text-decoration: none; }
-.latest-content h2 a:hover { color: var(--accent); }
+.latest-episode-panel { padding: 1rem; margin-bottom: 1.5rem; background: var(--bg-warm); border: 1px solid var(--border); border-radius: 6px; }
+.latest-episode-panel h2 { font-family: var(--font-ui); font-size: 0.95rem; font-weight: 600; font-style: normal; margin-bottom: 0.5rem; }
+.latest-episode-panel h2 a { color: var(--text); text-decoration: none; }
+.latest-episode-panel h2 a:hover { color: var(--accent); }
 .latest-chunks { list-style: none; font-size: 0.85rem; color: var(--text-muted); }
 .latest-chunks li { padding: 0.15rem 0; }
 .latest-chunks li::before { content: '\201C'; color: var(--text-light); }
 .latest-chunks li::after { content: '\201D'; color: var(--text-light); }
-.latest-topics { min-width: 10rem; font-family: var(--font-ui); }
-.latest-topics h3 { font-size: 0.7rem; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; margin-bottom: 0.3rem; }
+.latest-topics { margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border); font-family: var(--font-ui); }
+.latest-topics h3 { font-size: 0.65rem; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; margin-bottom: 0.25rem; }
 .latest-topics .topics { display: flex; flex-wrap: wrap; gap: 0.25rem; }
-@media (max-width: 640px) {
-  .latest-episode-panel { flex-direction: column; }
-  .latest-topics { margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border); }
-}
 
-/* === Homepage 3-column grid === */
-.home-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.5rem; margin-top: 1.5rem; }
+/* === Homepage 2-column grid === */
+.home-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 1rem; }
 .home-grid section { min-width: 0; }
 .home-grid h2 { font-family: var(--font-ui); font-size: 0.9rem; font-weight: 700; font-style: normal; margin-bottom: 0.5rem; }
-@media (max-width: 768px) { .home-grid { grid-template-columns: 1fr; } }
+@media (max-width: 640px) { .home-grid { grid-template-columns: 1fr; } }
