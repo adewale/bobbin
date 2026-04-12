@@ -348,16 +348,6 @@ mark { background: color-mix(in srgb, var(--accent-light) 60%, transparent); col
 .diff-content h2 a { text-decoration: none; }
 .diff-content p { font-size: 0.9rem; color: var(--text-muted); }
 
-/* === Reading mode === */
-.reading-mode { display: inline-block; padding: 0.25rem 0.6rem; font-size: 0.72rem; font-family: var(--font-ui); background: var(--bg-warm); color: var(--text-muted); border: 1px solid var(--border); border-radius: 3px; cursor: pointer; margin: 1rem 0; }
-.reading-mode:hover { background: var(--accent-light); color: var(--accent); }
-body.reader header, body.reader footer, body.reader .breadcrumbs, body.reader .tags, body.reader .margin-note, body.reader .reading-mode, body.reader .chunk-meta { display: none; }
-body.reader main { max-width: 34rem; margin: 3rem auto; padding: 0 1.5rem; }
-body.reader .tufte-layout { max-width: 34rem; }
-body.reader .para-with-margin { grid-template-columns: 1fr; }
-body.reader .chunk-detail h1 { font-size: 1.5rem; margin-bottom: 1.5rem; }
-body.reader .chunk-content p { font-size: 1.05rem; line-height: 1.85; }
-
 /* === Reactive timeline brush === */
 .reactive-timeline { margin: 1.5rem 0; padding: 1rem; background: var(--bg-warm); border: 1px solid var(--border); border-radius: 6px; }
 .reactive-timeline h2 { font-family: var(--font-ui); font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-light); margin-bottom: 0.5rem; }

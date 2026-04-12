@@ -48,16 +48,3 @@ describe("Tag layout on episode pages", () => {
   });
 });
 
-describe("Reading mode", () => {
-  it("essay chunk page HAS reading mode button", async () => {
-    const res = await SELF.fetch("http://localhost/chunks/essay-chunk");
-    const html = await res.text();
-    expect(html).toContain("reading-mode");
-  });
-
-  it("notes chunk page does NOT have reading mode button", async () => {
-    const res = await SELF.fetch("http://localhost/chunks/note-chunk");
-    const html = await res.text();
-    expect(html).not.toContain("reading-mode");
-  });
-});
