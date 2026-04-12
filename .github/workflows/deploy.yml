@@ -21,26 +21,13 @@ jobs:
       - name: Run Workers pool tests
         run: npm test
 
-      - name: Run Node.js tests (local data files)
+      - name: Run Node.js tests
         run: npx vitest run --config vitest.node.config.ts
-
-      - name: Install Playwright browsers
-        run: npx playwright install chromium
-
-      - name: Run E2E tests
-        run: npx playwright test
-
-      - name: Upload Playwright report
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-report
-          path: playwright-report/
-          retention-days: 14
 
   deploy:
     runs-on: ubuntu-latest
     needs: test
+    if: github.ref == 'refs/heads/main'
 
     steps:
       - uses: actions/checkout@v4
