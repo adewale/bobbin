@@ -82,16 +82,14 @@ episodes.get("/:slug", async (c) => {
         <time datetime={episode.published_date}>{episode.published_date}</time>
         {topicsList.length > 0 && (
           <aside class="topics-margin">
-            <details>
-              <summary>Topics</summary>
-              <div class="topics">
-                {topicsList.map((topic) => (
-                  <a key={topic.id} href={`/topics/${topic.slug}`} class="topic">
-                    {topic.name}
-                  </a>
-                ))}
-              </div>
-            </details>
+            <h3>Topics</h3>
+            <div class="topics">
+              {topicsList.map((topic) => (
+                <a key={topic.id} href={`/topics/${topic.slug}`} class="topic">
+                  {topic.name}
+                </a>
+              ))}
+            </div>
           </aside>
         )}
 

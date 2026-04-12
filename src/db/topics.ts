@@ -1,4 +1,4 @@
-import type { TopicRow } from "../types";
+import type { TopicRow, WordStatsRow } from "../types";
 
 export async function getTopTopics(db: D1Database, limit: number): Promise<TopicRow[]> {
   const result = await db.prepare(
@@ -89,4 +89,24 @@ export async function getTopicEpisodes(db: D1Database, topicId: number) {
      ORDER BY e.published_date ASC`
   ).bind(topicId, topicId).all();
   return result.results as any[];
+}
+
+export async function getRelatedTopics(db: D1Database, topicId: number, limit = 6) {
+  const result = await db.prepare(
+    `SELECT t.name, t.slug, COUNT(*) as co_count
+     FROM chunk_topics ct1
+     JOIN chunk_topics ct2 ON ct1.chunk_id = ct2.chunk_id AND ct1.topic_id != ct2.topic_id
+     JOIN topics t ON ct2.topic_id = t.id
+     WHERE ct1.topic_id = ?
+     GROUP BY ct2.topic_id
+     ORDER BY co_count DESC
+     LIMIT ?`
+  ).bind(topicId, limit).all();
+  return result.results as { name: string; slug: string; co_count: number }[];
+}
+
+export async function getTopicWordStats(db: D1Database, topicName: string) {
+  return await db.prepare(
+    "SELECT total_count, doc_count, distinctiveness, in_baseline FROM word_stats WHERE word = ?"
+  ).bind(topicName.toLowerCase()).first<Pick<WordStatsRow, "total_count" | "doc_count" | "distinctiveness" | "in_baseline">>();
 }

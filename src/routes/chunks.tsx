@@ -71,16 +71,14 @@ chunks.get("/:slug", async (c) => {
 
           {topics.length > 0 && (
             <aside class="topics-margin">
-              <details>
-                <summary>Topics</summary>
-                <div class="topics">
-                  {topics.map((topic) => (
-                    <a key={topic.id} href={`/topics/${topic.slug}`} class="topic">
-                      {topic.name}
-                    </a>
-                  ))}
-                </div>
-              </details>
+              <h3>Topics</h3>
+              <div class="topics">
+                {topics.map((topic) => (
+                  <a key={topic.id} href={`/topics/${topic.slug}`} class="topic">
+                    {topic.name}
+                  </a>
+                ))}
+              </div>
             </aside>
           )}
 

@@ -1,13 +1,13 @@
 import { Hono } from "hono";
-import type { AppEnv, TopicRow, ChunkRow } from "../types";
+import type { AppEnv, TopicRow } from "../types";
 import { Layout } from "../components/Layout";
 import { SearchForm } from "../components/SearchForm";
-import { getFilteredTopics, getTopicBySlug, getTopicChunkCount, getTopicChunks, getTopicSparkline, getTopicEpisodes, getTopicDiffChunks } from "../db/topics";
+import { getTopicBySlug, getTopicChunkCount, getTopicChunks, getTopicSparkline, getTopicEpisodes, getTopicDiffChunks, getRelatedTopics, getTopicWordStats } from "../db/topics";
 import { safeParseInt } from "../lib/html";
 import { TopicCloud } from "../components/TopicCloud";
-import { ChunkCard } from "../components/ChunkCard";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { Pagination } from "../components/Pagination";
+import { highlightInExcerpt } from "../lib/highlight";
 
 const topics = new Hono<AppEnv>();
 const PAGE_SIZE = 20;
@@ -75,12 +75,14 @@ topics.get("/:slug", async (c) => {
   const topic = await getTopicBySlug(c.env.DB, slug);
   if (!topic) return c.notFound();
 
-  const [total, chunksList, episodes, sparkline, diffChunks] = await Promise.all([
+  const [total, chunksList, episodes, sparkline, diffChunks, relatedTopics, wordStats] = await Promise.all([
     getTopicChunkCount(c.env.DB, topic.id),
     getTopicChunks(c.env.DB, topic.id, PAGE_SIZE, offset),
     getTopicEpisodes(c.env.DB, topic.id),
     getTopicSparkline(c.env.DB, topic.id),
     getTopicDiffChunks(c.env.DB, topic.id),
+    getRelatedTopics(c.env.DB, topic.id),
+    getTopicWordStats(c.env.DB, topic.name),
   ]);
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
@@ -99,10 +101,25 @@ topics.get("/:slug", async (c) => {
         ]}
       />
       <h1>Topic: {topic.name}</h1>
-      <p>
-        {total} chunk{total !== 1 ? "s" : ""} across {episodes.length} episode
+      <p class="topic-header-stats">
+        {wordStats && (<><span class="topic-mentions">{wordStats.total_count.toLocaleString()} mentions</span> &middot; </>)}
+        {total} chunk{total !== 1 ? "s" : ""} &middot; {episodes.length} episode
         {episodes.length !== 1 ? "s" : ""}
       </p>
+      {wordStats && wordStats.distinctiveness > 0 && (
+        <p class="topic-distinctiveness">
+          {wordStats.distinctiveness.toFixed(1)}&times; distinctiveness vs baseline
+        </p>
+      )}
+
+      {relatedTopics.length > 0 && (
+        <nav class="topic-related">
+          <span class="topic-related-label">Related:</span>{" "}
+          {relatedTopics.map((rt, i) => (
+            <>{i > 0 && " \u00B7 "}<a href={`/topics/${rt.slug}`}>{rt.name}</a></>
+          ))}
+        </nav>
+      )}
 
       {/* Corpus level: SVG sparkline with mean line */}
       {sparkline.length > 1 && (() => {
@@ -201,14 +218,21 @@ topics.get("/:slug", async (c) => {
       {/* Observation list */}
       <section class="topic-chunks">
         <h2>Observations</h2>
-        {chunksList.map((r) => (
-          <ChunkCard
-            key={r.id}
-            chunk={r as ChunkRow}
-            episodeSlug={r.episode_slug}
-            episodeTitle={r.episode_title}
-            showEpisodeLink
-          />
+        {chunksList.map((r: any) => (
+          <article key={r.id} class="chunk-card">
+            <h3>
+              <a href={`/chunks/${r.slug}`}>{r.title}</a>
+            </h3>
+            <span class="episode-link">
+              from <a href={`/episodes/${r.episode_slug}`}>{r.episode_title}</a>
+            </span>
+            <p
+              class="excerpt"
+              dangerouslySetInnerHTML={{
+                __html: highlightInExcerpt(r.content_plain || "", topic.name),
+              }}
+            />
+          </article>
         ))}
         <Pagination
           currentPage={page}

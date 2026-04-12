@@ -3,7 +3,7 @@ import type { AppEnv, WordStatsRow } from "../types";
 import { Layout } from "../components/Layout";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { getTopWordStats, getWordStats, getWordChunks, getWordTimeline, getSparklineDataForWords } from "../db/word-stats";
-import { escapeRegex } from "../lib/html";
+import { highlightInExcerpt } from "../lib/highlight";
 
 const wordStats = new Hono<AppEnv>();
 
@@ -166,26 +166,6 @@ wordStats.get("/:word", async (c) => {
     </Layout>
   );
 });
-
-function highlightInExcerpt(text: string, word: string): string {
-  const excerpt = getExcerptAroundWord(text, word);
-  const escaped = excerpt.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  const safeWord = escapeRegex(word);
-  return escaped.replace(new RegExp(`(${safeWord})`, "gi"), "<mark>$1</mark>");
-}
-
-function getExcerptAroundWord(text: string, word: string, maxLen = 300): string {
-  const lower = text.toLowerCase();
-  const wLower = word.toLowerCase();
-  const idx = lower.indexOf(wLower);
-  if (idx === -1) return text.substring(0, maxLen);
-  const start = Math.max(0, idx - 80);
-  const end = Math.min(text.length, idx + word.length + 150);
-  let excerpt = text.substring(start, end);
-  if (start > 0) excerpt = "..." + excerpt;
-  if (end < text.length) excerpt += "...";
-  return excerpt;
-}
 
 function renderSparkPoints(values: number[], height = 40): string {
   if (!values.length) return "";

@@ -133,16 +133,12 @@ a:hover { text-decoration: underline; }
 details.topic-tier summary { font-family: var(--font-ui); font-size: 0.85rem; color: var(--text-muted); cursor: pointer; margin-bottom: 0.5rem; }
 details.topic-tier .topic-cloud { margin-top: 0.5rem; }
 
-/* Topics as Tufte marginalia (desktop) / accordion (mobile) */
+/* Topics as Tufte marginalia (desktop) / below content (mobile) */
 .topics-margin { font-family: var(--font-ui); }
-.topics-margin summary { font-size: 0.75rem; color: var(--text-light); cursor: pointer; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; }
-.topics-margin details[open] summary { margin-bottom: 0.3rem; }
+.topics-margin h3 { font-size: 0.7rem; font-family: var(--font-ui); color: var(--text-light); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; margin-bottom: 0.3rem; }
 @media (min-width: 769px) {
   .topics-margin { float: right; width: 12rem; margin: 0 -14rem 1rem 1rem; font-size: 0.78rem; }
-  .topics-margin details { open: true; }
-  .topics-margin details[open] { display: block; }
-  .topics-margin summary { display: none; }
-  .topics-margin .topics { display: flex; }
+  .topics-margin .topics { display: flex; flex-wrap: wrap; gap: 0.3rem; }
 }
 @media (max-width: 768px) {
   .topics-margin { margin: 1.5rem 0 0; padding-top: 1rem; border-top: 1px solid var(--border); order: 99; }

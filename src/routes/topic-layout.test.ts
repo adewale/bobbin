@@ -32,11 +32,15 @@ describe("Topic layout on chunk pages", () => {
     expect(html).toContain("topics-margin");
   });
 
-  it("topics are inside a details/summary accordion for mobile", async () => {
+  it("topics are shown as always-visible marginalia with h3 heading", async () => {
     const res = await SELF.fetch("http://localhost/chunks/essay-chunk");
     const html = await res.text();
-    expect(html).toContain("<details");
-    expect(html).toContain("<summary");
+    const marginStart = html.indexOf("topics-margin");
+    const marginEnd = html.indexOf("</aside>", marginStart);
+    const marginSection = html.substring(marginStart, marginEnd);
+    expect(marginSection).toContain("<h3>Topics</h3>");
+    expect(marginSection).not.toContain("<details");
+    expect(marginSection).not.toContain("<summary");
   });
 });
 
