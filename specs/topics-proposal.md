@@ -30,21 +30,48 @@ Terms we no longer use: "tag" (in UI and comments), "observation" (use "chunk"),
 
 ## Data model
 
-### What stays
+### Table renames
 
-The underlying tables (`tags`, `chunk_tags`, `episode_tags`, `concordance`, `chunk_words`) remain. They are the raw material. Renaming them would be churn with no user benefit.
+Every table is renamed to match the new language:
 
-### What changes
+| Old name | New name | Reason |
+|----------|----------|--------|
+| `tags` | `topics` | The core entity |
+| `chunk_tags` | `chunk_topics` | Junction table |
+| `episode_tags` | `episode_topics` | Junction table |
+| `concordance` | `word_stats` | What it actually contains — per-word corpus statistics |
+| `chunk_words` | `chunk_words` | Already correct |
 
-**`tags` table** gets new columns:
+The migration recreates these tables (D1 doesn't support `ALTER TABLE RENAME`). Data is copied from old to new, old tables dropped.
+
+### Schema changes
+
+**`topics` table** (formerly `tags`):
 
 ```sql
-ALTER TABLE tags ADD COLUMN kind TEXT NOT NULL DEFAULT 'concept';
--- kind: 'concept' | 'entity' | 'phrase'
-ALTER TABLE tags ADD COLUMN distinctiveness REAL NOT NULL DEFAULT 0;
--- populated from concordance.distinctiveness for single-word topics
-ALTER TABLE tags ADD COLUMN related_slugs TEXT;
--- JSON array of co-occurring topic slugs, precomputed
+CREATE TABLE topics (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE,
+  slug TEXT NOT NULL UNIQUE,
+  kind TEXT NOT NULL DEFAULT 'concept',  -- 'concept' | 'entity' | 'phrase'
+  usage_count INTEGER NOT NULL DEFAULT 0,
+  distinctiveness REAL NOT NULL DEFAULT 0,
+  related_slugs TEXT  -- JSON array of co-occurring topic slugs, precomputed
+);
+```
+
+**`word_stats` table** (formerly `concordance`):
+
+```sql
+CREATE TABLE word_stats (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  word TEXT NOT NULL UNIQUE,
+  total_count INTEGER NOT NULL DEFAULT 0,
+  doc_count INTEGER NOT NULL DEFAULT 0,
+  distinctiveness REAL NOT NULL DEFAULT 0,
+  in_baseline INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 ```
 
 **Remove the 5-tag cap** in `extractTags()`. Currently chunks are bandwidth-constrained — 94% hit the ceiling. Topics should reflect all significant concepts in a chunk.
@@ -201,28 +228,29 @@ Header: Bobbin  Episodes  Topics  Search(icon)
 
 ## Implementation phases
 
-### Phase 1: Language cleanup
+### Phase 1: Language cleanup + table renames
 
-Rename throughout the codebase. No functional changes, just terminology:
+Rename throughout the codebase — code, SQL, types, UI text, CSS classes:
 
-- "observation" → "chunk" (already mostly done)
-- "tag" → "topic" in all UI-facing text, comments, CSS class names
+- Tables: `tags` → `topics`, `chunk_tags` → `chunk_topics`, `episode_tags` → `episode_topics`, `concordance` → `word_stats`
+- Types: `TagRow` → `TopicRow`, `ConcordanceRow` → `WordStatsRow`
+- Functions: `getEpisodeTags` → `getEpisodeTopics`, `getChunkTags` → `getChunkTopics`, etc.
+- Components: `TagCloud` → `TopicCloud`
+- CSS: `.tag-*` → `.topic-*`, `.concordance-*` → topic detail styles
+- Routes: `/tags` → `/topics`, remove `/concordance`
 - Nav: "Tags" → "Topics", remove "Concordance"
-- Route: `/tags` → `/topics`, `/tags/:slug` → `/topics/:slug`
-- Remove `/concordance` and `/concordance/:word` routes
-- Rename `TagCloud` component → `TopicCloud`
-- Rename `getEpisodeTags` → `getEpisodeTopics`, etc. (the function names, not the SQL)
+- All comments and test descriptions
 
-Tests update to match.
+Migration creates new tables, copies data, drops old tables. Tests and test helpers update to match.
 
-### Phase 2: Merge tag + concordance data on topic detail page
+### Phase 2: Merge topic + word_stats data on topic detail page
 
 Enrich `/topics/:slug` with:
-- Concordance stats (mention count, distinctiveness) in the header
-- Highlighted excerpts in the chunk list (from concordance `highlightInExcerpt`)
-- Related topics (from co-occurrence query on `chunk_tags`)
+- Word stats (mention count, distinctiveness) in the header — from `word_stats` table
+- Highlighted excerpts in the chunk list — from `chunk_words` data
+- Related topics — from co-occurrence query on `chunk_topics`
 
-The two-source merge: look up the topic in both `tags` (by slug) and `concordance` (by name). Display whichever data exists.
+The two-source merge: look up the topic in `topics` (by slug) and `word_stats` (by name). Display whichever data exists.
 
 ### Phase 3: Dispersion plot + KWIC
 
@@ -259,16 +287,23 @@ Advanced visualizations on the topics index:
 
 ## What gets deleted
 
-| File/Route | Reason |
-|------------|--------|
-| `src/routes/concordance.tsx` | Merged into `/topics` |
-| `src/routes/tags.tsx` | Becomes `src/routes/topics.tsx` |
-| `src/db/concordance.ts` (partially) | `getMostConnected` moves to `src/db/chunks.ts`; word queries fold into topic queries |
-| `src/components/TagCloud.tsx` | Becomes `TopicCloud.tsx` |
-| `/concordance` nav item | Gone |
-| `/tags` nav item | Becomes `/topics` |
-| All `.tag-*` CSS classes | Renamed to `.topic-*` |
+| Current | Becomes |
+|---------|---------|
+| `src/routes/tags.tsx` | `src/routes/topics.tsx` |
+| `src/routes/concordance.tsx` | Deleted — merged into `topics.tsx` |
+| `src/db/tags.ts` | `src/db/topics.ts` |
+| `src/db/concordance.ts` | `src/db/word-stats.ts` (word queries) + `src/db/chunks.ts` (getMostConnected) |
+| `src/components/TagCloud.tsx` | `src/components/TopicCloud.tsx` |
+| `src/services/tag-generator.ts` | `src/services/topic-extractor.ts` |
+| `src/types.ts: TagRow` | `TopicRow` (with `kind`, `distinctiveness`, `related_slugs`) |
+| `src/types.ts: ConcordanceRow` | `WordStatsRow` |
+| `test/helpers/migrations.ts` | Updated table names |
+| All `.tag-*` CSS classes | `.topic-*` |
 | All `.concordance-*` CSS classes | Replaced by topic detail page styles |
+| `tags` table | `topics` table |
+| `chunk_tags` table | `chunk_topics` table |
+| `episode_tags` table | `episode_topics` table |
+| `concordance` table | `word_stats` table |
 
 ## What the data audit tells us
 
