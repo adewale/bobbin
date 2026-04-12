@@ -13,15 +13,20 @@ const tags = new Hono<AppEnv>();
 const PAGE_SIZE = 20;
 
 tags.get("/", async (c) => {
-  // Query entities and concepts separately so entities aren't crowded out
-  const [entityResults, conceptResults] = await Promise.all([
+  // Three tiers: multi-word entities, proper nouns, domain concepts
+  const [multiWord, properNouns, conceptResults] = await Promise.all([
+    // Multi-word entities: "claude code", "simon willison"
+    c.env.DB.prepare(
+      "SELECT * FROM tags WHERE usage_count >= 3 AND name LIKE '% %' ORDER BY usage_count DESC LIMIT 20"
+    ).all<TagRow>(),
+    // Single-word proper nouns/products: not in English, used 8+ times
     c.env.DB.prepare(
       `SELECT t.* FROM tags t
-       LEFT JOIN concordance c ON c.word = t.name
-       WHERE t.usage_count >= 3
-         AND (t.name LIKE '% %' OR (c.in_baseline = 0 AND t.usage_count >= 8))
-       ORDER BY t.usage_count DESC LIMIT 30`
+       JOIN concordance c ON c.word = t.name
+       WHERE t.usage_count >= 8 AND t.name NOT LIKE '% %' AND c.in_baseline = 0
+       ORDER BY t.usage_count DESC LIMIT 20`
     ).all<TagRow>(),
+    // Domain concepts: ranked by usage × distinctiveness
     c.env.DB.prepare(
       `SELECT t.*, COALESCE(c.distinctiveness, 0) as dist
        FROM tags t
@@ -31,8 +36,14 @@ tags.get("/", async (c) => {
        LIMIT 60`
     ).all<TagRow>(),
   ]);
-  const entities = entityResults.results;
-  const concepts = conceptResults.results;
+  // Merge multi-word and proper nouns into entity tier
+  const entitySlugs = new Set(multiWord.results.map(t => t.slug));
+  const entities = [
+    ...multiWord.results,
+    ...properNouns.results.filter(t => !entitySlugs.has(t.slug)),
+  ].slice(0, 30);
+  const entitySlugSet = new Set(entities.map(t => t.slug));
+  const concepts = conceptResults.results.filter(t => !entitySlugSet.has(t.slug));
 
   return c.html(
     <Layout title="Tags" description="Browse Bits and Bobs by topic" activePath="/tags">
