@@ -169,7 +169,11 @@ export async function getThemeRiverData(db: D1Database, topicLimit = 8) {
   // Get candidate topics (3x for filtering headroom)
   const candidates = await db.prepare(
     `SELECT id, name, slug, usage_count, distinctiveness FROM topics WHERE usage_count >= 5
-     ORDER BY usage_count * CASE WHEN distinctiveness > 0 THEN distinctiveness ELSE 1 END DESC LIMIT ?`
+     ORDER BY usage_count * CASE
+         WHEN distinctiveness > 0 THEN distinctiveness
+         WHEN name LIKE '% %' THEN 20
+         ELSE 1
+       END DESC LIMIT ?`
   ).bind(topicLimit * 3).all<TopicRow>();
 
   if (!candidates.results.length) return { topics: [], episodes: [], data: [] };
@@ -261,8 +265,11 @@ export async function getTopTopicsWithSparklines(db: D1Database, limit = 20) {
   const candidates = await db.prepare(
     `SELECT id, name, slug, usage_count, distinctiveness FROM topics
      WHERE usage_count >= 3
-     ORDER BY usage_count * CASE WHEN distinctiveness > 0 THEN distinctiveness ELSE 1 END
-       * CASE WHEN name LIKE '% %' THEN 2 ELSE 1 END DESC
+     ORDER BY usage_count * CASE
+         WHEN distinctiveness > 0 THEN distinctiveness
+         WHEN name LIKE '% %' THEN 20
+         ELSE 1
+       END DESC
      LIMIT ?`
   ).bind(limit * 3).all<TopicRow>();
 
