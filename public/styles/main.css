@@ -397,7 +397,11 @@ mark { background: color-mix(in srgb, var(--accent-light) 60%, transparent); col
 
 /* === ThemeRiver === */
 .theme-river { margin: 1.5rem 0; }
-.theme-river-svg { width: 100%; }
+.theme-river-svg { width: 100%; height: auto; }
+.theme-river-legend { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 0.5rem; font-family: var(--font-ui); font-size: 0.75rem; }
+.river-legend-item { display: inline-flex; align-items: center; gap: 0.3rem; color: var(--text-muted); text-decoration: none; }
+.river-legend-item:hover { color: var(--accent); }
+.river-legend-color { width: 12px; height: 12px; border-radius: 2px; flex-shrink: 0; display: inline-block; }
 
 /* === Slopegraph === */
 .topic-slopegraph { margin: 1.5rem 0; }
