@@ -117,7 +117,10 @@ episodes.get("/:slug", async (c) => {
                   <span class="obs-title">{chunk.title}</span>
                 </summary>
                 <div class="obs-content">
-                  {chunk.content.split("\n").map((line, i) => (
+                  {chunk.content.split("\n").filter((line, i) => {
+                    if (i === 0 && line.trim() === chunk.title.trim()) return false;
+                    return true;
+                  }).map((line, i) => (
                     line.trim() ? <p key={i}>{line}</p> : null
                   ))}
                   <a href={`/chunks/${chunk.slug}`} class="obs-permalink">Permalink &rarr;</a>
