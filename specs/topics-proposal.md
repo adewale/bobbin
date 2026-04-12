@@ -278,12 +278,64 @@ Advanced visualizations on the topics index:
 - ThemeRiver: stacked area SVG showing topic composition over time
 - Slopegraph: year-over-year ranking comparison for individual topic pages
 
-### Phase 7: Enrichment improvements
+### Phase 7: Entity detection overhaul
 
-- Remove 5-tag cap in `extractTags()`
-- Auto-merge split concepts based on co-occurrence data
-- Precompute `related_slugs` and `distinctiveness` on the `tags` table
-- Re-ingest to populate new data
+The current capitalization-heuristic detector misses major entities. OpenAI appears in 68 chunks but has zero topic assignments. The 5-tag cap means even detected entities get crowded out.
+
+Three layers, each reinforcing the others:
+
+**Layer 1: Curated entity list.** A `src/data/known-entities.ts` file mapping names to kinds:
+
+```ts
+export const KNOWN_ENTITIES: { name: string; kind: "person" | "company" | "product"; aliases?: string[] }[] = [
+  { name: "OpenAI", kind: "company", aliases: ["openai"] },
+  { name: "Google", kind: "company", aliases: ["google", "alphabet"] },
+  { name: "Anthropic", kind: "company" },
+  { name: "Meta", kind: "company" },
+  { name: "Microsoft", kind: "company" },
+  { name: "Apple", kind: "company" },
+  { name: "Simon Willison", kind: "person", aliases: ["willison"] },
+  { name: "Ben Thompson", kind: "person", aliases: ["stratechery"] },
+  { name: "Sam Altman", kind: "person", aliases: ["altman"] },
+  { name: "Andrej Karpathy", kind: "person", aliases: ["karpathy"] },
+  { name: "Ethan Mollick", kind: "person", aliases: ["mollick"] },
+  { name: "Claude Code", kind: "product" },
+  { name: "ChatGPT", kind: "product", aliases: ["chatgpt"] },
+  { name: "Hacker News", kind: "product", aliases: ["hackernews", "hn"] },
+  // ~50-100 entries, curated from corpus data
+];
+```
+
+During enrichment, check every chunk against this list via case-insensitive substring match. Matches bypass the TF-IDF scoring — if the text mentions "OpenAI", it gets the topic. No cap.
+
+**Layer 2: AI-powered extraction.** Use `env.AI` during Phase 2 enrichment (background, not on the hot path) to extract entities the curated list misses:
+
+```ts
+const result = await env.AI.run("@cf/meta/llama-3.1-8b-instruct", {
+  messages: [{
+    role: "user",
+    content: `Extract people, companies, and products mentioned in this text. Return JSON: {"people":[],"companies":[],"products":[]}. Only include proper nouns, not generic concepts.\n\n${chunk.content_plain}`
+  }]
+});
+```
+
+This catches long-tail entities (one-off mentions of researchers, niche products) that aren't worth curating. Results are merged with curated matches — curated list is authoritative, AI fills gaps.
+
+**Layer 3: Distinctiveness-backed promotion.** Words in `word_stats` with high distinctiveness (>15) that aren't in the English baseline and appear with consistent capitalization in the source text are entity candidates. During enrichment, cross-reference:
+- `word_stats.distinctiveness >= 15`
+- `word_stats.in_baseline = 0`
+- Capitalized in >50% of occurrences in chunk text
+
+Auto-promote these to topics with `kind = 'entity'`. This catches corpus-specific terms like "stratechery", "substack", "vercel" that are clearly entities but might not be in the curated list or recognized by the AI.
+
+**Coreference.** The curated list's `aliases` field handles known coreferences: "Stratechery" and "Ben Thompson" merge to the same topic. The AI layer can be prompted to resolve coreferences too ("If the text mentions 'Thompson' in context of tech analysis, that's Ben Thompson").
+
+### Phase 8: Enrichment pipeline improvements
+
+- Remove 5-tag cap in `extractTags()` — topics should reflect all significant concepts
+- Auto-merge split concepts based on co-occurrence data (prompt+injection → prompt injection)
+- Precompute `related_slugs` and `distinctiveness` on the `topics` table
+- Re-ingest to populate all new data with the three-layer entity detection
 
 ## What gets deleted
 
