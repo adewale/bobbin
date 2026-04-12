@@ -222,24 +222,42 @@ Search results already show `<mark>` highlighting. No change needed — the topi
 
 The homepage becomes a dense, informative entry point with a clear visual hierarchy.
 
-**Hero + search + latest episode panel:**
+**Hero + search + latest episode panel with topic marginalia:**
 
 ```
   A searchable archive of Alex Komoroske's
   Bits and Bobs weekly newsletter.
   [search________________________] [Search]
 
-  ┌─────────────────────────────────────────────────────────────┐
-  │  Latest: Bits and Bobs 4/6/26 · 69 chunks                  │
-  │  agent · llms · coding · ecosystem · swarm                  │
-  │  "An insightful HackerNews comment about code generation"   │
-  │  "I feel like the mama bird feeding my little Claude Codes" │
-  │  "LLMs are great at things that are expensive to generate"  │
-  │  See all →                                                  │
-  └─────────────────────────────────────────────────────────────┘
+  ┌──────────────────────────────────────────┬──────────────────┐
+  │  Latest: Bits and Bobs 4/6/26 · 69      │  Topics          │
+  │                                          │  llms · agent    │
+  │  "An insightful HackerNews comment       │  coding · swarm  │
+  │   about code generation"                 │  ecosystem       │
+  │  "I feel like the mama bird feeding      │                  │
+  │   my little Claude Codes"                │  Trending ��      │
+  │  "LLMs are great at things that are      │  agent (+5.4×)   │
+  │   expensive to generate"                 │                  │
+  │  See all 69 chunks →                     │                  │
+  └──────────────────────────────────────────┴──────────────────┘
 ```
 
-The latest episode panel sits below search. Shows the episode title, its topics, and the first 3-5 chunk titles as a preview. One link to the full episode.
+The latest episode panel sits below search. The left side shows the episode title and first 3-5 chunk titles as a preview. The right margin shows topics for this episode and any trending indicators — establishing the marginalia visual language from the first screen. On mobile, the margin collapses below the preview. One link to the full episode.
+
+**ThemeRiver (full-width band):**
+
+```
+  ╭──────────────────────────────────────────────────────────────╮
+  │ ░░░░░▓▓▓▓▓▓▓████████████████████▓▓▓▓░░░░░░░  llms          │
+  │ ░░░░░░░░░░░░░░░░░░░░░▓▓▓▓▓▓▓████████████████  agent        │
+  │ ░░░░░░░░░░▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░░░░░░░░░░░░░░  resonant      │
+  │ ░░░░▓▓▓▓░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  vibe           │
+  │ ░░░░░░░░░░░░░░░░░░░░░▓▓▓▓▓▓▓▓▓▓▓░░░░░░░░░  ecosystem       │
+  ╰──────────────────────────────────────────────────────────────╯
+  2024-04                      2025-06                   2026-03
+```
+
+Between the latest episode panel and the three-column grid. A stacked area chart showing the top 8-10 topics' share of attention over time. Each stream is labeled inline (no separate legend). This is the corpus-level story: how has Komoroske's focus shifted? The ThemeRiver answers this at a glance. Server-rendered SVG. On mobile, the river renders at full width but with fewer streams (top 5) and smaller labels.
 
 **Three-column grid (desktop):**
 
@@ -268,7 +286,7 @@ The latest episode panel sits below search. Shows the episode title, its topics,
 - **Recent Episodes**: date + chunk count. Quick scan of what's available. Links to episode pages.
 - **Popular Topics**: small multiples sparklines (a compact version of the /topics index grid). Each sparkline is a link to the topic detail page.
 
-**Mobile:** The three columns stack vertically. Latest episode panel stays full-width at top. Columns become sections: Most Connected → Recent Episodes → Popular Topics.
+**Mobile:** The three columns stack vertically. Latest episode panel stays full-width at top (margin collapses below). ThemeRiver renders full-width with fewer streams. Columns become sections: Most Connected → Recent Episodes → Popular Topics.
 
 ## Navigation
 
