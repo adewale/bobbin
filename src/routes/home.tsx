@@ -25,7 +25,7 @@ home.get("/", async (c) => {
       <section class="hero">
         <p>
           A searchable archive of Alex Komoroske's{" "}
-          <em>Bits and Bobs</em> weekly observations.
+          <em>Bits and Bobs</em> weekly newsletter.
         </p>
         <SearchForm />
       </section>

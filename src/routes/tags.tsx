@@ -100,7 +100,7 @@ tags.get("/:slug", async (c) => {
       />
       <h1>Tag: {tag.name}</h1>
       <p>
-        {total} observation{total !== 1 ? "s" : ""} across {episodes.length} episode
+        {total} chunk{total !== 1 ? "s" : ""} across {episodes.length} episode
         {episodes.length !== 1 ? "s" : ""}
       </p>
 

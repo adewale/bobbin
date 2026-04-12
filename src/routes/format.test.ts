@@ -33,18 +33,18 @@ describe("Essay-format episode rendering", () => {
     expect(html).toContain("acqui-hired");
   });
 
-  it("does NOT show episode-notes for essays", async () => {
+  it("does NOT show episode-chunks for essays", async () => {
     const res = await SELF.fetch("http://localhost/episodes/2026-03-30");
     const html = await res.text();
-    expect(html).not.toContain("episode-notes");
+    expect(html).not.toContain("episode-chunks");
   });
 });
 
 describe("Notes-format episode rendering", () => {
-  it("shows TOC with episode-notes class", async () => {
+  it("shows TOC with episode-chunks class", async () => {
     const res = await SELF.fetch("http://localhost/episodes/2026-04-06");
     const html = await res.text();
-    expect(html).toContain("episode-notes");
+    expect(html).toContain("episode-chunks");
   });
 
   it("does NOT show full content inline", async () => {

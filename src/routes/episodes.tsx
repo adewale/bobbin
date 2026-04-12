@@ -41,7 +41,7 @@ episodes.get("/", async (c) => {
                       <li key={ep.id}>
                         <a href={`/episodes/${ep.slug}`}>{ep.title}</a>
                         <span class="meta">
-                          {ep.chunk_count} observations
+                          {ep.chunk_count} chunk{ep.chunk_count !== 1 ? "s" : ""}
                           {ep.format === "essays" && (
                             <span class="format-badge essay">essay</span>
                           )}
@@ -70,7 +70,7 @@ episodes.get("/:slug", async (c) => {
   ]);
 
   return c.html(
-    <Layout title={episode.title} description={`Bits and Bobs from ${episode.published_date} — ${episode.chunk_count} observations`} activePath="/episodes">
+    <Layout title={episode.title} description={`Bits and Bobs from ${episode.published_date} — ${episode.chunk_count} chunks`} activePath="/episodes">
       <Breadcrumbs
         crumbs={[
           { label: "Episodes", href: "/episodes" },
@@ -112,24 +112,33 @@ episodes.get("/:slug", async (c) => {
             ))}
           </section>
         ) : (
-          <div class="episode-notes">
-            {chunksList.map((chunk, idx) => (
-              <details key={chunk.id} class="observation">
-                <summary>
-                  <span class="obs-num">{idx + 1}</span>
-                  <span class="obs-title">{chunk.title}</span>
-                </summary>
-                <div class="obs-content">
-                  {chunk.content.split("\n").filter((line, i) => {
-                    if (i === 0 && line.trim() === chunk.title.trim()) return false;
-                    return true;
-                  }).map((line, i) => (
-                    line.trim() ? <p key={i}>{line}</p> : null
-                  ))}
-                  <a href={`/chunks/${chunk.slug}`} class="obs-permalink">Permalink &rarr;</a>
+          <div class="episode-chunks">
+            {chunksList.map((chunk, idx) => {
+              const bodyLines = chunk.content.split("\n").filter((line, i) => {
+                if (i === 0 && line.trim() === chunk.title.trim()) return false;
+                return line.trim();
+              });
+              const hasBody = bodyLines.length > 0;
+
+              return hasBody ? (
+                <details key={chunk.id} class="chunk-row">
+                  <summary>
+                    <a href={`/chunks/${chunk.slug}`} class="chunk-num" onclick="event.stopPropagation()">{idx + 1}</a>
+                    <span class="chunk-title">{chunk.title}</span>
+                  </summary>
+                  <div class="chunk-body">
+                    {bodyLines.map((line, i) => (
+                      <p key={i}>{line}</p>
+                    ))}
+                  </div>
+                </details>
+              ) : (
+                <div key={chunk.id} class="chunk-row chunk-row-single">
+                  <a href={`/chunks/${chunk.slug}`} class="chunk-num">{idx + 1}</a>
+                  <span class="chunk-title">{chunk.title}</span>
                 </div>
-              </details>
-            ))}
+              );
+            })}
           </div>
         )}
       </article>

@@ -25,7 +25,7 @@ body { font-family: var(--font-body); }
 @media (prefers-reduced-motion: no-preference) {
   main { animation: fadeIn 0.2s ease-out; }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
-  .episode-notes details[open] .obs-content { animation: slideDown 0.15s ease-out; }
+  .episode-chunks details[open] .chunk-body { animation: slideDown 0.15s ease-out; }
   @keyframes slideDown { from { opacity: 0; } to { opacity: 1; } }
   .tag { transition: background 0.15s, color 0.15s, border-color 0.15s; }
   .concordance-bars tr { transition: background 0.1s; }
@@ -233,20 +233,20 @@ details.tag-tier .tag-cloud { margin-top: 0.5rem; }
 .page-count { font-family: var(--font-ui); font-size: 0.8rem; color: var(--text-light); margin-bottom: 1rem; }
 mark { background: color-mix(in srgb, var(--accent-light) 60%, transparent); color: var(--text); padding: 0.05rem 0.15rem; border-radius: 2px; }
 
-/* === Observation accordion (notes episodes) === */
-.episode-notes .observation { border-bottom: 1px solid var(--border); }
-.episode-notes summary { display: flex; align-items: baseline; gap: 0.5rem; padding: 0.6rem 0; cursor: pointer; list-style: none; min-height: 2.75rem; }
-.episode-notes summary::-webkit-details-marker { display: none; }
-.episode-notes summary::marker { display: none; content: ""; }
-.episode-notes summary::after { content: "›"; font-family: var(--font-ui); font-size: 0.85rem; color: var(--text-light); margin-left: auto; flex-shrink: 0; transition: transform 0.15s ease; }
-.episode-notes details[open] summary::after { transform: rotate(90deg); }
-.episode-notes .obs-num { font-family: var(--font-ui); font-size: 0.7rem; color: var(--text-light); min-width: 1.5rem; text-align: right; flex-shrink: 0; }
-.episode-notes .obs-title { font-family: var(--font-body); font-size: 0.92rem; color: var(--text); line-height: 1.5; }
-.episode-notes details[open] .obs-title { color: var(--accent-dark); }
-.episode-notes .obs-content { padding: 0 0 1rem 2rem; font-size: 0.9rem; color: var(--text-muted); }
-.episode-notes .obs-content p { margin-bottom: 0.4rem; }
-.episode-notes .obs-permalink { font-family: var(--font-ui); font-size: 0.75rem; color: var(--text-light); text-decoration: none; }
-.episode-notes .obs-permalink:hover { color: var(--accent); }
+/* === Chunk list (notes episodes) === */
+.episode-chunks .chunk-row { border-bottom: 1px solid var(--border); }
+.episode-chunks summary { display: flex; align-items: baseline; gap: 0.5rem; padding: 0.6rem 0; cursor: pointer; list-style: none; min-height: 2.75rem; }
+.episode-chunks summary::-webkit-details-marker { display: none; }
+.episode-chunks summary::marker { display: none; content: ""; }
+.episode-chunks summary::after { content: "›"; font-family: var(--font-ui); font-size: 0.85rem; color: var(--text-light); margin-left: auto; flex-shrink: 0; transition: transform 0.15s ease; }
+.episode-chunks details[open] summary::after { transform: rotate(90deg); }
+.episode-chunks .chunk-num { font-family: var(--font-ui); font-size: 0.7rem; color: var(--text-light); min-width: 1.5rem; text-align: right; flex-shrink: 0; text-decoration: none; }
+.episode-chunks .chunk-num:hover { color: var(--accent); }
+.episode-chunks .chunk-title { font-family: var(--font-body); font-size: 0.92rem; color: var(--text); line-height: 1.5; }
+.episode-chunks details[open] .chunk-title { color: var(--accent-dark); }
+.episode-chunks .chunk-body { padding: 0 0 1rem 2rem; font-size: 0.9rem; color: var(--text-muted); }
+.episode-chunks .chunk-body p { margin-bottom: 0.4rem; }
+.episode-chunks .chunk-row-single { display: flex; align-items: baseline; gap: 0.5rem; padding: 0.6rem 0; min-height: 2.75rem; }
 
 /* === Most Connected === */
 .most-connected { margin: 2rem 0; padding: 1.25rem; background: var(--bg-warm); border: 1px solid var(--border); border-radius: 6px; }

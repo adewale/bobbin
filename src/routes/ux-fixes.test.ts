@@ -38,7 +38,7 @@ describe("Fix 1: Episode page as TOC", () => {
   it("shows chunk titles as a scannable list", async () => {
     const res = await SELF.fetch("http://localhost/episodes/2024-04-08");
     const html = await res.text();
-    expect(html).toContain("episode-notes");
+    expect(html).toContain("episode-chunks");
   });
 
   it("each TOC entry links to the chunk", async () => {
@@ -51,7 +51,7 @@ describe("Fix 1: Episode page as TOC", () => {
 });
 
 // Fix 3: Homepage surfaces most-connected content
-describe("Fix 3: Most connected observations on homepage", () => {
+describe("Fix 3: Most connected chunks on homepage", () => {
   it("homepage shows a 'most connected' section", async () => {
     const res = await SELF.fetch("http://localhost/");
     const html = await res.text();

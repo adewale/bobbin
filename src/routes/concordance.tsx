@@ -123,7 +123,7 @@ concordance.get("/:word", async (c) => {
       <h1>&ldquo;{word}&rdquo;</h1>
       <p>
         {wordData.total_count} occurrence{wordData.total_count !== 1 ? "s" : ""}{" "}
-        across {wordData.doc_count} observation{wordData.doc_count !== 1 ? "s" : ""}
+        across {wordData.doc_count} chunk{wordData.doc_count !== 1 ? "s" : ""}
       </p>
 
       <div class="word-timeline" data-timeline={JSON.stringify(timelineData)}>

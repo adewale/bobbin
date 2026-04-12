@@ -50,46 +50,52 @@ describe("GET /episodes (unified browse)", () => {
   });
 });
 
-// Title deduplication in accordion body
-describe("Notes episode: title not repeated in accordion body", () => {
+// Notes episode: chunk rendering
+describe("Notes episode: chunk list rendering", () => {
   beforeEach(async () => {
-    // Chunk where title == first line of content (the real-world pattern)
+    // Multi-line chunk (has body after title strip)
     await env.DB.prepare(
       `INSERT INTO chunks (episode_id, slug, title, content, content_plain, position)
-       VALUES (1, 'obs-1-2024-04-08-t-0', 'LLMs are great at cheap generation.', 'LLMs are great at cheap generation.\nThey struggle with things that need deep reasoning.\nBut the gap is closing fast.', 'LLMs are great at cheap generation.\nThey struggle with things that need deep reasoning.\nBut the gap is closing fast.', 0)`
+       VALUES (1, 'multi-2024-04-08-t-0', 'LLMs are great at cheap generation.', 'LLMs are great at cheap generation.\nThey struggle with things that need deep reasoning.\nBut the gap is closing fast.', 'LLMs are great at cheap generation.\nThey struggle with things that need deep reasoning.\nBut the gap is closing fast.', 0)`
     ).run();
-    // Chunk where title does NOT match first line (edge case — should keep all content)
+    // Single-line chunk (no body after title strip)
     await env.DB.prepare(
       `INSERT INTO chunks (episode_id, slug, title, content, content_plain, position)
-       VALUES (1, 'obs-2-2024-04-08-t-1', 'Agents and autonomy', 'Autonomous agents are the next frontier.\nThey need guardrails though.', 'Autonomous agents are the next frontier.\nThey need guardrails though.', 1)`
+       VALUES (1, 'single-2024-04-08-t-1', 'Lower pace layers should be boring.', 'Lower pace layers should be boring.', 'Lower pace layers should be boring.', 1)`
     ).run();
   });
 
-  it("strips the first line when it matches the title", async () => {
+  it("multi-line chunk uses accordion with title not repeated in body", async () => {
     const res = await SELF.fetch("http://localhost/episodes/2024-04-08-t");
     const html = await res.text();
-    // Title appears in summary
-    expect(html).toContain("LLMs are great at cheap generation.");
-    // Body should have the sub-points but NOT repeat the title as a <p>
-    const bodySection = html.split("obs-content")[1] || "";
-    expect(bodySection).toContain("They struggle with things that need deep reasoning.");
-    expect(bodySection).toContain("But the gap is closing fast.");
-    // Count occurrences of the title text — should appear once (in summary), not twice
+    // Title appears once, not duplicated
     const titleText = "LLMs are great at cheap generation.";
     const occurrences = html.split(titleText).length - 1;
     expect(occurrences).toBe(1);
+    // Body content is present
+    expect(html).toContain("They struggle with things that need deep reasoning.");
+    expect(html).toContain("chunk-body");
   });
 
-  it("keeps all content when title differs from first line", async () => {
+  it("single-line chunk renders as plain row, not accordion", async () => {
     const res = await SELF.fetch("http://localhost/episodes/2024-04-08-t");
     const html = await res.text();
-    // The second chunk's body should keep its first line since title != first line
-    expect(html).toContain("Autonomous agents are the next frontier.");
+    // Should have the single-line class, not a <details> accordion
+    expect(html).toContain("chunk-row-single");
+    expect(html).toContain("Lower pace layers should be boring.");
+  });
+
+  it("chunk number links to chunk detail page", async () => {
+    const res = await SELF.fetch("http://localhost/episodes/2024-04-08-t");
+    const html = await res.text();
+    // Both chunk numbers should be links to their chunk pages
+    expect(html).toContain('href="/chunks/multi-2024-04-08-t-0"');
+    expect(html).toContain('href="/chunks/single-2024-04-08-t-1"');
   });
 });
 
-// Essay episodes: title deduplication must NOT apply
-describe("Essay episode: full content preserved", () => {
+// Essay episode: title dedup
+describe("Essay episode: title not repeated in body", () => {
   beforeEach(async () => {
     await env.DB.prepare(
       `INSERT INTO chunks (episode_id, slug, title, content, content_plain, position)
@@ -100,56 +106,29 @@ describe("Essay episode: full content preserved", () => {
   it("strips duplicate title but preserves essay body content", async () => {
     const res = await SELF.fetch("http://localhost/episodes/2024-03-25-t");
     const html = await res.text();
-    // Title in <h2>, body content preserved
-    expect(html).toContain("Consumer AI is converging");
     expect(html).toContain("The big players are all building the same thing.");
     expect(html).toContain("Differentiation is shrinking.");
-    // Title should appear once (in <h2>), not duplicated in body
     const titleText = "Consumer AI is converging";
     const occurrences = html.split(titleText).length - 1;
     expect(occurrences).toBe(1);
   });
 });
 
-// Chunk detail page: title not repeated in body
+// Chunk detail page: title dedup
 describe("Chunk detail page: title not repeated in body", () => {
   beforeEach(async () => {
     await env.DB.prepare(
       `INSERT INTO chunks (episode_id, slug, title, content, content_plain, position)
-       VALUES (1, 'obs-1-2024-04-08-t-0', 'LLMs are great at cheap generation.', 'LLMs are great at cheap generation.\nThey struggle with things that need deep reasoning.', 'LLMs are great at cheap generation.\nThey struggle with things that need deep reasoning.', 0)`
+       VALUES (1, 'multi-2024-04-08-t-0', 'LLMs are great at cheap generation.', 'LLMs are great at cheap generation.\nThey struggle with things that need deep reasoning.', 'LLMs are great at cheap generation.\nThey struggle with things that need deep reasoning.', 0)`
     ).run();
   });
 
   it("strips duplicate title from chunk body", async () => {
-    const res = await SELF.fetch("http://localhost/chunks/obs-1-2024-04-08-t-0");
+    const res = await SELF.fetch("http://localhost/chunks/multi-2024-04-08-t-0");
     const html = await res.text();
-    expect(html).toContain("LLMs are great at cheap generation.");
     expect(html).toContain("They struggle with things that need deep reasoning.");
-    // Title in <h1> + should NOT appear again as a <p>
-    const titleText = "LLMs are great at cheap generation.";
     const inBody = html.split("chunk-content")[1] || "";
-    expect(inBody).not.toContain(`<p>${titleText}</p>`);
-  });
-});
-
-// Essay episode page: title not repeated in essay body
-describe("Essay episode: title not repeated in body", () => {
-  beforeEach(async () => {
-    await env.DB.prepare(
-      `INSERT INTO chunks (episode_id, slug, title, content, content_plain, position)
-       VALUES (2, 'essay-1-2024-03-25-t-0', 'Consumer AI is converging', 'Consumer AI is converging\nThe big players are all building the same thing.\nDifferentiation is shrinking.', 'Consumer AI is converging\nThe big players are all building the same thing.\nDifferentiation is shrinking.', 0)`
-    ).run();
-  });
-
-  it("strips duplicate title from essay content body", async () => {
-    const res = await SELF.fetch("http://localhost/episodes/2024-03-25-t");
-    const html = await res.text();
-    // Title appears in <h2>
-    expect(html).toContain("Consumer AI is converging");
-    expect(html).toContain("The big players are all building the same thing.");
-    // The essay-content div should NOT contain the title as a <p>
-    const essayBody = html.split("essay-content")[1] || "";
-    expect(essayBody).not.toContain(`<p>Consumer AI is converging</p>`);
+    expect(inBody).not.toContain(`<p>LLMs are great at cheap generation.</p>`);
   });
 });
 

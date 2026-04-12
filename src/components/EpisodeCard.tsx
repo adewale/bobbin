@@ -7,6 +7,6 @@ export const EpisodeCard: FC<{ episode: EpisodeRow }> = ({ episode }) => (
       <a href={`/episodes/${episode.slug}`}>{episode.title}</a>
     </h2>
     <time datetime={episode.published_date}>{episode.published_date}</time>
-    <span class="chunk-count">{episode.chunk_count} observations</span>
+    <span class="chunk-count">{episode.chunk_count} chunk{episode.chunk_count !== 1 ? "s" : ""}</span>
   </article>
 );
