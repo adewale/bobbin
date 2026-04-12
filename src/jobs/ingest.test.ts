@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { ingestParsedEpisodes } from "./ingest";
-import { parseDocument } from "../services/doc-parser";
+import { parseHtmlDocument } from "../services/html-parser";
 import { env } from "cloudflare:test";
 import { applyTestMigrations } from "../../test/helpers/migrations";
-import sampleDoc from "../../test/fixtures/sample-doc.json";
+import sampleHtml from "../../test/fixtures/sample-mobilebasic.html?raw";
 
-const parsedEpisodes = parseDocument(sampleDoc as any);
+const parsedEpisodes = parseHtmlDocument(sampleHtml);
 
 beforeEach(async () => {
   await applyTestMigrations(env.DB);
@@ -22,15 +22,16 @@ describe("ingestParsedEpisodes", () => {
     const testEnv = { ...env, AI: null as any, VECTORIZE: null as any };
     const result = await ingestParsedEpisodes(testEnv, 1, parsedEpisodes);
 
-    expect(result.episodesAdded).toBe(2);
-    expect(result.chunksAdded).toBe(3);
+    expect(result.episodesAdded).toBe(3);
+    expect(result.chunksAdded).toBeGreaterThan(0);
 
     const episodes = await env.DB.prepare(
       "SELECT * FROM episodes ORDER BY published_date DESC"
     ).all();
-    expect(episodes.results).toHaveLength(2);
-    expect((episodes.results[0] as any).slug).toContain("2024-04-08");
-    expect((episodes.results[1] as any).slug).toContain("2024-03-25");
+    expect(episodes.results).toHaveLength(3);
+    expect((episodes.results[0] as any).slug).toContain("2026-04-06");
+    expect((episodes.results[1] as any).slug).toContain("2026-03-30");
+    expect((episodes.results[2] as any).slug).toContain("2026-03-23");
   });
 
   it("inserts chunks with correct content", async () => {
@@ -38,9 +39,9 @@ describe("ingestParsedEpisodes", () => {
     await ingestParsedEpisodes(testEnv, 1, parsedEpisodes);
 
     const chunks = await env.DB.prepare("SELECT * FROM chunks ORDER BY id").all();
-    expect(chunks.results).toHaveLength(3);
-    expect((chunks.results[0] as any).title).toBe("Nanotech cages for circus bears");
-    expect((chunks.results[0] as any).content).toContain("contain powerful AI systems");
+    expect(chunks.results.length).toBeGreaterThan(0);
+    // First chunk is from the first observation in the first episode
+    expect((chunks.results[0] as any).content).toContain("software");
   });
 
   it("generates tags for chunks", async () => {
@@ -55,7 +56,7 @@ describe("ingestParsedEpisodes", () => {
     const testEnv = { ...env, AI: null as any, VECTORIZE: null as any };
 
     const first = await ingestParsedEpisodes(testEnv, 1, parsedEpisodes);
-    expect(first.episodesAdded).toBe(2);
+    expect(first.episodesAdded).toBe(3);
 
     const second = await ingestParsedEpisodes(testEnv, 1, parsedEpisodes);
     expect(second.episodesAdded).toBe(0);

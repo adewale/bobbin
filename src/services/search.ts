@@ -47,11 +47,11 @@ export async function ftsSearch(
   const dateFilters: string[] = [];
   const dateBinds: any[] = [];
   if (parsed.before) {
-    dateFilters.push("e.published_date < ?");
+    dateFilters.push("e.published_date <= ?");
     dateBinds.push(parsed.before);
   }
   if (parsed.after) {
-    dateFilters.push("e.published_date > ?");
+    dateFilters.push("e.published_date >= ?");
     dateBinds.push(parsed.after);
   }
   if (parsed.year) {

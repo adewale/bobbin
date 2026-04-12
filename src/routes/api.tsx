@@ -4,7 +4,7 @@ import { fetchGoogleDoc, parseHtmlDocument, ingestParsedEpisodes, enrichChunks, 
 import { ftsSearch } from "../services/search";
 import { parseSearchQuery } from "../lib/query-parser";
 import { keywordSearch } from "../db/search";
-import { safeParseInt } from "../lib/html";
+import { safeParseInt, escapeLike } from "../lib/html";
 
 const api = new Hono<AppEnv>();
 
@@ -156,8 +156,8 @@ api.get("/tags", async (c) => {
   if (!q || q.length < 2) return c.json({ tags: [] });
 
   const result = await c.env.DB.prepare(
-    "SELECT name, slug, usage_count FROM tags WHERE name LIKE ? AND usage_count >= 1 ORDER BY usage_count DESC LIMIT 10"
-  ).bind(`%${q}%`).all();
+    "SELECT name, slug, usage_count FROM tags WHERE name LIKE ? ESCAPE '\\' AND usage_count >= 1 ORDER BY usage_count DESC LIMIT 10"
+  ).bind(`%${escapeLike(q)}%`).all();
 
   return c.json({ tags: result.results });
 });

@@ -13,15 +13,19 @@ chunks.get("/:slug", async (c) => {
   const chunk = await getChunkBySlug(c.env.DB, slug);
   if (!chunk) return c.notFound();
 
-  const tags = await getChunkTags(c.env.DB, chunk.id);
+  const isNotes = chunk.episode_format === "notes";
 
-  // Try Vectorize cross-references first, fall back to tag-based
+  const [tags, thread, adjacentResult] = await Promise.all([
+    getChunkTags(c.env.DB, chunk.id),
+    getThreadChunks(c.env.DB, chunk.id, chunk.episode_id),
+    isNotes ? getAdjacentChunks(c.env.DB, chunk.episode_id, chunk.position) : Promise.resolve({ prev: null, next: null }),
+  ]);
+
+  // Cross-refs still sequential since they have a fallback
   let relatedItems: any[] = [];
   try {
     if (c.env.VECTORIZE && chunk.vector_id) {
-      const crossRefs = await getCrossReferences(
-        c.env.VECTORIZE, c.env.DB, chunk.vector_id, chunk.id
-      );
+      const crossRefs = await getCrossReferences(c.env.VECTORIZE, c.env.DB, chunk.vector_id, chunk.id);
       relatedItems = crossRefs.map((r) => ({
         id: r.chunkId, slug: r.slug, title: r.title,
         episode_slug: r.episodeSlug, rel_date: r.publishedDate,
@@ -30,22 +34,13 @@ chunks.get("/:slug", async (c) => {
   } catch (e) {
     console.error("Cross-ref lookup failed:", e);
   }
-
   if (!relatedItems.length) {
     relatedItems = await getRelatedByTags(c.env.DB, chunk.id);
   }
 
-  const thread = await getThreadChunks(c.env.DB, chunk.id, chunk.episode_id);
-  const isNotes = chunk.episode_format === "notes";
+  const prevChunk = adjacentResult.prev;
+  const nextChunk = adjacentResult.next;
   const paragraphs = chunk.content.split("\n").filter((p) => p.trim());
-
-  let prevChunk: any = null;
-  let nextChunk: any = null;
-  if (isNotes) {
-    const adj = await getAdjacentChunks(c.env.DB, chunk.episode_id, chunk.position);
-    prevChunk = adj.prev;
-    nextChunk = adj.next;
-  }
 
   return c.html(
     <Layout

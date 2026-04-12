@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../types";
 import { escapeXml, getBaseUrl } from "../lib/html";
-import { getSitemapData, getFeedEpisodes } from "../db/feeds";
+import { getSitemapData } from "../db/feeds";
 
 const feeds = new Hono<AppEnv>();
 
@@ -46,36 +46,6 @@ ${urls
 </urlset>`;
 
   return c.body(xml, { headers: { "Content-Type": "application/xml" } });
-});
-
-feeds.get("/feed.xml", async (c) => {
-  const baseUrl = getBaseUrl(c.req.url);
-
-  const feedEpisodes = await getFeedEpisodes(c.env.DB);
-
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<feed xmlns="http://www.w3.org/2005/Atom">
-  <title>Bobbin — Bits and Bobs Archive</title>
-  <link href="${baseUrl}" />
-  <link href="${baseUrl}/feed.xml" rel="self" />
-  <id>${baseUrl}/</id>
-  <updated>${new Date().toISOString()}</updated>
-  <author><name>Alex Komoroske</name></author>
-${feedEpisodes
-    .map(
-      (ep: any) => `  <entry>
-    <title>${escapeXml(ep.title)}</title>
-    <link href="${baseUrl}/episodes/${escapeXml(ep.slug)}" />
-    <id>${baseUrl}/episodes/${escapeXml(ep.slug)}</id>
-    <published>${ep.published_date}T00:00:00Z</published>
-    <updated>${ep.updated_at || ep.created_at}</updated>
-    <summary>${escapeXml(ep.summary || ep.chunk_titles || "")}</summary>
-  </entry>`
-    )
-    .join("\n")}
-</feed>`;
-
-  return c.body(xml, { headers: { "Content-Type": "application/atom+xml" } });
 });
 
 export { feeds as feedRoutes };
