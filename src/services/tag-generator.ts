@@ -135,7 +135,7 @@ export function extractEntities(text: string): TagResult[] {
           continue;
         }
 
-        if (entityWords.length >= 2 && !seen.has(normalized)) {
+        if (entityWords.length >= 2 && entityWords.length <= 3 && !seen.has(normalized)) {
           seen.add(normalized);
           const norm = normalizeTerm(entityName);
           entities.push({
