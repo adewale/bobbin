@@ -115,6 +115,16 @@ describe("ThemeRiver on homepage", () => {
     // Should have <path> elements inside the SVG
     expect(html).toContain("<path");
   });
+
+  it("contains a legend section with links to topic pages", async () => {
+    const res = await SELF.fetch("http://localhost/");
+    const html = await res.text();
+    expect(html).toContain("theme-river-legend");
+    expect(html).toContain("river-legend-item");
+    // Legend items link to topic detail pages
+    expect(html).toContain('href="/topics/llms"');
+    expect(html).toContain('href="/topics/agent"');
+  });
 });
 
 describe("ThemeRiver on topics index", () => {
@@ -138,6 +148,16 @@ describe("ThemeRiver on topics index", () => {
     const res = await SELF.fetch("http://localhost/topics");
     const html = await res.text();
     // The ThemeRiver paths are wrapped in <a> tags linking to topic pages
+    expect(html).toContain('href="/topics/llms"');
+    expect(html).toContain('href="/topics/agent"');
+  });
+
+  it("contains a legend section with links to topic pages", async () => {
+    const res = await SELF.fetch("http://localhost/topics");
+    const html = await res.text();
+    expect(html).toContain("theme-river-legend");
+    expect(html).toContain("river-legend-item");
+    // Legend items link to topic detail pages
     expect(html).toContain('href="/topics/llms"');
     expect(html).toContain('href="/topics/agent"');
   });

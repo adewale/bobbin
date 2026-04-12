@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { AppEnv, TopicRow } from "../types";
 import { Layout } from "../components/Layout";
 import { SearchForm } from "../components/SearchForm";
+import { ThemeRiver } from "../components/ThemeRiver";
 import { getTopicBySlug, getTopicChunkCount, getTopicChunks, getTopicSparkline, getTopicEpisodes, getTopicDiffChunks, getRelatedTopics, getTopicWordStats, getTopTopicsWithSparklines, getTopicKWIC, getThemeRiverData, getTopicRanksByYear } from "../db/topics";
 import { safeParseInt } from "../lib/html";
 import { TopicCloud } from "../components/TopicCloud";
@@ -18,7 +19,7 @@ topics.get("/", async (c) => {
     c.env.DB.prepare(
       "SELECT * FROM topics WHERE usage_count >= 3 AND name LIKE '% %' ORDER BY usage_count DESC LIMIT 20"
     ).all<TopicRow>(),
-    getThemeRiverData(c.env.DB, 10),
+    getThemeRiverData(c.env.DB, 6),
   ]);
 
   const entities = multiWord.results;
@@ -53,76 +54,7 @@ topics.get("/", async (c) => {
         </section>
       )}
 
-      {themeRiver.data.length > 0 && themeRiver.episodes.length > 0 && (() => {
-        const data = themeRiver.data;
-        const dates = themeRiver.episodes;
-        const width = 600;
-        const height = 120;
-        const pad = 4;
-        const w = width - pad * 2;
-        const h = height - pad * 2;
-
-        const totals = dates.map((_: string, i: number) => data.reduce((sum: number, d: any) => sum + d.values[i], 0));
-        const maxTotal = Math.max(...totals, 1);
-
-        const colors = [
-          "var(--accent)", "#d06030", "#a03820", "#c05830",
-          "#b04820", "#905020", "#c06840", "#a04030"
-        ];
-
-        const paths: { d: string; color: string; name: string; slug: string }[] = [];
-        const baseline = new Array(dates.length).fill(0);
-
-        for (let t = 0; t < data.length; t++) {
-          const topLine: string[] = [];
-          const bottomLine: string[] = [];
-
-          for (let i = 0; i < dates.length; i++) {
-            const x = dates.length === 1 ? w / 2 : (i / (dates.length - 1)) * w + pad;
-            const yBottom = h + pad - (baseline[i] / maxTotal) * h;
-            const yTop = h + pad - ((baseline[i] + data[t].values[i]) / maxTotal) * h;
-
-            topLine.push(`${x},${yTop}`);
-            bottomLine.unshift(`${x},${yBottom}`);
-
-            baseline[i] += data[t].values[i];
-          }
-
-          paths.push({
-            d: `M${topLine.join(" L")} L${bottomLine.join(" L")} Z`,
-            color: colors[t % colors.length],
-            name: data[t].name,
-            slug: data[t].slug,
-          });
-        }
-
-        return (
-          <section class="theme-river">
-            <svg viewBox={`0 0 ${width} ${height + 16}`} class="theme-river-svg">
-              {paths.map((p, i) => (
-                <a key={i} href={`/topics/${p.slug}`}>
-                  <path d={p.d} fill={p.color} opacity="0.7" />
-                  <title>{p.name}</title>
-                </a>
-              ))}
-              <text x={pad} y={height + 12} fill="var(--text-light)" font-size="9" font-family="var(--font-ui)">{dates[0]}</text>
-              <text x={width - pad} y={height + 12} text-anchor="end" fill="var(--text-light)" font-size="9" font-family="var(--font-ui)">{dates[dates.length - 1]}</text>
-              {paths.map((p, i) => {
-                const midIdx = Math.floor(dates.length / 2);
-                const x = dates.length === 1 ? w / 2 : (midIdx / (dates.length - 1)) * w + pad;
-                let cumBefore = 0;
-                for (let t = 0; t < i; t++) cumBefore += data[t].values[midIdx];
-                const yMid = h + pad - ((cumBefore + data[i].values[midIdx] / 2) / maxTotal) * h;
-                return data[i].values[midIdx] > 0 ? (
-                  <text key={`label-${i}`} x={x} y={yMid} text-anchor="middle" dominant-baseline="central"
-                    fill="white" font-size="8" font-family="var(--font-ui)" font-weight="600"
-                    pointer-events="none">{p.name}</text>
-                ) : null;
-              })}
-            </svg>
-          </section>
-        );
-      })()}
+      <ThemeRiver data={themeRiver.data} dates={themeRiver.episodes} />
 
       {entities.length > 0 && (
         <section class="topic-tier">
