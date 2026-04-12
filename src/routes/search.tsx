@@ -6,6 +6,7 @@ import { ChunkCard } from "../components/ChunkCard";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { ftsSearch, mergeAndRerank, type ScoredResult } from "../services/search";
 import { escapeLike } from "../lib/html";
+import { parseSearchQuery } from "../lib/query-parser";
 
 const search = new Hono<AppEnv>();
 
@@ -15,10 +16,12 @@ search.get("/", async (c) => {
   let results: ScoredResult[] = [];
 
   if (query) {
-    // FTS5 search with field boosting (primary)
+    const parsed = parseSearchQuery(query);
+
+    // FTS5 search with field boosting + date filters (primary)
     let ftsResults: ScoredResult[] = [];
     try {
-      ftsResults = await ftsSearch(c.env.DB, query);
+      ftsResults = await ftsSearch(c.env.DB, parsed);
     } catch {
       // FTS table might not exist yet — fall back to LIKE with escaped metacharacters (S2)
       const kwResults = await c.env.DB.prepare(

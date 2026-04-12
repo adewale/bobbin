@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
 import { applyTestMigrations } from "../../test/helpers/migrations";
+import { parseSearchQuery } from "../lib/query-parser";
 import {
   ftsSearch,
   mergeAndRerank,
@@ -30,7 +31,7 @@ beforeEach(async () => {
 
 describe("ftsSearch", () => {
   it("returns matching chunks ranked by relevance", async () => {
-    const results = await ftsSearch(env.DB, "ecosystem");
+    const results = await ftsSearch(env.DB, parseSearchQuery("ecosystem"));
     expect(results.length).toBeGreaterThan(0);
     // eco-body has "ecosystem" 3 times in body, eco-title has it once in title
     expect(results.some((r) => r.slug === "eco-body")).toBe(true);
@@ -38,12 +39,12 @@ describe("ftsSearch", () => {
   });
 
   it("does not return non-matching chunks", async () => {
-    const results = await ftsSearch(env.DB, "ecosystem");
+    const results = await ftsSearch(env.DB, parseSearchQuery("ecosystem"));
     expect(results.every((r) => r.slug !== "no-match")).toBe(true);
   });
 
   it("returns empty array for no matches", async () => {
-    const results = await ftsSearch(env.DB, "xyznonexistent");
+    const results = await ftsSearch(env.DB, parseSearchQuery("xyznonexistent"));
     expect(results).toHaveLength(0);
   });
 
@@ -51,8 +52,8 @@ describe("ftsSearch", () => {
     // Different boost configs should produce different orderings
     const titleFirst: BoostConfig = { title: 100.0, content: 0.01 };
     const contentFirst: BoostConfig = { title: 0.01, content: 100.0 };
-    const resultsTitle = await ftsSearch(env.DB, "ecosystem", 20, titleFirst);
-    const resultsContent = await ftsSearch(env.DB, "ecosystem", 20, contentFirst);
+    const resultsTitle = await ftsSearch(env.DB, parseSearchQuery("ecosystem"), 20, titleFirst);
+    const resultsContent = await ftsSearch(env.DB, parseSearchQuery("ecosystem"), 20, contentFirst);
     // Both return results
     expect(resultsTitle.length).toBeGreaterThan(0);
     expect(resultsContent.length).toBeGreaterThan(0);
@@ -63,12 +64,12 @@ describe("ftsSearch", () => {
   it("respects custom boost config — content boost", async () => {
     // With high content boost, eco-body should rank first (has ecosystem 3x in body)
     const highContentBoost: BoostConfig = { title: 1.0, content: 10.0 };
-    const results = await ftsSearch(env.DB, "ecosystem", 20, highContentBoost);
+    const results = await ftsSearch(env.DB, parseSearchQuery("ecosystem"), 20, highContentBoost);
     expect(results[0].slug).toBe("eco-body");
   });
 
   it("handles multi-word queries", async () => {
-    const results = await ftsSearch(env.DB, "ecosystem diversity");
+    const results = await ftsSearch(env.DB, parseSearchQuery("ecosystem diversity"));
     expect(results.length).toBeGreaterThan(0);
   });
 });

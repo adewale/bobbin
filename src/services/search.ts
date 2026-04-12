@@ -1,3 +1,5 @@
+import type { ParsedQuery } from "../lib/query-parser";
+
 export interface BoostConfig {
   title: number;
   content: number;
@@ -13,7 +15,6 @@ export interface ScoredResult {
   slug: string;
   score: number;
   source: "fts" | "vector";
-  // Additional fields populated by hydration
   title?: string;
   episodeSlug?: string;
   episodeTitle?: string;
@@ -23,23 +24,45 @@ export interface ScoredResult {
 }
 
 /**
- * Full-text search using FTS5 with configurable field boosting.
- * Uses bm25() for relevance scoring with per-column weight overrides.
+ * Full-text search with date filters and exact phrase support.
  */
 export async function ftsSearch(
   db: D1Database,
-  query: string,
+  parsed: ParsedQuery,
   limit: number = 20,
   boosts: BoostConfig = DEFAULT_BOOSTS
 ): Promise<ScoredResult[]> {
-  if (!query.trim()) return [];
+  // Build FTS query: combine text + exact phrases
+  const parts: string[] = [];
+  if (parsed.text.trim()) {
+    parts.push('"' + parsed.text.replace(/"/g, "") + '"');
+  }
+  for (const phrase of parsed.phrases) {
+    parts.push('"' + phrase.replace(/"/g, "") + '"');
+  }
+  const ftsQuery = parts.join(" ");
+  if (!ftsQuery) return [];
 
-  // S3: Sanitize query to prevent FTS5 operator injection
-  // Remove FTS5 operators by wrapping in double quotes (phrase search)
-  const safeQuery = '"' + query.replace(/"/g, "") + '"';
+  // Build date filter clauses
+  const dateFilters: string[] = [];
+  const dateBinds: any[] = [];
+  if (parsed.before) {
+    dateFilters.push("e.published_date < ?");
+    dateBinds.push(parsed.before);
+  }
+  if (parsed.after) {
+    dateFilters.push("e.published_date > ?");
+    dateBinds.push(parsed.after);
+  }
+  if (parsed.year) {
+    dateFilters.push("e.year = ?");
+    dateBinds.push(parsed.year);
+  }
 
-  // FTS5 bm25() accepts negative weights per column: bm25(table, w0, w1, ...)
-  // Lower (more negative) = higher boost. We negate our boost values.
+  const dateWhere = dateFilters.length > 0
+    ? "AND " + dateFilters.join(" AND ")
+    : "";
+
   const results = await db
     .prepare(
       `SELECT c.id, c.slug, c.title, c.summary, c.content_plain,
@@ -49,14 +72,13 @@ export async function ftsSearch(
        JOIN chunks c ON c.id = chunks_fts.rowid
        JOIN episodes e ON c.episode_id = e.id
        WHERE chunks_fts MATCH ?
+       ${dateWhere}
        ORDER BY rank
        LIMIT ?`
     )
-    .bind(-boosts.title, -boosts.content, safeQuery, limit)
+    .bind(-boosts.title, -boosts.content, ftsQuery, ...dateBinds, limit)
     .all();
 
-  // bm25 returns negative values where more negative = better match
-  // Normalize to 0-1 range with best match = 1.0
   const rows = results.results as any[];
   if (rows.length === 0) return [];
 
@@ -73,16 +95,13 @@ export async function ftsSearch(
     episodeSlug: r.episode_slug,
     episodeTitle: r.episode_title,
     publishedDate: r.published_date,
-    score: (maxRank - r.rank) / range, // normalize: best = 1.0
+    score: (maxRank - r.rank) / range,
     source: "fts" as const,
   }));
 }
 
 /**
  * Merge and rerank results from FTS and vector search.
- *
- * Items appearing in both sets get a boost (Reciprocal Rank Fusion).
- * Final score = weighted combination of FTS and vector scores.
  */
 export function mergeAndRerank(
   ftsResults: ScoredResult[],
@@ -99,19 +118,17 @@ export function mergeAndRerank(
   for (const r of vectorResults) {
     const existing = combined.get(r.id);
     if (existing) {
-      // Appears in both — combine scores with a crossover boost
       existing.vecScore = r.score;
       existing.score =
         existing.ftsScore * ftsWeight +
         r.score * vectorWeight +
-        0.1; // crossover bonus
-      existing.source = "fts"; // keep FTS metadata (usually richer)
+        0.1;
+      existing.source = "fts";
     } else {
       combined.set(r.id, { ...r, ftsScore: 0, vecScore: r.score });
     }
   }
 
-  // Recompute scores for single-source items
   for (const [, item] of combined) {
     if (item.ftsScore > 0 && item.vecScore === 0) {
       item.score = item.ftsScore * ftsWeight;

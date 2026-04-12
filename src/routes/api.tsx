@@ -4,6 +4,7 @@ import { fetchGoogleDocHtml } from "../services/google-docs";
 import { parseHtmlDocument } from "../services/html-parser";
 import { ingestParsedEpisodes, enrichChunks, isEnrichmentComplete } from "../jobs/ingest";
 import { ftsSearch } from "../services/search";
+import { parseSearchQuery } from "../lib/query-parser";
 import { safeParseInt, escapeLike } from "../lib/html";
 
 const api = new Hono<AppEnv>();
@@ -26,7 +27,8 @@ api.get("/search", async (c) => {
 
   let results;
   try {
-    results = await ftsSearch(c.env.DB, query);
+    const parsed = parseSearchQuery(query);
+    results = await ftsSearch(c.env.DB, parsed);
   } catch {
     // FTS not available, fall back to LIKE with escaped metacharacters (S2)
     const kwResults = await c.env.DB.prepare(
