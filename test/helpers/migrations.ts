@@ -100,6 +100,8 @@ const CREATES = [
   "CREATE INDEX IF NOT EXISTS idx_episode_tags_tag ON episode_tags(tag_id)",
   "CREATE INDEX IF NOT EXISTS idx_concordance_count ON concordance(total_count DESC)",
   "CREATE INDEX IF NOT EXISTS idx_chunk_words_word ON chunk_words(word)",
+  "CREATE INDEX IF NOT EXISTS idx_chunks_reach ON chunks(reach DESC)",
+  "CREATE INDEX IF NOT EXISTS idx_concordance_distinctiveness ON concordance(distinctiveness DESC)",
 ];
 
 export async function applyTestMigrations(db: D1Database): Promise<void> {
