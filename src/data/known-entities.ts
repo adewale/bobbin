@@ -29,7 +29,7 @@ export const KNOWN_ENTITIES: KnownEntity[] = [
   { name: "ChatGPT", kind: "product", aliases: ["chatgpt", "gpt-4", "gpt4"] },
   { name: "Claude", kind: "product", aliases: ["claude"] },
   { name: "Gemini", kind: "product", aliases: ["gemini"] },
-  { name: "Hacker News", kind: "product", aliases: ["hacker news", "hackernews"] },
+  { name: "Hacker News", kind: "product", aliases: ["hacker news", "hackernews", "hn"] },
   { name: "Stratechery", kind: "product", aliases: ["stratechery"] },
   { name: "Cursor", kind: "product", aliases: ["cursor"] },
   { name: "Copilot", kind: "product", aliases: ["copilot", "github copilot"] },

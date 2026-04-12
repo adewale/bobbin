@@ -121,6 +121,16 @@ a:hover { text-decoration: underline; }
 .related-chunks ul { list-style: none; }
 .related-chunks li { padding: 0.25rem 0; font-size: 0.85rem; }
 
+/* === Small Multiples Grid === */
+.topic-multiples { margin: 1.5rem 0; }
+.multiples-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; }
+.multiple-cell { display: flex; flex-direction: column; align-items: center; padding: 0.5rem; border: 1px solid var(--border); border-radius: 4px; text-decoration: none; }
+.multiple-cell:hover { background: var(--bg-warm); border-color: var(--accent); text-decoration: none; }
+.multiple-spark { width: 100%; height: 40px; }
+.multiple-name { font-family: var(--font-ui); font-size: 0.75rem; color: var(--text); margin-top: 0.25rem; }
+.multiple-count { font-family: var(--font-ui); font-size: 0.65rem; color: var(--text-light); }
+@media (max-width: 640px) { .multiples-grid { grid-template-columns: repeat(2, 1fr); } }
+
 /* === Topics === */
 .topics { display: flex; flex-wrap: wrap; gap: 0.3rem; margin: 0.5rem 0; }
 .topic { display: inline-block; padding: 0.35rem 0.6rem; background: var(--bg-warm); color: var(--text-muted); border: 1px solid var(--border); border-radius: 3px; font-size: 0.72rem; font-family: var(--font-ui); text-decoration: none; min-height: 2rem; line-height: 1.4; }

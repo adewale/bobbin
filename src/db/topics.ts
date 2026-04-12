@@ -110,3 +110,33 @@ export async function getTopicWordStats(db: D1Database, topicName: string) {
     "SELECT total_count, doc_count, distinctiveness, in_baseline FROM word_stats WHERE word = ?"
   ).bind(topicName.toLowerCase()).first<Pick<WordStatsRow, "total_count" | "doc_count" | "distinctiveness" | "in_baseline">>();
 }
+
+export async function getTopTopicsWithSparklines(db: D1Database, limit = 20) {
+  const topTopics = await db.prepare(
+    "SELECT id, name, slug, usage_count FROM topics WHERE usage_count >= 3 ORDER BY usage_count DESC LIMIT ?"
+  ).bind(limit).all<TopicRow>();
+
+  if (!topTopics.results.length) return [];
+
+  const topicIds = topTopics.results.map(t => t.id);
+  const placeholders = topicIds.map(() => "?").join(",");
+  const timeline = await db.prepare(
+    `SELECT ct.topic_id, e.published_date, COUNT(*) as count
+     FROM chunk_topics ct
+     JOIN chunks c ON ct.chunk_id = c.id
+     JOIN episodes e ON c.episode_id = e.id
+     WHERE ct.topic_id IN (${placeholders})
+     GROUP BY ct.topic_id, e.id
+     ORDER BY e.published_date ASC`
+  ).bind(...topicIds).all();
+
+  const allDates = [...new Set((timeline.results as any[]).map(r => r.published_date))].sort();
+
+  return topTopics.results.map(topic => {
+    const points = allDates.map(date => {
+      const match = (timeline.results as any[]).find(r => r.topic_id === topic.id && r.published_date === date);
+      return match ? match.count : 0;
+    });
+    return { ...topic, sparkline: points, dates: allDates };
+  });
+}

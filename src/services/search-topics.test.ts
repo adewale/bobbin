@@ -31,15 +31,15 @@ async function seedTopicSearchData() {
     ),
     // Topics (using tags table since that's the current schema)
     env.DB.prepare(
-      "INSERT INTO tags (name, slug, usage_count) VALUES ('ecosystem', 'ecosystem', 10)"
+      "INSERT INTO topics (name, slug, usage_count) VALUES ('ecosystem', 'ecosystem', 10)"
     ),
     env.DB.prepare(
-      "INSERT INTO tags (name, slug, usage_count) VALUES ('agent', 'agent', 5)"
+      "INSERT INTO topics (name, slug, usage_count) VALUES ('agent', 'agent', 5)"
     ),
     // chunk_tags assignments
-    env.DB.prepare("INSERT INTO chunk_tags (chunk_id, tag_id) VALUES (1, 1)"), // eco-tagged -> ecosystem
-    env.DB.prepare("INSERT INTO chunk_tags (chunk_id, tag_id) VALUES (3, 1)"), // eco-synonyms -> ecosystem
-    env.DB.prepare("INSERT INTO chunk_tags (chunk_id, tag_id) VALUES (4, 2)"), // agent-chunk -> agent
+    env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 1)"), // eco-tagged -> ecosystem
+    env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (3, 1)"), // eco-synonyms -> ecosystem
+    env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (4, 2)"), // agent-chunk -> agent
   ]);
 
   // Create FTS table

@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { AppEnv, TopicRow } from "../types";
 import { Layout } from "../components/Layout";
 import { SearchForm } from "../components/SearchForm";
-import { getTopicBySlug, getTopicChunkCount, getTopicChunks, getTopicSparkline, getTopicEpisodes, getTopicDiffChunks, getRelatedTopics, getTopicWordStats } from "../db/topics";
+import { getTopicBySlug, getTopicChunkCount, getTopicChunks, getTopicSparkline, getTopicEpisodes, getTopicDiffChunks, getRelatedTopics, getTopicWordStats, getTopTopicsWithSparklines } from "../db/topics";
 import { safeParseInt } from "../lib/html";
 import { TopicCloud } from "../components/TopicCloud";
 import { Breadcrumbs } from "../components/Breadcrumbs";
@@ -13,42 +13,44 @@ const topics = new Hono<AppEnv>();
 const PAGE_SIZE = 20;
 
 topics.get("/", async (c) => {
-  // Three tiers: multi-word entities, proper nouns, domain concepts
-  const [multiWord, properNouns, conceptResults] = await Promise.all([
-    // Multi-word entities: "claude code", "simon willison"
+  const [topicsWithSparklines, multiWord] = await Promise.all([
+    getTopTopicsWithSparklines(c.env.DB, 20),
     c.env.DB.prepare(
       "SELECT * FROM topics WHERE usage_count >= 3 AND name LIKE '% %' ORDER BY usage_count DESC LIMIT 20"
     ).all<TopicRow>(),
-    // Distinctive domain terms: not in baseline, high distinctiveness
-    c.env.DB.prepare(
-      `SELECT t.* FROM topics t
-       JOIN word_stats c ON c.word = t.name
-       WHERE t.usage_count >= 5 AND t.name NOT LIKE '% %'
-         AND c.in_baseline = 0 AND c.distinctiveness >= 10
-       ORDER BY c.distinctiveness DESC LIMIT 20`
-    ).all<TopicRow>(),
-    // Domain concepts: ranked by usage × distinctiveness
-    c.env.DB.prepare(
-      `SELECT t.*, COALESCE(c.distinctiveness, 0) as dist
-       FROM topics t
-       LEFT JOIN word_stats c ON c.word = t.name
-       WHERE t.usage_count >= 3 AND t.name NOT LIKE '% %'
-       ORDER BY t.usage_count * COALESCE(c.distinctiveness, 1) DESC
-       LIMIT 80`
-    ).all<TopicRow>(),
   ]);
+
   const entities = multiWord.results;
-  const entitySlugs = new Set(entities.map(t => t.slug));
-  // Merge distinctive proper nouns into the concept list (they'll rank high)
-  const conceptSlugs = new Set(conceptResults.results.map(t => t.slug));
-  const extraNouns = properNouns.results.filter(t => !entitySlugs.has(t.slug) && !conceptSlugs.has(t.slug));
-  const concepts = [...conceptResults.results, ...extraNouns]
-    .filter(t => !entitySlugs.has(t.slug))
-    .slice(0, 80);
 
   return c.html(
     <Layout title="Topics" description="Browse Bits and Bobs by topic" activePath="/topics">
       <SearchForm />
+
+      {topicsWithSparklines.length > 0 && (
+        <section class="topic-multiples">
+          <div class="multiples-grid">
+            {topicsWithSparklines.map(topic => {
+              const max = Math.max(...topic.sparkline, 1);
+              const w = 120, h = 40, pad = 2;
+              const points = topic.sparkline.map((v: number, i: number) => {
+                const x = topic.sparkline.length === 1 ? w / 2 : (i / (topic.sparkline.length - 1)) * (w - pad * 2) + pad;
+                const y = h - pad - (v / max) * (h - pad * 2);
+                return `${x},${y}`;
+              }).join(" ");
+
+              return (
+                <a key={topic.id} href={`/topics/${topic.slug}`} class="multiple-cell">
+                  <svg viewBox={`0 0 ${w} ${h}`} class="multiple-spark">
+                    <polyline points={points} fill="none" stroke="var(--accent)" stroke-width="1.5" />
+                  </svg>
+                  <span class="multiple-name">{topic.name}</span>
+                  <span class="multiple-count">{topic.usage_count}</span>
+                </a>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {entities.length > 0 && (
         <section class="topic-tier">
@@ -56,11 +58,6 @@ topics.get("/", async (c) => {
           <TopicCloud topics={entities} />
         </section>
       )}
-
-      <section class="topic-tier">
-        <h2>Key Concepts</h2>
-        <TopicCloud topics={concepts} />
-      </section>
 
       <script src="/scripts/tag-filter.js" defer></script>
     </Layout>

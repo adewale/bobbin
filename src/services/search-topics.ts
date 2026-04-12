@@ -17,7 +17,7 @@ export async function applyTopicBoost(
 
   // Check if the query matches a topic by slug or name
   const topicMatch = await db
-    .prepare("SELECT id FROM tags WHERE slug = ? OR LOWER(name) = ?")
+    .prepare("SELECT id FROM topics WHERE slug = ? OR LOWER(name) = ?")
     .bind(lowerQuery, lowerQuery)
     .first<{ id: number }>();
 
@@ -25,7 +25,7 @@ export async function applyTopicBoost(
 
   // Get all chunk IDs assigned to this topic
   const topicChunks = await db
-    .prepare("SELECT chunk_id FROM chunk_tags WHERE tag_id = ?")
+    .prepare("SELECT chunk_id FROM chunk_topics WHERE topic_id = ?")
     .bind(topicMatch.id)
     .all<{ chunk_id: number }>();
 
@@ -56,7 +56,7 @@ export async function applyTopicFilter(
   const topicIds: number[] = [];
   for (const slug of topicSlugs) {
     const topic = await db
-      .prepare("SELECT id FROM tags WHERE slug = ?")
+      .prepare("SELECT id FROM topics WHERE slug = ?")
       .bind(slug)
       .first<{ id: number }>();
     if (!topic) return []; // If any topic doesn't exist, no results
@@ -66,7 +66,7 @@ export async function applyTopicFilter(
   if (topicIds.length === 1) {
     // Simple case: single topic
     const chunks = await db
-      .prepare("SELECT chunk_id FROM chunk_tags WHERE tag_id = ?")
+      .prepare("SELECT chunk_id FROM chunk_topics WHERE topic_id = ?")
       .bind(topicIds[0])
       .all<{ chunk_id: number }>();
     return chunks.results.map((r) => r.chunk_id);
@@ -76,10 +76,10 @@ export async function applyTopicFilter(
   const placeholders = topicIds.map(() => "?").join(",");
   const chunks = await db
     .prepare(
-      `SELECT chunk_id FROM chunk_tags
-       WHERE tag_id IN (${placeholders})
+      `SELECT chunk_id FROM chunk_topics
+       WHERE topic_id IN (${placeholders})
        GROUP BY chunk_id
-       HAVING COUNT(DISTINCT tag_id) = ?`
+       HAVING COUNT(DISTINCT topic_id) = ?`
     )
     .bind(...topicIds, topicIds.length)
     .all<{ chunk_id: number }>();
