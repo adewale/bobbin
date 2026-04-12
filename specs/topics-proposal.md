@@ -337,6 +337,28 @@ Auto-promote these to topics with `kind = 'entity'`. This catches corpus-specifi
 - Precompute `related_slugs` and `distinctiveness` on the `topics` table
 - Re-ingest to populate all new data with the three-layer entity detection
 
+### Phase 9: Topic-aware search
+
+The current search (FTS5 + Vectorize) operates on raw text only. It doesn't know about topics. Three improvements:
+
+**Topic boost.** When a search query matches a topic name, boost chunks that have that topic assigned — not just chunks containing the literal string. Searching "agents" should also surface chunks about "autonomous AI" that are tagged with the agent topic but use different words.
+
+Implementation: after FTS5 + Vectorize results are merged, check if the query matches a topic slug. If so, query `chunk_topics` for that topic's chunks and apply a score bonus (+0.15) to any result that appears in both the text search and the topic assignment. This rewards chunks where the concept is thematically central, not just mentioned in passing.
+
+**Entity alias expansion.** When a search query matches a known entity or alias, expand the search to include all aliases. Searching "Stratechery" also matches chunks tagged with "Ben Thompson" (and vice versa). Searching "OpenAI" also matches chunks mentioning "Sam Altman" if the curated list links them.
+
+Implementation: in `parseSearchQuery()`, check the query text against `KNOWN_ENTITIES` aliases. If matched, add the canonical name and all aliases as additional FTS5 OR terms. This is query-time expansion — no index changes needed.
+
+**`topic:` search operator.** Add to the existing operator set (`before:`, `after:`, `year:`). Examples:
+
+```
+agents topic:coding     → chunks about agents in the context of coding
+topic:openai            → all chunks assigned the OpenAI topic
+LLMs topic:ecosystem    → LLM mentions filtered to ecosystem-related chunks
+```
+
+Implementation: extend `ParsedQuery` with `topics?: string[]`. In the search route, resolve topic slugs to IDs, then add `AND c.id IN (SELECT chunk_id FROM chunk_topics WHERE topic_id = ?)` to the FTS5 query's WHERE clause. This acts as a facet filter on top of text search.
+
 ## What gets deleted
 
 | Current | Becomes |
