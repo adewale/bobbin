@@ -19,7 +19,7 @@ tags.get("/", async (c) => {
       "SELECT * FROM tags WHERE usage_count >= 3 AND name LIKE '% %' ORDER BY usage_count DESC LIMIT 20"
     ).all<TagRow>(),
     c.env.DB.prepare(
-      "SELECT * FROM tags WHERE usage_count >= 3 AND name NOT LIKE '% %' ORDER BY usage_count DESC LIMIT 40"
+      "SELECT * FROM tags WHERE usage_count >= 3 AND name NOT LIKE '% %' ORDER BY usage_count DESC LIMIT 60"
     ).all<TagRow>(),
   ]);
   const entities = entityResults.results;
