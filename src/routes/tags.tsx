@@ -37,14 +37,14 @@ tags.get("/", async (c) => {
        LIMIT 60`
     ).all<TagRow>(),
   ]);
-  // Merge multi-word and proper nouns into entity tier
-  const entitySlugs = new Set(multiWord.results.map(t => t.slug));
-  const entities = [
-    ...multiWord.results,
-    ...properNouns.results.filter(t => !entitySlugs.has(t.slug)),
-  ].slice(0, 30);
-  const entitySlugSet = new Set(entities.map(t => t.slug));
-  const concepts = conceptResults.results.filter(t => !entitySlugSet.has(t.slug));
+  const entities = multiWord.results;
+  const entitySlugs = new Set(entities.map(t => t.slug));
+  // Merge distinctive proper nouns into the concept list (they'll rank high)
+  const conceptSlugs = new Set(conceptResults.results.map(t => t.slug));
+  const extraNouns = properNouns.results.filter(t => !entitySlugs.has(t.slug) && !conceptSlugs.has(t.slug));
+  const concepts = [...conceptResults.results, ...extraNouns]
+    .filter(t => !entitySlugs.has(t.slug))
+    .slice(0, 60);
 
   return c.html(
     <Layout title="Tags" description="Browse Bits and Bobs by topic" activePath="/tags">
