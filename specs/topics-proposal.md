@@ -21,7 +21,7 @@ These terms are used precisely throughout the codebase:
 
 | Term | Meaning |
 |------|---------|
-| **Chunk** | The atomic content unit. A single observation, aphorism, or essay section. Stored in the `chunks` table. Displayed in accordions on episode pages and as standalone pages at `/chunks/:slug`. |
+| **Chunk** | The atomic content unit. A single aphorism, essay section, or note. Stored in the `chunks` table. Displayed in accordions on episode pages and as standalone pages at `/chunks/:slug`. |
 | **Episode** | One issue of the newsletter, dated. Contains chunks. Either "essays" format (few long chunks) or "notes" format (many short chunks). |
 | **Topic** | A concept that recurs across the corpus. Replaces "tag" and "concordance word". Has a name, a slug, usage data, distinctiveness score, temporal profile, and co-occurring topics. Displayed at `/topics/:slug`. |
 | **Entity** | A proper noun topic — a person, product, or organization. A subtype of topic identified by capitalization heuristics and multi-word extraction. |
@@ -78,8 +78,8 @@ CREATE TABLE word_stats (
 
 **Merge split concepts** during enrichment. Co-occurrence data reveals pairs that are single ideas:
 
-| Tag 1 | Tag 2 | Co-occurrences | Merged topic |
-|-------|-------|---------------|-------------|
+| Term 1 | Term 2 | Co-occurrences | Merged topic |
+|--------|--------|---------------|-------------|
 | prompt | injection | 17 | prompt injection |
 | cognitive | labor | 15 | cognitive labor |
 | coding | vibe | 20 | vibe coding |
@@ -138,7 +138,7 @@ LLMs
 Distinctiveness: 113.6× baseline
 ```
 
-Mention count from concordance. Chunk count from chunk_tags. Episode count from episode_tags. Distinctiveness from concordance scoring.
+Mention count from `word_stats`. Chunk count from `chunk_topics`. Episode count from `episode_topics`. Distinctiveness from `word_stats`.
 
 **Dispersion plot**
 
@@ -325,7 +325,7 @@ The two-source merge: look up the topic in `topics` (by slug) and `word_stats` (
 ### Phase 3: Dispersion plot + KWIC
 
 Add to the topic detail page:
-- Dispersion plot: SVG barcode from `getTagSparkline` data
+- Dispersion plot: SVG barcode from topic sparkline data
 - KWIC display: query `chunk_words` to find chunks containing the word, extract surrounding context, render center-aligned table
 
 ### Phase 4: Small multiples index
@@ -344,9 +344,9 @@ Replace tag pills on episode and chunk detail pages with topic marginalia:
 
 ### Phase 6: ThemeRiver + Slopegraph
 
-Advanced visualizations on the topics index:
-- ThemeRiver: stacked area SVG showing topic composition over time
-- Slopegraph: year-over-year ranking comparison for individual topic pages
+Advanced visualizations:
+- ThemeRiver: stacked area SVG showing topic composition over time. Appears on both the homepage (8-10 streams) and `/topics` index (10-15 streams).
+- Slopegraph: year-over-year ranking comparison on individual `/topics/:slug` pages. Shows this topic's rank among all topics per year.
 
 ### Phase 7: Entity detection overhaul
 
@@ -448,6 +448,9 @@ Implementation: extend `ParsedQuery` with `topics?: string[]`. In the search rou
 | `chunk_tags` table | `chunk_topics` table |
 | `episode_tags` table | `episode_topics` table |
 | `concordance` table | `word_stats` table |
+| `/api/tags` endpoint | `/api/topics` (topic search/autocomplete) |
+| `/api/concordance` endpoint | Removed — word_stats data accessed through topic detail page |
+| `/api/enrich` endpoint | Updated to use new table names and enrichment pipeline |
 
 ## What the data audit tells us
 
