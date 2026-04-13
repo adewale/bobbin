@@ -6,13 +6,15 @@ const NOISE_WORDS = new Set([
   // Generic verbs/adjectives
   "aligned", "leverage", "focused", "driven", "based", "built", "designed",
   "allow", "create", "enable", "require", "involve", "include",
-  // Too generic nouns
-  "apps", "tool", "tools", "product", "products", "thing", "things",
-  "people", "person", "world", "point", "part", "kind", "type",
-  "time", "place", "work", "idea", "value", "case", "form",
-  "record", "expensive", "important", "interesting", "different",
+  "fundamentally", "basically", "essentially", "relatively",
+  // Too generic nouns — not navigational even in a tech corpus
+  "software", "system", "model", "data", "code", "product", "tool", "tools",
+  "products", "apps", "thing", "things", "people", "person", "world", "point",
+  "part", "kind", "type", "time", "place", "work", "idea", "value", "case",
+  "form", "record", "trust", "quality", "business",
+  "expensive", "important", "interesting", "different",
   // Words only meaningful in specific phrases
-  "injection", "labor", "hollow",
+  "injection", "labor", "hollow", "coding", "vibe",
 ]);
 
 /**

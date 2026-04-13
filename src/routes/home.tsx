@@ -70,44 +70,42 @@ home.get("/", async (c) => {
             </section>
           )}
 
-          <div class="home-grid">
-            {connected.length > 0 && (
-              <section class="most-connected">
-                <h2>Most Connected</h2>
-                <ul>
-                  {connected.map((r: any) => (
-                    <li key={r.id}>
-                      <a href={`/chunks/${r.slug}`}>{r.title}</a>
-                      <span class="meta">
-                        <a href={`/episodes/${r.episode_slug}`}>{r.published_date}</a>
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            )}
-
-            <section class="recent-episodes">
-              <h2>Recent Episodes</h2>
-              {episodes.map((ep) => (
-                <EpisodeCard key={ep.id} episode={ep} />
-              ))}
-              {episodes.length > 0 && (
-                <a href="/episodes" class="see-all">See all episodes &rarr;</a>
-              )}
-              {episodes.length === 0 && (
-                <p>No episodes yet.</p>
-              )}
+          {connected.length > 0 && (
+            <section class="most-connected">
+              <h2>Most Connected</h2>
+              <ul>
+                {connected.map((r: any) => (
+                  <li key={r.id}>
+                    <a href={`/chunks/${r.slug}`}>{r.title}</a>
+                    <span class="meta">
+                      <a href={`/episodes/${r.episode_slug}`}>{r.published_date}</a>
+                    </span>
+                  </li>
+                ))}
+              </ul>
             </section>
-          </div>
+          )}
         </div>
 
-        {topics.length > 0 && (
-          <aside class="home-margin">
-            <h3>Popular Topics</h3>
-            <TopicCloud topics={topics} />
-          </aside>
-        )}
+        <aside class="home-margin">
+          <section class="recent-episodes">
+            <h3>Recent Episodes</h3>
+            {episodes.slice(0, 8).map((ep) => (
+              <a key={ep.id} href={`/episodes/${ep.slug}`} class="recent-ep-link">
+                <time>{ep.published_date}</time>
+                <span>{ep.chunk_count}</span>
+              </a>
+            ))}
+            <a href="/episodes" class="see-all">All episodes &rarr;</a>
+          </section>
+
+          {topics.length > 0 && (
+            <section class="margin-topics">
+              <h3>Popular Topics</h3>
+              <TopicCloud topics={topics} />
+            </section>
+          )}
+        </aside>
       </div>
     </Layout>
   );

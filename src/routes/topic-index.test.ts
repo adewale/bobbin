@@ -27,7 +27,7 @@ async function seedSparklineData() {
   await env.DB.batch([
     env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('llms', 'llms', 10)"),
     env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('agent', 'agent', 8)"),
-    env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('coding', 'coding', 6)"),
+    env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('ecosystem', 'ecosystem', 6)"),
     env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('simon willison', 'simon-willison', 7)"),
     env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('claude code', 'claude-code', 5)"),
   ]);
@@ -62,7 +62,7 @@ describe("Topics index - small multiples grid", () => {
     const html = await res.text();
     expect(html).toContain("llms");
     expect(html).toContain("agent");
-    expect(html).toContain("coding");
+    expect(html).toContain("ecosystem");
   });
 
   it("each cell links to topic detail page", async () => {

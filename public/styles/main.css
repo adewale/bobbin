@@ -410,11 +410,15 @@ mark { background: color-mix(in srgb, var(--accent-light) 60%, transparent); col
 .slopegraph-svg { width: 100%; max-width: 300px; }
 
 /* === Homepage layout with margin === */
-.home-with-margin { display: grid; grid-template-columns: 1fr 12rem; gap: 2rem; margin-top: 1rem; }
+.home-with-margin { display: grid; grid-template-columns: 1fr 13rem; gap: 2rem; margin-top: 1rem; }
 .home-main { min-width: 0; }
-.home-margin { font-family: var(--font-ui); padding-top: 0.5rem; }
+.home-margin { font-family: var(--font-ui); }
 .home-margin h3 { font-size: 0.7rem; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; margin-bottom: 0.5rem; }
-.home-margin .topic-cloud { display: flex; flex-direction: column; gap: 0.2rem; }
+.home-margin section { margin-bottom: 1.5rem; }
+.recent-ep-link { display: flex; justify-content: space-between; gap: 0.5rem; font-size: 0.78rem; color: var(--text-muted); text-decoration: none; padding: 0.2rem 0; border-bottom: 1px solid var(--border); }
+.recent-ep-link:hover { color: var(--accent); }
+.recent-ep-link time { font-variant-numeric: tabular-nums; }
+.recent-ep-link span { color: var(--text-light); font-size: 0.7rem; }
 @media (max-width: 768px) {
   .home-with-margin { grid-template-columns: 1fr; }
   .home-margin { border-top: 1px solid var(--border); padding-top: 1rem; margin-top: 1rem; }
@@ -433,8 +437,3 @@ mark { background: color-mix(in srgb, var(--accent-light) 60%, transparent); col
 .latest-topics h3 { font-size: 0.65rem; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; margin-bottom: 0.25rem; }
 .latest-topics .topics { display: flex; flex-wrap: wrap; gap: 0.25rem; }
 
-/* === Homepage 2-column grid === */
-.home-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 1rem; }
-.home-grid section { min-width: 0; }
-.home-grid h2 { font-family: var(--font-ui); font-size: 0.9rem; font-weight: 700; font-style: normal; margin-bottom: 0.5rem; }
-@media (max-width: 640px) { .home-grid { grid-template-columns: 1fr; } }

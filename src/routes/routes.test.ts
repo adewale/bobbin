@@ -49,11 +49,12 @@ describe("GET /", () => {
     expect(res.headers.get("content-type")).toContain("text/html");
   });
 
-  it("includes recent episodes", async () => {
+  it("includes recent episodes in the margin", async () => {
     const res = await SELF.fetch("http://localhost/");
     const html = await res.text();
-    expect(html).toContain("Bits and Bobs 4/8/24");
-    expect(html).toContain("Bits and Bobs 3/25/24");
+    expect(html).toContain("Recent Episodes");
+    expect(html).toContain("2024-04-08");
+    expect(html).toContain("2024-03-25");
   });
 
   it("includes search form", async () => {

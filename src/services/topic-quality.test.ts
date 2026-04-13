@@ -52,16 +52,16 @@ describe("curateTopics", () => {
     expect(names).toContain("vibe coding");
   });
 
-  it("keeps 'coding' when no phrase subsumes it significantly", () => {
+  it("keeps a non-noise word when no phrase subsumes it significantly", () => {
     const topics = [
-      makeTopic("coding", 100),
-      makeTopic("vibe coding", 5),
+      makeTopic("ecosystem", 100),
+      makeTopic("platform ecosystem", 5),
     ];
-    // vibe coding has only 5 usage, coding has 100 => 5/100 = 5% < 40%
-    const phraseTopics = [{ name: "vibe coding", usage_count: 5 }];
+    // platform ecosystem has only 5 usage, ecosystem has 100 => 5/100 = 5% < 40%
+    const phraseTopics = [{ name: "platform ecosystem", usage_count: 5 }];
     const result = curateTopics(topics, phraseTopics);
     const names = result.map(t => t.name);
-    expect(names).toContain("coding");
+    expect(names).toContain("ecosystem");
   });
 
   it("keeps multi-word topics like 'claude code'", () => {

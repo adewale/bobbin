@@ -29,7 +29,7 @@ async function seedHomepageData() {
     // Topics
     env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('llms', 'llms', 50)"),
     env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('agent', 'agent', 30)"),
-    env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('coding', 'coding', 20)"),
+    env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('chatgpt', 'chatgpt', 20)"),
     env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('swarm', 'swarm', 15)"),
     env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('ecosystem', 'ecosystem', 10)"),
     // Link topics to latest episode
@@ -85,15 +85,16 @@ describe("Homepage latest episode panel", () => {
     expect(panelHtml).toContain("latest-topics");
     expect(panelHtml).toContain('href="/topics/llms"');
     expect(panelHtml).toContain('href="/topics/agent"');
-    expect(panelHtml).toContain('href="/topics/coding"');
+    expect(panelHtml).toContain('href="/topics/chatgpt"');
   });
 });
 
-describe("Homepage three-column grid", () => {
-  it("contains home-grid class for 3-column layout", async () => {
+describe("Homepage margin layout", () => {
+  it("has Recent Episodes and Popular Topics in the margin", async () => {
     const res = await SELF.fetch("http://localhost/");
     const html = await res.text();
     expect(res.status).toBe(200);
-    expect(html).toContain("home-grid");
+    expect(html).toContain("home-margin");
+    expect(html).toContain("Recent Episodes");
   });
 });
