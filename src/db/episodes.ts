@@ -42,7 +42,8 @@ export async function getEpisodeTopicsBlended(
      JOIN topics t ON ct.topic_id = t.id
      WHERE c.episode_id = ?
      GROUP BY t.id
-     ORDER BY ep_count DESC`
+     ORDER BY ep_count DESC
+     LIMIT 100`
   ).bind(episodeId).all();
 
   // Get total episode count for IDF
