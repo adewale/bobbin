@@ -1,0 +1,89 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`HTML parser golden file: essays format > full parse snapshot is stable 1`] = `
+[
+  {
+    "chunkCount": 3,
+    "chunkPositions": [
+      0,
+      1,
+      2,
+    ],
+    "chunkTitles": [
+      "As a software provider, are you selling the software, or the thing the software accomplishes ?",
+      "Improving the software production cycle with LLMs is like trying to add a new room to a house that is on fire.",
+      "When trying to grab people's attention with your writing, you have to stand out from the average.",
+    ],
+    "dateStr": "4/6/26",
+    "format": "essays",
+    "title": "Bits and Bobs 4/6/26",
+  },
+  {
+    "chunkCount": 2,
+    "chunkPositions": [
+      0,
+      1,
+    ],
+    "chunkTitles": [
+      "Ecosystem dynamics are often counterintuitive because they operate at a scale that individual organisms can't perceive.",
+      "Platform markets have a natural tendency toward consolidation, but the consolidation is never complete.",
+    ],
+    "dateStr": "3/30/26",
+    "format": "essays",
+    "title": "Bits and Bobs 3/30/26",
+  },
+  {
+    "chunkCount": 1,
+    "chunkPositions": [
+      0,
+    ],
+    "chunkTitles": [
+      "Whale falls create entire ecosystems from death.",
+    ],
+    "dateStr": "3/23/26",
+    "format": "essays",
+    "title": "Bits and Bobs 3/23/26",
+  },
+]
+`;
+
+exports[`HTML parser golden file: notes format > full parse snapshot is stable 1`] = `
+[
+  {
+    "chunkCount": 13,
+    "chunkPositions": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+    ],
+    "chunkTitles": [
+      "Observation one about software.",
+      "Observation two about LLMs.",
+      "Observation three about ecosystems.",
+      "Observation four about platforms.",
+      "Observation five about trust.",
+      "Observation six about agents.",
+      "Observation seven about code.",
+      "Observation eight about data.",
+      "Observation nine about context.",
+      "Observation ten about models.",
+      "Observation eleven about tech.",
+      "Observation twelve about systems.",
+      "Observation thirteen about value.",
+    ],
+    "dateStr": "5/1/26",
+    "format": "notes",
+    "title": "Bits and Bobs 5/1/26",
+  },
+]
+`;
