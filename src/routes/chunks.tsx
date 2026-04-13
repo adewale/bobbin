@@ -19,7 +19,7 @@ chunks.get("/:slug", async (c) => {
   const [topics, thread, adjacentResult, trending] = await Promise.all([
     getChunkTopics(c.env.DB, chunk.id),
     getThreadChunks(c.env.DB, chunk.id, chunk.episode_id),
-    isNotes ? getAdjacentChunks(c.env.DB, chunk.episode_id, chunk.position) : Promise.resolve({ prev: null, next: null }),
+    getAdjacentChunks(c.env.DB, chunk.episode_id, chunk.position),
     getTrendingTopicsForEpisode(c.env.DB, chunk.episode_id),
   ]);
 
@@ -149,7 +149,7 @@ chunks.get("/:slug", async (c) => {
           </section>
         )}
 
-        {isNotes && (prevChunk || nextChunk) && (
+        {(prevChunk || nextChunk) && (
           <nav class="chunk-nav">
             {prevChunk && (
               <a href={`/chunks/${prevChunk.slug}`} class="nav-prev">

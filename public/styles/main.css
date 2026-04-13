@@ -299,6 +299,12 @@ mark { background: color-mix(in srgb, var(--accent-light) 60%, transparent); col
 .chunk-nav a:hover { color: var(--accent); }
 .chunk-nav .nav-next { text-align: right; margin-left: auto; }
 
+/* === Episode nav (prev/next) === */
+.episode-nav { display: flex; justify-content: space-between; gap: 1rem; margin: 2rem 0; padding: 1rem 0; border-top: 1px solid var(--border); font-family: var(--font-ui); font-size: 0.85rem; }
+.episode-nav a { text-decoration: none; color: var(--text-muted); }
+.episode-nav a:hover { color: var(--accent); }
+.episode-nav .nav-next { margin-left: auto; }
+
 /* === Unified Browse page === */
 .browse-year { margin: 1.5rem 0; }
 .browse-year h2 { font-family: var(--font-ui); font-size: 1.3rem; font-weight: 700; font-style: normal; border-bottom: 2px solid var(--accent); padding-bottom: 0.25rem; margin-bottom: 0.5rem; }

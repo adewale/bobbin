@@ -3,7 +3,7 @@ import type { AppEnv, EpisodeRow, ChunkRow, TopicRow } from "../types";
 import { Layout } from "../components/Layout";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { monthName } from "../lib/date";
-import { getAllEpisodesGrouped, getEpisodeBySlug, getChunksByEpisode, getEpisodeTopics } from "../db/episodes";
+import { getAllEpisodesGrouped, getEpisodeBySlug, getChunksByEpisode, getEpisodeTopics, getAdjacentEpisodes } from "../db/episodes";
 import { getTrendingTopicsForEpisode } from "../db/topics";
 
 const episodes = new Hono<AppEnv>();
@@ -65,10 +65,11 @@ episodes.get("/:slug", async (c) => {
   const episode = await getEpisodeBySlug(c.env.DB, slug);
   if (!episode) return c.notFound();
 
-  const [chunksList, topicsList, trending] = await Promise.all([
+  const [chunksList, topicsList, trending, adjacent] = await Promise.all([
     getChunksByEpisode(c.env.DB, episode.id),
     getEpisodeTopics(c.env.DB, episode.id),
     getTrendingTopicsForEpisode(c.env.DB, episode.id),
+    getAdjacentEpisodes(c.env.DB, episode.published_date),
   ]);
 
   return c.html(
@@ -152,6 +153,21 @@ episodes.get("/:slug", async (c) => {
           </div>
         )}
       </article>
+
+      {(adjacent.prev || adjacent.next) && (
+        <nav class="episode-nav">
+          {adjacent.prev && (
+            <a href={`/episodes/${adjacent.prev.slug}`} class="nav-prev">
+              &larr; {adjacent.prev.published_date}
+            </a>
+          )}
+          {adjacent.next && (
+            <a href={`/episodes/${adjacent.next.slug}`} class="nav-next">
+              {adjacent.next.published_date} &rarr;
+            </a>
+          )}
+        </nav>
+      )}
     </Layout>
   );
 });

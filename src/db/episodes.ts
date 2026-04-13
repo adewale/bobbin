@@ -41,3 +41,15 @@ export async function getAllEpisodesGrouped(db: D1Database): Promise<EpisodeRow[
   ).all<EpisodeRow>();
   return result.results;
 }
+
+export async function getAdjacentEpisodes(db: D1Database, publishedDate: string): Promise<{ prev: EpisodeRow | null; next: EpisodeRow | null }> {
+  const [prev, next] = await Promise.all([
+    db.prepare(
+      "SELECT * FROM episodes WHERE published_date < ? ORDER BY published_date DESC LIMIT 1"
+    ).bind(publishedDate).first<EpisodeRow>(),
+    db.prepare(
+      "SELECT * FROM episodes WHERE published_date > ? ORDER BY published_date ASC LIMIT 1"
+    ).bind(publishedDate).first<EpisodeRow>(),
+  ]);
+  return { prev: prev || null, next: next || null };
+}
