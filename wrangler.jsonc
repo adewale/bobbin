@@ -31,7 +31,7 @@
       { "binding": "ENRICHMENT_QUEUE", "queue": "bobbin-enrichment" }
     ],
     "consumers": [
-      { "queue": "bobbin-enrichment", "max_batch_size": 10, "max_concurrency": 10, "max_retries": 2 }
+      { "queue": "bobbin-enrichment", "max_batch_size": 50, "max_concurrency": 20, "max_retries": 3 }
     ]
   }
 }

@@ -176,6 +176,40 @@ api.get("/enrich", async (c) => {
   }
 });
 
+// Admin: dispatch enrichment batches to queue for parallel processing
+api.get("/enrich-parallel", async (c) => {
+  const denied = requireAuth(c);
+  if (denied) return denied;
+
+  const batchSize = safeParseInt(c.req.query("batch"), 200);
+
+  try {
+    const unenriched = await c.env.DB.prepare(
+      "SELECT id FROM chunks WHERE enriched = 0 LIMIT 5000"
+    ).all<{ id: number }>();
+
+    if (!unenriched.results.length) {
+      return c.json({ status: "ok", dispatched: 0, batches: 0, complete: true });
+    }
+
+    // Split into batches and dispatch to queue
+    const ids = unenriched.results.map(r => r.id);
+    const batches: number[][] = [];
+    for (let i = 0; i < ids.length; i += batchSize) {
+      batches.push(ids.slice(i, i + batchSize));
+    }
+
+    for (const batch of batches) {
+      await c.env.ENRICHMENT_QUEUE.send({ type: "enrich-batch", chunkIds: batch });
+    }
+
+    return c.json({ status: "ok", dispatched: ids.length, batches: batches.length });
+  } catch (e: any) {
+    console.error("Enrich-parallel error:", e);
+    return c.json({ error: "Parallel enrichment dispatch failed" }, 500);
+  }
+});
+
 // Admin: finalize enrichment (run once after all chunks enriched)
 api.get("/finalize", async (c) => {
   const denied = requireAuth(c);
