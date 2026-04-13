@@ -140,6 +140,14 @@ export async function enrichChunks(
   }
   await batchExec(db, wordStmts);
 
+  return { chunksProcessed: chunks.length };
+}
+
+/**
+ * Finalize enrichment: run once after all chunks are enriched.
+ * Rebuilds aggregates, merges phrases, extracts n-grams, precomputes scores.
+ */
+export async function finalizeEnrichment(db: D1Database): Promise<void> {
   // Recalculate topic usage counts from actual chunk_topics
   await db.prepare(
     "UPDATE topics SET usage_count = (SELECT COUNT(*) FROM chunk_topics WHERE topic_id = topics.id)"
@@ -202,8 +210,6 @@ export async function enrichChunks(
       "UPDATE topics SET related_slugs = ? WHERE id = ?"
     ).bind(slugs, topic.id).run();
   }
-
-  return { chunksProcessed: chunks.length };
 }
 
 /**
@@ -327,8 +333,7 @@ export async function ingestParsedEpisodes(
 
   if (result.chunksAdded > 0) {
     await enrichChunks(env.DB, 10000);
-
-    // Layer 2: AI-powered entity extraction (Phase 8 placeholder)
+    await finalizeEnrichment(env.DB);
 
     // Embeddings (optional, may fail)
     try {

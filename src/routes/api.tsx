@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../types";
-import { fetchGoogleDoc, parseHtmlDocument, ingestParsedEpisodes, enrichChunks, isEnrichmentComplete } from "../crawler";
+import { fetchGoogleDoc, parseHtmlDocument, ingestParsedEpisodes, enrichChunks, finalizeEnrichment, isEnrichmentComplete } from "../crawler";
 import { ftsSearch } from "../services/search";
 import { parseSearchQuery } from "../lib/query-parser";
 import { keywordSearch } from "../db/search";
@@ -169,6 +169,20 @@ api.get("/enrich", async (c) => {
   } catch (e: any) {
     console.error("Enrich error:", e);
     return c.json({ error: "Enrichment failed" }, 500);
+  }
+});
+
+// Admin: finalize enrichment (run once after all chunks enriched)
+api.get("/finalize", async (c) => {
+  const denied = requireAuth(c);
+  if (denied) return denied;
+
+  try {
+    await finalizeEnrichment(c.env.DB);
+    return c.json({ status: "ok" });
+  } catch (e: any) {
+    console.error("Finalize error:", e);
+    return c.json({ error: "Finalization failed" }, 500);
   }
 });
 

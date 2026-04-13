@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
 import { applyTestMigrations } from "../../test/helpers/migrations";
 import { extractTopics } from "../services/topic-extractor";
-import { enrichChunks, ingestEpisodesOnly } from "./ingest";
+import { enrichChunks, finalizeEnrichment, ingestEpisodesOnly } from "./ingest";
 import { parseHtmlDocument } from "../services/html-parser";
 import sampleHtml from "../../test/fixtures/sample-mobilebasic.html?raw";
 
@@ -55,6 +55,7 @@ describe("Phase 8: Enrichment pipeline improvements", () => {
       await env.DB.prepare("INSERT OR IGNORE INTO chunk_topics (chunk_id, topic_id) VALUES (?, ?)").bind(testChunk!.id, injectionTopic!.id).run();
 
       await enrichChunks(env.DB, 1000);
+      await finalizeEnrichment(env.DB);
 
       const merged = await env.DB.prepare("SELECT * FROM topics WHERE slug = 'prompt-injection'").first();
       expect(merged).not.toBeNull();
@@ -91,6 +92,7 @@ describe("Phase 8: Enrichment pipeline improvements", () => {
       ]);
 
       await enrichChunks(env.DB, 1000);
+      await finalizeEnrichment(env.DB);
 
       const merged = await env.DB.prepare("SELECT usage_count FROM topics WHERE slug = 'prompt-injection'").first<{ usage_count: number }>();
       expect(merged).not.toBeNull();
@@ -108,6 +110,7 @@ describe("Phase 8: Enrichment pipeline improvements", () => {
       ).run();
 
       await enrichChunks(env.DB, 1000);
+      await finalizeEnrichment(env.DB);
 
       const topicsWithDist = await env.DB.prepare(
         "SELECT name, distinctiveness FROM topics WHERE distinctiveness > 0"
@@ -129,6 +132,7 @@ describe("Phase 8: Enrichment pipeline improvements", () => {
       const episodes = parseHtmlDocument(sampleHtml);
       await ingestEpisodesOnly(env.DB, 1, episodes);
       await enrichChunks(env.DB, 1000);
+      await finalizeEnrichment(env.DB);
 
       const popularTopics = await env.DB.prepare(
         "SELECT id, slug, related_slugs FROM topics WHERE usage_count >= 3"

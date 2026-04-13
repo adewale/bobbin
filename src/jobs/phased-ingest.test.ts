@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
 import { applyTestMigrations } from "../../test/helpers/migrations";
 import { parseHtmlDocument } from "../services/html-parser";
-import { ingestEpisodesOnly, enrichChunks, isEnrichmentComplete } from "./ingest";
+import { ingestEpisodesOnly, enrichChunks, finalizeEnrichment, isEnrichmentComplete } from "./ingest";
 import sampleEssays from "../../test/fixtures/sample-mobilebasic.html?raw";
 import sampleNotes from "../../test/fixtures/sample-notes-format.html?raw";
 
@@ -100,8 +100,9 @@ describe("Phase 2: enrichChunks", () => {
     expect((words as any).c).toBeGreaterThan(0);
   });
 
-  it("updates word_stats aggregates", async () => {
+  it("updates word_stats aggregates after finalization", async () => {
     await enrichChunks(env.DB, 100);
+    await finalizeEnrichment(env.DB);
 
     const ws = await env.DB.prepare("SELECT COUNT(*) as c FROM word_stats").first();
     expect((ws as any).c).toBeGreaterThan(0);
@@ -151,8 +152,9 @@ describe("E2E: Phase 1 → Phase 2 produces same result as old pipeline", () => 
     const phase1 = await ingestEpisodesOnly(env.DB, 1, episodes);
     expect(phase1.episodesAdded).toBe(3);
 
-    // Phase 2 — enrich all
+    // Phase 2 — enrich all + finalize
     await enrichChunks(env.DB, 1000);
+    await finalizeEnrichment(env.DB);
 
     // Verify everything exists
     const eps = await env.DB.prepare("SELECT COUNT(*) as c FROM episodes").first();
