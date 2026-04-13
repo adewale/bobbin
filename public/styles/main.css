@@ -420,7 +420,7 @@ mark { background: color-mix(in srgb, var(--accent-light) 60%, transparent); col
 .home-main { min-width: 0; }
 .home-margin { font-family: var(--font-ui); }
 .home-margin h3 { font-size: 0.7rem; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; margin-bottom: 0.5rem; }
-.home-margin section { margin-bottom: 1.5rem; }
+.home-margin section { margin-bottom: 1rem; padding: 0.75rem; background: var(--bg-warm); border: 1px solid var(--border); border-radius: 6px; }
 .recent-ep-link { display: flex; justify-content: space-between; gap: 0.5rem; font-size: 0.78rem; color: var(--text-muted); text-decoration: none; padding: 0.2rem 0; border-bottom: 1px solid var(--border); }
 .recent-ep-link:hover { color: var(--accent); }
 .recent-ep-link time { font-variant-numeric: tabular-nums; }
