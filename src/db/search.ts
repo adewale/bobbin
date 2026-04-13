@@ -21,7 +21,13 @@ export async function keywordSearch(
   parsed: ParsedQuery,
   limit: number = 20
 ): Promise<KeywordResult[]> {
-  const searchTerm = parsed.text || parsed.phrases[0] || "";
+  // For LIKE fallback, strip any FTS5 operators (OR) and quotes that the
+  // entity alias expansion may have injected into parsed.text.
+  let searchTerm = parsed.text || parsed.phrases[0] || "";
+  // Remove FTS5 OR expressions — just keep the first meaningful term
+  if (/\bOR\b/.test(searchTerm)) {
+    searchTerm = searchTerm.split(/\s+OR\s+/)[0].replace(/"/g, "").trim();
+  }
   if (!searchTerm) return [];
 
   const dateFilters: string[] = [];

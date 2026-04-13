@@ -23,6 +23,9 @@ export function parseSearchQuery(raw: string): ParsedQuery {
   let after: string | undefined;
   let year: number | undefined;
 
+  // Normalise smart/curly quotes to straight quotes before parsing
+  text = text.replace(/[\u201C\u201D\u201E\u201F\u2033\u2036]/g, '"');
+
   // Extract exact phrases
   text = text.replace(/"([^"]+)"/g, (_, phrase) => {
     phrases.push(phrase.trim());

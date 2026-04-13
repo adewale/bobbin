@@ -31,14 +31,17 @@ api.get("/search", async (c) => {
   try {
     const parsed = parseSearchQuery(query);
 
-    // Entity alias expansion
+    // Entity alias expansion: each term individually quoted for FTS5
     const entityAliases = expandEntityAliases(parsed.text, KNOWN_ENTITIES);
     if (entityAliases.length > 0) {
       const uniqueTerms = new Set([
         parsed.text.toLowerCase(),
         ...entityAliases,
       ]);
-      parsed.text = [...uniqueTerms].filter(Boolean).join(" OR ");
+      parsed.text = [...uniqueTerms]
+        .filter(Boolean)
+        .map((t) => (t.includes(" ") ? `"${t}"` : t))
+        .join(" OR ");
     }
 
     results = await ftsSearch(c.env.DB, parsed);

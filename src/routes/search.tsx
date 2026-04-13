@@ -21,15 +21,19 @@ search.get("/", async (c) => {
   if (query) {
     const parsed = parseSearchQuery(query);
 
-    // Entity alias expansion: if query matches a known entity, expand to include all aliases
+    // Entity alias expansion: if query matches a known entity, expand to include all aliases.
+    // Each term is individually quoted so FTS5 treats multi-word names as phrases
+    // and the OR operators remain at the top level (not inside a phrase literal).
     const entityAliases = expandEntityAliases(parsed.text, KNOWN_ENTITIES);
     if (entityAliases.length > 0) {
-      // Add alias terms to the parsed text for broader FTS matching
       const uniqueTerms = new Set([
         parsed.text.toLowerCase(),
         ...entityAliases,
       ]);
-      parsed.text = [...uniqueTerms].filter(Boolean).join(" OR ");
+      parsed.text = [...uniqueTerms]
+        .filter(Boolean)
+        .map((t) => (t.includes(" ") ? `"${t}"` : t))
+        .join(" OR ");
     }
 
     // FTS5 search with field boosting + date filters (primary)

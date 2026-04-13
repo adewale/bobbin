@@ -36,7 +36,15 @@ export async function ftsSearch(
   // Build FTS query: combine text + exact phrases
   const parts: string[] = [];
   if (parsed.text.trim()) {
-    parts.push('"' + parsed.text.replace(/"/g, "") + '"');
+    const text = parsed.text.trim();
+    // If the text already contains FTS5 operators (e.g. OR from entity alias
+    // expansion), pass it through as-is so the operators aren't swallowed
+    // inside a phrase literal. Otherwise wrap in quotes for phrase matching.
+    if (/\bOR\b/.test(text)) {
+      parts.push(text);
+    } else {
+      parts.push('"' + text.replace(/"/g, "") + '"');
+    }
   }
   for (const phrase of parsed.phrases) {
     parts.push('"' + phrase.replace(/"/g, "") + '"');
