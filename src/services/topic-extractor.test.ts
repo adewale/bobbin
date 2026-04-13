@@ -2,13 +2,13 @@ import { describe, it, expect } from "vitest";
 import { extractTopics } from "./topic-extractor";
 
 describe("extractTopics", () => {
-  it("extracts top keywords from text", () => {
+  it("extracts top keywords from text (noise words filtered)", () => {
     const topics = extractTopics(
-      "The ecosystem dynamics of platform markets are fascinating. Platform ecosystems evolve through ecosystem competition and platform strategies."
+      "The ecosystem dynamics of resonant computing are fascinating. Resonant ecosystems evolve through ecosystem swarm intelligence."
     );
     const names = topics.map((t) => t.name.toLowerCase());
     expect(names).toContain("ecosystem");
-    expect(names).toContain("platform");
+    expect(names).toContain("resonant");
   });
 
   it("returns topics with slugs", () => {
@@ -43,12 +43,13 @@ describe("extractTopics", () => {
     expect(topics.length).toBeLessThanOrEqual(3);
   });
 
-  it("extracts single-word topics via TF-IDF (bigrams handled by corpus n-grams)", () => {
+  it("extracts single-word topics via TF-IDF (noise words excluded)", () => {
     const topics = extractTopics(
-      "platform markets are growing. platform markets will expand. platform markets dominate."
+      "Ecosystem dynamics are evolving. Ecosystem resilience matters. Ecosystem swarms emerge."
     );
     const names = topics.map((t) => t.name);
-    // "platform" should appear as a single-word topic via TF
-    expect(names).toContain("platform");
+    // "ecosystem" should appear (not in noise list)
+    expect(names).toContain("ecosystem");
+    // "platform" would NOT appear (in noise list) — noise filtering is internal
   });
 });

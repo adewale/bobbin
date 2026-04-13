@@ -32,8 +32,9 @@ if [ "$FULL" = "--full" ]; then
   # For now, use wrangler d1 directly.
   npx wrangler d1 execute bobbin-db --remote --command "DELETE FROM episode_topics" 2>&1 | grep "changes" || true
   npx wrangler d1 execute bobbin-db --remote --command "DELETE FROM chunk_topics" 2>&1 | grep "changes" || true
-  npx wrangler d1 execute bobbin-db --remote --command "UPDATE topics SET usage_count = 0, kind = CASE WHEN slug IN (SELECT slug FROM topics WHERE kind = 'entity') THEN 'entity' ELSE 'concept' END" 2>&1 | grep "changes" || true
-  echo "  Cleared. All chunks are now unenriched."
+  npx wrangler d1 execute bobbin-db --remote --command "UPDATE topics SET usage_count = 0" 2>&1 | grep "changes" || true
+  npx wrangler d1 execute bobbin-db --remote --command "UPDATE chunks SET enriched = 0" 2>&1 | grep "changes" || true
+  echo "  Cleared. All chunks marked unenriched."
   echo ""
 fi
 

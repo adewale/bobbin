@@ -25,15 +25,27 @@ export async function getUnenrichedChunks(db: D1Database, limit: number) {
   const result = await db.prepare(
     `SELECT c.id, c.episode_id, c.content_plain
      FROM chunks c
-     WHERE c.id NOT IN (SELECT DISTINCT chunk_id FROM chunk_topics)
+     WHERE c.enriched = 0
      LIMIT ?`
   ).bind(limit).all();
   return result.results as any[];
 }
 
+export async function markChunksEnriched(db: D1Database, chunkIds: number[]) {
+  if (!chunkIds.length) return;
+  const placeholders = chunkIds.map(() => "?").join(",");
+  await db.prepare(
+    `UPDATE chunks SET enriched = 1 WHERE id IN (${placeholders})`
+  ).bind(...chunkIds).run();
+}
+
+export async function resetEnrichmentFlags(db: D1Database) {
+  await db.prepare("UPDATE chunks SET enriched = 0").run();
+}
+
 export async function isEnrichmentDone(db: D1Database): Promise<boolean> {
   const result = await db.prepare(
-    "SELECT COUNT(*) as c FROM chunks WHERE id NOT IN (SELECT DISTINCT chunk_id FROM chunk_topics)"
+    "SELECT COUNT(*) as c FROM chunks WHERE enriched = 0"
   ).first<{ c: number }>();
   return (result?.c || 0) === 0;
 }

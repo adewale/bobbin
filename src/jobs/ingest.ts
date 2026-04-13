@@ -8,7 +8,7 @@ import { extractCorpusNgrams } from "../services/ngram-extractor";
 import { isNoiseTopic } from "../services/topic-quality";
 import { generateEmbeddings } from "../services/embeddings";
 import { getExistingDatesForSource, getSourceTag } from "../db/sources";
-import { getUnenrichedChunks, isEnrichmentDone } from "../db/ingestion";
+import { getUnenrichedChunks, markChunksEnriched, isEnrichmentDone } from "../db/ingestion";
 import type { Bindings, ParsedEpisode } from "../types";
 
 /**
@@ -84,15 +84,13 @@ export async function enrichChunks(
   // Compute corpus IDF stats for this batch (improves topic quality)
   const corpusStats = computeCorpusStats(chunks.map(c => c.content_plain));
 
-  // Collect all topics — filter noise at insert time
+  // Collect all topics (noise already filtered inside extractTopics)
   const uniqueTopics = new Map<string, { name: string; kind: string }>();
   const chunkTopicPairs: { chunkId: number; episodeId: number; topicSlug: string }[] = [];
 
   for (const chunk of chunks) {
     const topics = extractTopics(chunk.content_plain, 15, corpusStats);
     for (const topic of topics) {
-      // Filter noise at insert time — entities always pass
-      if (topic.kind !== "entity" && isNoiseTopic(topic.name)) continue;
       uniqueTopics.set(topic.slug, { name: topic.name, kind: topic.kind || "concept" });
       chunkTopicPairs.push({ chunkId: chunk.id, episodeId: chunk.episode_id, topicSlug: topic.slug });
     }
@@ -148,6 +146,9 @@ export async function enrichChunks(
     }
   }
   await batchExec(db, wordStmts);
+
+  // Mark chunks as enriched (flag column, replaces NOT IN subquery)
+  await markChunksEnriched(db, chunks.map(c => c.id));
 
   return { chunksProcessed: chunks.length };
 }

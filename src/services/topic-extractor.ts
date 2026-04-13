@@ -1,6 +1,7 @@
 import { tokenize, STOPWORDS } from "../lib/text";
 import { slugify } from "../lib/slug";
 import { decodeHtmlEntities } from "../lib/html";
+import { isNoiseTopic } from "./topic-quality";
 import { KNOWN_ENTITIES } from "../data/known-entities";
 
 // Words where trailing 's' is part of the word, not a plural
@@ -298,10 +299,11 @@ export function extractTopics(
     result.push({ ...entity, score: 100 }); // heuristic entities get high score
   }
 
-  // TF-IDF keywords last
+  // TF-IDF keywords last — filter noise here (not in the caller)
   for (const topic of scored) {
     if (result.length >= maxTopics) break;
     if (usedSlugs.has(topic.slug)) continue;
+    if (isNoiseTopic(topic.name)) continue;
     usedSlugs.add(topic.slug);
     result.push(topic);
   }
