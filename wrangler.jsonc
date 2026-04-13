@@ -25,5 +25,13 @@
   },
   "triggers": {
     "crons": ["0 6 * * 1"]
+  },
+  "queues": {
+    "producers": [
+      { "binding": "ENRICHMENT_QUEUE", "queue": "bobbin-enrichment" }
+    ],
+    "consumers": [
+      { "queue": "bobbin-enrichment", "max_batch_size": 10, "max_concurrency": 10, "max_retries": 2 }
+    ]
   }
 }

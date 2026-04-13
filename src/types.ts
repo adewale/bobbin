@@ -3,6 +3,7 @@ export type Bindings = {
   VECTORIZE: VectorizeIndex;
   AI: Ai;
   ADMIN_SECRET: string;
+  ENRICHMENT_QUEUE: Queue;
 };
 
 export type AppEnv = {

@@ -9,6 +9,7 @@ import { searchRoutes } from "./routes/search";
 import { wordStatsRoutes } from "./routes/word-stats";
 import { apiRoutes } from "./routes/api";
 import { runRefresh } from "./jobs/refresh";
+import { handleEnrichmentBatch, type EnrichmentMessage } from "./jobs/queue-handler";
 
 const app = new Hono<AppEnv>();
 
@@ -65,5 +66,11 @@ export default {
     } catch (e) {
       console.error("Refresh failed:", e);
     }
+  },
+  async queue(
+    batch: MessageBatch<EnrichmentMessage>,
+    env: Bindings
+  ) {
+    await handleEnrichmentBatch(batch, env);
   },
 };

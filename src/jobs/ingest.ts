@@ -160,9 +160,10 @@ export async function enrichChunks(
 
 /**
  * Finalize enrichment: run once after all chunks are enriched.
- * Rebuilds aggregates, merges phrases, extracts n-grams, precomputes scores.
+ * Fast steps run inline. Slow steps (related_slugs, n-gram assignment)
+ * are dispatched to a queue for parallel processing when a queue is available.
  */
-export async function finalizeEnrichment(db: D1Database): Promise<void> {
+export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise<void> {
   // Recalculate topic usage counts from actual chunk_topics
   await db.prepare(
     "UPDATE topics SET usage_count = (SELECT COUNT(*) FROM chunk_topics WHERE topic_id = topics.id)"
@@ -194,8 +195,24 @@ export async function finalizeEnrichment(db: D1Database): Promise<void> {
   // Auto-merge split concepts based on co-occurrence
   await mergeCoOccurringTopics(db);
 
-  // Corpus-level n-gram extraction: discover phrase topics across all chunks
-  await extractAndStoreNgrams(db);
+  // Corpus-level n-gram extraction: discover phrase topics
+  // Extract n-grams in-process, then dispatch assignment to queue (or inline)
+  const allChunks = await db.prepare("SELECT id, content_plain FROM chunks").all<{ id: number; content_plain: string }>();
+  if (allChunks.results.length >= 10) {
+    const texts = allChunks.results.map(c => c.content_plain);
+    const ngrams = extractCorpusNgrams(texts, 5, 3).slice(0, 100);
+
+    if (queue && ngrams.length > 0) {
+      // Dispatch n-gram assignments to queue for parallel processing
+      const ngramMessages = ngrams.map(ng => ({ body: { type: "assign-ngram" as const, phrase: ng.phrase } }));
+      for (let i = 0; i < ngramMessages.length; i += 25) {
+        await queue.sendBatch(ngramMessages.slice(i, i + 25));
+      }
+    } else {
+      // No queue — process inline (slower but works)
+      await extractAndStoreNgrams(db);
+    }
+  }
 
   // Precompute distinctiveness from word_stats
   await db.prepare(
@@ -204,26 +221,35 @@ export async function finalizeEnrichment(db: D1Database): Promise<void> {
     )`
   ).run();
 
-  // Precompute related_slugs (top 5 co-occurring topics as JSON)
+  // Precompute related_slugs — dispatch to queue or process inline
   const allTopics = await db.prepare(
     "SELECT id, slug FROM topics WHERE usage_count >= 3"
   ).all<{ id: number; slug: string }>();
 
-  for (const topic of allTopics.results) {
-    const related = await db.prepare(
-      `SELECT t.slug FROM chunk_topics ct1
-       JOIN chunk_topics ct2 ON ct1.chunk_id = ct2.chunk_id AND ct1.topic_id != ct2.topic_id
-       JOIN topics t ON ct2.topic_id = t.id
-       WHERE ct1.topic_id = ?
-       GROUP BY ct2.topic_id
-       ORDER BY COUNT(*) DESC
-       LIMIT 5`
-    ).bind(topic.id).all<{ slug: string }>();
+  if (queue && allTopics.results.length > 0) {
+    // Dispatch related_slugs computation to queue for parallel processing
+    const relatedMessages = allTopics.results.map(t => ({ body: { type: "compute-related" as const, topicId: t.id } }));
+    for (let i = 0; i < relatedMessages.length; i += 25) {
+      await queue.sendBatch(relatedMessages.slice(i, i + 25));
+    }
+  } else {
+    // No queue — process inline
+    for (const topic of allTopics.results) {
+      const related = await db.prepare(
+        `SELECT t.slug FROM chunk_topics ct1
+         JOIN chunk_topics ct2 ON ct1.chunk_id = ct2.chunk_id AND ct1.topic_id != ct2.topic_id
+         JOIN topics t ON ct2.topic_id = t.id
+         WHERE ct1.topic_id = ?
+         GROUP BY ct2.topic_id
+         ORDER BY COUNT(*) DESC
+         LIMIT 5`
+      ).bind(topic.id).all<{ slug: string }>();
 
-    const slugs = JSON.stringify(related.results.map(r => r.slug));
-    await db.prepare(
-      "UPDATE topics SET related_slugs = ? WHERE id = ?"
-    ).bind(slugs, topic.id).run();
+      const slugs = JSON.stringify(related.results.map(r => r.slug));
+      await db.prepare(
+        "UPDATE topics SET related_slugs = ? WHERE id = ?"
+      ).bind(slugs, topic.id).run();
+    }
   }
 
   // === Self-healing cleanup steps ===
@@ -405,7 +431,7 @@ export async function ingestParsedEpisodes(
 
   if (result.chunksAdded > 0) {
     await enrichChunks(env.DB, 10000);
-    await finalizeEnrichment(env.DB);
+    await finalizeEnrichment(env.DB, env.ENRICHMENT_QUEUE);
 
     // Embeddings (optional, may fail)
     try {

@@ -17,9 +17,9 @@ export async function runRefresh(env: Bindings): Promise<void> {
     const episodes = parseHtmlDocument(fetched.html);
     const result = await ingestEpisodesOnly(env.DB, source.id, episodes);
 
-    // Enrich new chunks (with time budget) + full finalization
-    await enrichAllChunks(env.DB, 200, 120000); // 2 min for chunk enrichment
-    await finalizeEnrichment(env.DB); // remaining time for finalization
+    // Enrich new chunks (with time budget) + finalization (uses queue for slow steps)
+    await enrichAllChunks(env.DB, 200, 120000);
+    await finalizeEnrichment(env.DB, env.ENRICHMENT_QUEUE);
 
     await updateSourceFetchedAt(env.DB, source.id);
     await completeIngestionLog(env.DB, logId, result.episodesAdded, result.chunksAdded);

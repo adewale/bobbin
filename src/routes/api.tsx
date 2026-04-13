@@ -178,7 +178,7 @@ api.get("/finalize", async (c) => {
   if (denied) return denied;
 
   try {
-    await finalizeEnrichment(c.env.DB);
+    await finalizeEnrichment(c.env.DB, c.env.ENRICHMENT_QUEUE);
     return c.json({ status: "ok" });
   } catch (e: any) {
     console.error("Finalize error:", e);
