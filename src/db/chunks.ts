@@ -21,7 +21,18 @@ export async function getChunkTopics(db: D1Database, chunkId: number): Promise<T
        ELSE 1
      END DESC`
   ).bind(chunkId).all<TopicRow>();
-  return result.results.filter(t => !isNoiseTopic(t.name));
+
+  const filtered = result.results.filter(t => !isNoiseTopic(t.name));
+
+  // Suppress single words that are components of multi-word topics in THIS chunk
+  const multiWords = filtered.filter(t => t.name.includes(" "));
+  const componentWords = new Set<string>();
+  for (const mw of multiWords) {
+    for (const word of mw.name.toLowerCase().split(/\s+/)) {
+      componentWords.add(word);
+    }
+  }
+  return filtered.filter(t => t.name.includes(" ") || !componentWords.has(t.name.toLowerCase()));
 }
 
 export async function getRelatedByTopics(db: D1Database, chunkId: number, limit = 5): Promise<any[]> {

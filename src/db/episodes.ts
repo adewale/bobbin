@@ -49,7 +49,17 @@ export async function getEpisodeTopicsBlended(
   const totalEps = await db.prepare("SELECT COUNT(*) as c FROM episodes").first<{ c: number }>();
   const N = totalEps?.c || 1;
 
-  const topics = (epTopics.results as any[]).filter(t => !isNoiseTopic(t.name));
+  const filtered = (epTopics.results as any[]).filter(t => !isNoiseTopic(t.name));
+
+  // Suppress single words that are components of multi-word topics in THIS episode
+  const multiWords = filtered.filter(t => (t.name as string).includes(" "));
+  const componentWords = new Set<string>();
+  for (const mw of multiWords) {
+    for (const word of (mw.name as string).toLowerCase().split(/\s+/)) {
+      componentWords.add(word);
+    }
+  }
+  const topics = filtered.filter(t => (t.name as string).includes(" ") || !componentWords.has((t.name as string).toLowerCase()));
 
   // Main: top topics by raw chunk count (what this episode covers)
   const main = topics.slice(0, mainLimit) as TopicRow[];

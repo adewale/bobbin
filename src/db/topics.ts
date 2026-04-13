@@ -37,6 +37,10 @@ export async function getTrendingTopicsForEpisode(db: D1Database, episodeId: num
 }
 
 export async function getTopTopics(db: D1Database, limit: number): Promise<TopicRow[]> {
+  const phrases = await db.prepare(
+    "SELECT name, usage_count FROM topics WHERE name LIKE '% %' AND usage_count >= 5"
+  ).all<{ name: string; usage_count: number }>();
+
   const result = await db.prepare(
     `SELECT * FROM topics WHERE usage_count >= 3
      ORDER BY usage_count * CASE
@@ -44,8 +48,14 @@ export async function getTopTopics(db: D1Database, limit: number): Promise<Topic
        WHEN name LIKE '% %' THEN 20
        ELSE 1
      END DESC LIMIT ?`
-  ).bind(limit * 2).all<TopicRow>();
-  return result.results.filter(t => !isNoiseTopic(t.name)).slice(0, limit);
+  ).bind(limit * 3).all<TopicRow>();
+
+  const curated = curateTopics(
+    result.results.map(t => ({ name: t.name, slug: t.slug, usage_count: t.usage_count, distinctiveness: t.distinctiveness ?? 0 })),
+    phrases.results
+  );
+  const curatedSlugs = new Set(curated.map(t => t.slug));
+  return result.results.filter(t => curatedSlugs.has(t.slug)).slice(0, limit);
 }
 
 export async function getFilteredTopics(db: D1Database, minUsage: number, limit: number): Promise<TopicRow[]> {
