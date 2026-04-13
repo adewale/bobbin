@@ -286,9 +286,10 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
   ).run();
 
   // Issue 3: Prune topics with usage <= 1 (single-occurrence noise)
-  await db.prepare("DELETE FROM chunk_topics WHERE topic_id IN (SELECT id FROM topics WHERE usage_count <= 1)").run();
-  await db.prepare("DELETE FROM episode_topics WHERE topic_id IN (SELECT id FROM topics WHERE usage_count <= 1)").run();
-  await db.prepare("UPDATE topics SET usage_count = 0 WHERE usage_count <= 1").run();
+  // Entities are exempt — even with 1 mention, curated entities should survive
+  await db.prepare("DELETE FROM chunk_topics WHERE topic_id IN (SELECT id FROM topics WHERE usage_count <= 1 AND kind != 'entity')").run();
+  await db.prepare("DELETE FROM episode_topics WHERE topic_id IN (SELECT id FROM topics WHERE usage_count <= 1 AND kind != 'entity')").run();
+  await db.prepare("UPDATE topics SET usage_count = 0 WHERE usage_count <= 1 AND kind != 'entity'").run();
 }
 
 /**
