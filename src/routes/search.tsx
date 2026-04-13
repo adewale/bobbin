@@ -57,10 +57,12 @@ search.get("/", async (c) => {
       }));
     }
 
-    // Vector search (if available)
+    // Vector search (if available) — skip for exact phrase queries
+    // Quoted phrases signal precision intent; vector search adds noise
+    const hasExactPhrase = parsed.phrases.length > 0;
     let vectorResults: ScoredResult[] = [];
     try {
-      if (c.env.AI && c.env.VECTORIZE) {
+      if (c.env.AI && c.env.VECTORIZE && !hasExactPhrase) {
         const embedding = await c.env.AI.run("@cf/baai/bge-base-en-v1.5", {
           text: [query],
         });
