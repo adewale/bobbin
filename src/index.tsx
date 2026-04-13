@@ -61,16 +61,34 @@ export default {
     env: Bindings,
     ctx: ExecutionContext
   ) {
-    try {
-      await runRefresh(env);
-    } catch (e) {
-      console.error("Refresh failed:", e);
-    }
+    // ctx.waitUntil ensures async work (queue sends) completes before Worker terminates
+    ctx.waitUntil(runRefresh(env));
   },
   async queue(
     batch: MessageBatch<EnrichmentMessage>,
     env: Bindings
   ) {
-    await handleEnrichmentBatch(batch, env);
+    const start = Date.now();
+    const types = batch.messages.map(m => m.body.type);
+    try {
+      await handleEnrichmentBatch(batch, env);
+      console.log(JSON.stringify({
+        event: "queue_batch",
+        messages: batch.messages.length,
+        types: [...new Set(types)],
+        duration_ms: Date.now() - start,
+        status: "completed",
+      }));
+    } catch (e) {
+      console.error(JSON.stringify({
+        event: "queue_batch",
+        messages: batch.messages.length,
+        types: [...new Set(types)],
+        duration_ms: Date.now() - start,
+        status: "failed",
+        error: e instanceof Error ? e.message : String(e),
+      }));
+      throw e;
+    }
   },
 };

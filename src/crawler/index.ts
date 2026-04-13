@@ -8,4 +8,4 @@
  */
 export { fetchGoogleDoc, type FetchResult } from "./fetch";
 export { parseHtmlDocument, extractDocLinksFromHtml } from "./parse";
-export { ingestEpisodesOnly, enrichChunks, enrichAllChunks, finalizeEnrichment, isEnrichmentComplete, ingestParsedEpisodes } from "./ingest";
+export { ingestEpisodesOnly, enrichChunks, enrichAllChunks, finalizeEnrichment, isEnrichmentComplete, ingestParsedEpisodes, type FinalizeResult } from "./ingest";

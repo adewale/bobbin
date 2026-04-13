@@ -186,6 +186,42 @@ api.get("/finalize", async (c) => {
   }
 });
 
+// Admin: view ingestion history
+api.get("/ingestion-log", async (c) => {
+  const denied = requireAuth(c);
+  if (denied) return denied;
+
+  const result = await c.env.DB.prepare(
+    `SELECT il.*, s.title as source_title
+     FROM ingestion_log il
+     LEFT JOIN sources s ON il.source_id = s.id
+     ORDER BY il.started_at DESC
+     LIMIT 20`
+  ).all();
+
+  return c.json({ runs: result.results });
+});
+
+// Admin: pipeline health check
+api.get("/health", async (c) => {
+  const denied = requireAuth(c);
+  if (denied) return denied;
+
+  const [chunks, topics, unenriched, lastRun] = await Promise.all([
+    c.env.DB.prepare("SELECT COUNT(*) as c FROM chunks").first<{ c: number }>(),
+    c.env.DB.prepare("SELECT COUNT(*) as c FROM topics WHERE usage_count > 0").first<{ c: number }>(),
+    c.env.DB.prepare("SELECT COUNT(*) as c FROM chunks WHERE id NOT IN (SELECT DISTINCT chunk_id FROM chunk_topics)").first<{ c: number }>(),
+    c.env.DB.prepare("SELECT * FROM ingestion_log ORDER BY started_at DESC LIMIT 1").first(),
+  ]);
+
+  return c.json({
+    chunks: chunks?.c || 0,
+    active_topics: topics?.c || 0,
+    unenriched_chunks: unenriched?.c || 0,
+    last_run: lastRun || null,
+  });
+});
+
 // Topic search API
 api.get("/topics", async (c) => {
   const q = c.req.query("q")?.trim().toLowerCase() || "";

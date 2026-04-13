@@ -163,11 +163,29 @@ export async function enrichChunks(
  * Fast steps run inline. Slow steps (related_slugs, n-gram assignment)
  * are dispatched to a queue for parallel processing when a queue is available.
  */
-export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise<void> {
+export interface FinalizeResult {
+  usage_recalculated: boolean;
+  word_stats_rebuilt: boolean;
+  ngram_dispatched: boolean;
+  related_slugs_method: "batch_sql" | "queue" | "inline" | "skipped";
+  noise_removed: number;
+  pruned: number;
+}
+
+export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise<FinalizeResult> {
+  const result: FinalizeResult = {
+    usage_recalculated: false,
+    word_stats_rebuilt: false,
+    ngram_dispatched: false,
+    related_slugs_method: "skipped",
+    noise_removed: 0,
+    pruned: 0,
+  };
   // Recalculate topic usage counts from actual chunk_topics
   await db.prepare(
     "UPDATE topics SET usage_count = (SELECT COUNT(*) FROM chunk_topics WHERE topic_id = topics.id)"
   ).run();
+  result.usage_recalculated = true;
 
   // Rebuild word_stats (incremental: preserves distinctiveness and in_baseline columns)
   await db.batch([
@@ -182,6 +200,7 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
          updated_at = excluded.updated_at`
     ),
   ]);
+  result.word_stats_rebuilt = true;
 
   // Precompute reach for enriched chunks
   await db.prepare(
@@ -199,11 +218,12 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
   // Instead of loading all chunk texts here, dispatch to queue when available
   if (queue) {
     await queue.send({ type: "extract-ngrams" });
+    result.ngram_dispatched = true;
   } else {
     // Fallback: inline extraction for tests/dev
     await extractAndStoreNgrams(db);
-    // Set kind='phrase' for all multi-word topics with enough usage
     await db.prepare("UPDATE topics SET kind = 'phrase' WHERE name LIKE '% %' AND usage_count >= 5 AND kind = 'concept'").run();
+    result.ngram_dispatched = true;
   }
 
   // Deduplicate phrase pairs: merge plurals and possessive variants
@@ -257,14 +277,16 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
       )
       WHERE usage_count >= 5
     `).run();
+    result.related_slugs_method = "batch_sql";
   } catch {
-    // Batch too heavy — dispatch to queue or process inline
+    // Batch too heavy -- dispatch to queue or process inline
     if (queue) {
       const topics = await db.prepare("SELECT id FROM topics WHERE usage_count >= 5").all<{ id: number }>();
       const messages = topics.results.map(t => ({ body: { type: "compute-related" as const, topicId: t.id } }));
       for (let i = 0; i < messages.length; i += 25) {
         await queue.sendBatch(messages.slice(i, i + 25));
       }
+      result.related_slugs_method = "queue";
     } else {
       // Inline N+1 fallback for tests/dev
       const allTopics = await db.prepare(
@@ -286,6 +308,7 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
           "UPDATE topics SET related_slugs = ? WHERE id = ?"
         ).bind(slugs, topic.id).run();
       }
+      result.related_slugs_method = "inline";
     }
   }
 
@@ -310,6 +333,7 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
   const noiseIds = noiseCandidates.results
     .filter(t => t.kind !== "entity" && isNoiseTopic(t.name))
     .map(t => t.id);
+  result.noise_removed = noiseIds.length;
   if (noiseIds.length > 0) {
     for (const id of noiseIds) {
       await db.prepare("DELETE FROM chunk_topics WHERE topic_id = ?").bind(id).run();
@@ -322,11 +346,17 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
     "UPDATE topics SET usage_count = (SELECT COUNT(*) FROM chunk_topics WHERE topic_id = topics.id)"
   ).run();
 
-  // Issue 3: Prune topics with usage <= 1 (single-occurrence noise)
-  // Entities are exempt — even with 1 mention, curated entities should survive
+  // Prune topics with usage <= 1 (entities exempt)
+  const pruneResult = await db.prepare(
+    "SELECT COUNT(*) as c FROM topics WHERE usage_count <= 1 AND kind != 'entity'"
+  ).first<{ c: number }>();
+  result.pruned = pruneResult?.c || 0;
+
   await db.prepare("DELETE FROM chunk_topics WHERE topic_id IN (SELECT id FROM topics WHERE usage_count <= 1 AND kind != 'entity')").run();
   await db.prepare("DELETE FROM episode_topics WHERE topic_id IN (SELECT id FROM topics WHERE usage_count <= 1 AND kind != 'entity')").run();
   await db.prepare("UPDATE topics SET usage_count = 0 WHERE usage_count <= 1 AND kind != 'entity'").run();
+
+  return result;
 }
 
 /**
