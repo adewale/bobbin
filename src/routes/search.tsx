@@ -82,18 +82,22 @@ search.get("/", async (c) => {
             .all();
 
           const scoreMap = new Map(vecResults.matches.map((m) => [m.id, m.score]));
-          vectorResults = (hydrated.results as any[]).map((r) => ({
-            id: r.id,
-            slug: r.slug,
-            title: r.title,
-            episodeSlug: r.episode_slug,
-            episodeTitle: r.episode_title,
-            publishedDate: r.published_date,
-            summary: r.summary,
-            contentPlain: r.content_plain,
-            score: scoreMap.get(r.vector_id) || 0,
-            source: "vector" as const,
-          }));
+          // Filter by minimum cosine similarity — low scores are noise
+          const MIN_VECTOR_SCORE = 0.72;
+          vectorResults = (hydrated.results as any[])
+            .filter((r) => (scoreMap.get(r.vector_id) || 0) >= MIN_VECTOR_SCORE)
+            .map((r) => ({
+              id: r.id,
+              slug: r.slug,
+              title: r.title,
+              episodeSlug: r.episode_slug,
+              episodeTitle: r.episode_title,
+              publishedDate: r.published_date,
+              summary: r.summary,
+              contentPlain: r.content_plain,
+              score: scoreMap.get(r.vector_id) || 0,
+              source: "vector" as const,
+            }));
         }
       }
     } catch {

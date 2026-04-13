@@ -122,6 +122,28 @@ describe("Entity alias expansion", () => {
   });
 });
 
+describe("Proper noun precision (no vector noise)", () => {
+  it("searching a rare proper noun returns only literal matches", async () => {
+    // "oshineye" is a rare name — only 1 chunk mentions it
+    // Vector search should not add noise for names not in the embedding vocabulary
+    // (In the test env, Vectorize isn't available, so this tests FTS5 precision)
+    await env.DB.prepare(
+      `INSERT INTO chunks (episode_id, slug, title, content, content_plain, position)
+       VALUES (1, 'oshineye-chunk', 'Goodhart formulation',
+       'I heard this formulation from Ade Oshineye.',
+       'I heard this formulation from Ade Oshineye.', 4)`
+    ).run();
+    await env.DB.exec(
+      "INSERT INTO chunks_fts(rowid, title, content_plain) VALUES ((SELECT id FROM chunks WHERE slug = 'oshineye-chunk'), 'Goodhart formulation', 'I heard this formulation from Ade Oshineye.')"
+    );
+
+    const res = await SELF.fetch("http://localhost/search?q=oshineye");
+    const html = await res.text();
+    expect(html).toContain("Oshineye");
+    expect(html).toContain("1 result");
+  });
+});
+
 describe("Topic filter operator", () => {
   it("topic:economics narrows results to economics-tagged chunks", async () => {
     const res = await SELF.fetch("http://localhost/search?q=growth+topic%3Aeconomics");
@@ -142,6 +164,83 @@ describe("Search with date filters", () => {
     // Only Ep 2 (2025-02-03) matches the date filter
     // Tyler Cowen chunk is in Ep 1 (2025-01-06) — excluded
     expect(html).not.toContain("Tyler Cowen");
+  });
+});
+
+describe("Vector score threshold value", () => {
+  // These tests demonstrate WHY we filter vector results below 0.72 cosine similarity.
+  // They use mergeAndRerank directly to show how low-scoring vector noise degrades results.
+
+  it("low-scoring vector results dilute FTS precision when unfiltered", async () => {
+    // Simulate: FTS5 found 1 exact match. Vector found 5 low-similarity results.
+    const { mergeAndRerank } = await import("../../src/services/search");
+
+    const ftsResults = [
+      { id: 1, slug: "exact-match", title: "Exact Match", score: 1.0, source: "fts" as const },
+    ];
+
+    // Low-scoring noise — cosine similarity < 0.72
+    const vectorNoise = [2, 3, 4, 5, 6].map((id) => ({
+      id, slug: `noise-${id}`, title: `Noise ${id}`, score: 0.45, source: "vector" as const,
+    }));
+
+    const merged = mergeAndRerank(ftsResults, vectorNoise);
+
+    // Without filtering, the exact match gets score = 1.0 * 0.4 = 0.4
+    // The noise gets score = 0.45 * 0.6 = 0.27 each
+    // The exact match is still #1 but 5 noise results follow it
+    expect(merged.length).toBe(6); // 1 good + 5 noise
+    expect(merged[0].slug).toBe("exact-match");
+    // All 5 noise results are present
+    expect(merged.filter((r) => r.slug.startsWith("noise")).length).toBe(5);
+  });
+
+  it("filtering vector results above threshold preserves only relevant matches", async () => {
+    const { mergeAndRerank } = await import("../../src/services/search");
+
+    const ftsResults = [
+      { id: 1, slug: "exact-match", title: "Exact Match", score: 1.0, source: "fts" as const },
+    ];
+
+    // Only keep vectors above threshold (simulating the route-level filter)
+    const MIN_VECTOR_SCORE = 0.72;
+    const allVectorResults = [
+      { id: 7, slug: "relevant", title: "Relevant", score: 0.85, source: "vector" as const },
+      { id: 2, slug: "noise-1", title: "Noise 1", score: 0.45, source: "vector" as const },
+      { id: 3, slug: "noise-2", title: "Noise 2", score: 0.38, source: "vector" as const },
+    ];
+    const filtered = allVectorResults.filter((r) => r.score >= MIN_VECTOR_SCORE);
+
+    const merged = mergeAndRerank(ftsResults, filtered);
+
+    // Only 2 results: the FTS match and the high-scoring vector match — no noise
+    expect(merged.length).toBe(2);
+    expect(merged.map(r => r.slug).sort()).toEqual(["exact-match", "relevant"]);
+    expect(merged.filter((r) => r.slug.startsWith("noise")).length).toBe(0);
+  });
+
+  it("crossover bonus rewards results found by both FTS and vector", async () => {
+    const { mergeAndRerank } = await import("../../src/services/search");
+
+    const ftsResults = [
+      { id: 1, slug: "both-match", title: "Both Match", score: 0.8, source: "fts" as const },
+      { id: 2, slug: "fts-only", title: "FTS Only", score: 0.6, source: "fts" as const },
+    ];
+
+    const vectorResults = [
+      { id: 1, slug: "both-match", title: "Both Match", score: 0.9, source: "vector" as const },
+      { id: 3, slug: "vec-only", title: "Vector Only", score: 0.75, source: "vector" as const },
+    ];
+
+    const merged = mergeAndRerank(ftsResults, vectorResults);
+
+    // "both-match" appears in both: gets crossover bonus (+0.1)
+    const bothMatch = merged.find((r) => r.slug === "both-match")!;
+    const vecOnly = merged.find((r) => r.slug === "vec-only")!;
+    // both-match: 0.8 * 0.4 + 0.9 * 0.6 + 0.1 = 0.96
+    // vec-only: 0.75 * 0.6 = 0.45
+    expect(bothMatch.score).toBeGreaterThan(vecOnly.score);
+    expect(merged[0].slug).toBe("both-match"); // highest ranked
   });
 });
 
