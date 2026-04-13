@@ -119,14 +119,6 @@ export function tokenize(text: string): string[] {
     .filter((w) => w.length > 3 && !STOPWORDS.has(w));
 }
 
-export function stripToPlainText(html: string): string {
-  return html
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&[a-z]+;/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 export function countWords(text: string): number {
   return text.split(/\s+/).filter((w) => w.length > 0).length;
 }

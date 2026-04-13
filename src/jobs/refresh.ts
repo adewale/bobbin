@@ -1,4 +1,6 @@
-import { fetchGoogleDoc, parseHtmlDocument, ingestEpisodesOnly, enrichAllChunks, finalizeEnrichment } from "../crawler";
+import { fetchGoogleDoc } from "../crawler/fetch";
+import { parseHtmlDocument } from "../services/html-parser";
+import { ingestEpisodesOnly, enrichAllChunks, finalizeEnrichment } from "./ingest";
 import { ensureSource, getSourceByDocId, updateSourceFetchedAt } from "../db/sources";
 import { createIngestionLog, completeIngestionLog, failIngestionLog } from "../db/ingestion";
 import type { Bindings } from "../types";

@@ -1,11 +1,6 @@
 import { tokenize } from "../lib/text";
 import { decodeHtmlEntities } from "../lib/html";
-
-async function batchExec(db: D1Database, stmts: D1PreparedStatement[], size = 50) {
-  for (let i = 0; i < stmts.length; i += size) {
-    await db.batch(stmts.slice(i, i + size));
-  }
-}
+import { batchExec } from "../lib/db";
 
 export function tokenizeForWordStats(text: string): Map<string, number> {
   const words = tokenize(decodeHtmlEntities(text));

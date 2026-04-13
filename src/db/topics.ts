@@ -58,13 +58,6 @@ export async function getTopTopics(db: D1Database, limit: number): Promise<Topic
   return result.results.filter(t => curatedSlugs.has(t.slug)).slice(0, limit);
 }
 
-export async function getFilteredTopics(db: D1Database, minUsage: number, limit: number): Promise<TopicRow[]> {
-  const result = await db.prepare(
-    "SELECT * FROM topics WHERE usage_count >= ? ORDER BY usage_count DESC LIMIT ?"
-  ).bind(minUsage, limit).all<TopicRow>();
-  return result.results;
-}
-
 export async function getTopicBySlug(db: D1Database, slug: string): Promise<TopicRow | null> {
   return await db.prepare("SELECT * FROM topics WHERE slug = ?")
     .bind(slug).first<TopicRow>();
@@ -115,19 +108,6 @@ export async function getTopicDiffChunks(db: D1Database, topicId: number) {
   return result.results as any[];
 }
 
-export async function getTopicFeedChunks(db: D1Database, topicId: number, limit = 50) {
-  const result = await db.prepare(
-    `SELECT c.*, e.slug as episode_slug, e.published_date
-     FROM chunks c
-     JOIN chunk_topics ct ON c.id = ct.chunk_id
-     JOIN episodes e ON c.episode_id = e.id
-     WHERE ct.topic_id = ?
-     ORDER BY e.published_date DESC
-     LIMIT ?`
-  ).bind(topicId, limit).all();
-  return result.results as any[];
-}
-
 export async function getTopicEpisodes(db: D1Database, topicId: number) {
   const result = await db.prepare(
     `SELECT e.*, COUNT(ct.chunk_id) as topic_chunk_count
@@ -173,75 +153,6 @@ export async function getTopicKWIC(db: D1Database, topicName: string, limit = 10
      LIMIT ?`
   ).bind(topicName.toLowerCase(), limit).all();
   return result.results as { content_plain: string; slug: string; published_date: string }[];
-}
-
-export async function getThemeRiverData(db: D1Database, topicLimit = 8) {
-  // Get phrase topics for subsumption check
-  const phrases = await db.prepare(
-    "SELECT name, usage_count FROM topics WHERE name LIKE '% %' AND usage_count >= 5"
-  ).all<{ name: string; usage_count: number }>();
-
-  // Get candidate topics (3x for filtering headroom)
-  const candidates = await db.prepare(
-    `SELECT id, name, slug, usage_count, distinctiveness FROM topics WHERE usage_count >= 5
-     ORDER BY usage_count * CASE
-         WHEN distinctiveness > 0 THEN distinctiveness
-         WHEN name LIKE '% %' THEN 20
-         ELSE 1
-       END DESC LIMIT ?`
-  ).bind(topicLimit * 3).all<TopicRow>();
-
-  if (!candidates.results.length) return { topics: [], episodes: [], data: [] };
-
-  // Apply quality curation
-  const curated = curateTopics(
-    candidates.results.map(t => ({
-      name: t.name,
-      slug: t.slug,
-      usage_count: t.usage_count,
-      distinctiveness: t.distinctiveness ?? 0,
-    })),
-    phrases.results
-  ).slice(0, topicLimit);
-
-  const curatedSlugs = new Set(curated.map(t => t.slug));
-  const topTopics = { results: candidates.results.filter(t => curatedSlugs.has(t.slug)).slice(0, topicLimit) };
-
-  if (!topTopics.results.length) return { topics: [], episodes: [], data: [] };
-
-  // Get all episodes ordered by date
-  const episodes = await db.prepare(
-    "SELECT id, published_date FROM episodes ORDER BY published_date ASC"
-  ).all<{ id: number; published_date: string }>();
-
-  // Get counts: topic x episode
-  const topicIds = topTopics.results.map(t => t.id);
-  const placeholders = topicIds.map(() => "?").join(",");
-  const counts = await db.prepare(
-    `SELECT ct.topic_id, c.episode_id, COUNT(*) as count
-     FROM chunk_topics ct
-     JOIN chunks c ON ct.chunk_id = c.id
-     WHERE ct.topic_id IN (${placeholders})
-     GROUP BY ct.topic_id, c.episode_id`
-  ).bind(...topicIds).all();
-
-  // Build matrix: topics x episodes
-  const countMap = new Map<string, number>();
-  for (const r of counts.results as any[]) {
-    countMap.set(`${r.topic_id}-${r.episode_id}`, r.count);
-  }
-
-  const data = topTopics.results.map(topic => ({
-    name: topic.name,
-    slug: topic.slug,
-    values: episodes.results.map(ep => countMap.get(`${topic.id}-${ep.id}`) || 0),
-  }));
-
-  return {
-    topics: topTopics.results,
-    episodes: episodes.results.map(e => e.published_date),
-    data,
-  };
 }
 
 export async function getTopicRanksByYear(db: D1Database) {

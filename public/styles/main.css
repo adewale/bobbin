@@ -71,7 +71,7 @@ a:hover { text-decoration: underline; }
 .hero p { color: var(--text-muted); font-size: 0.95rem; margin-bottom: 1.25rem; }
 
 /* === Search === */
-.search-form { display: flex; gap: 0.5rem; max-width: 100%; }
+.search-form { display: flex; gap: 0.5rem; max-width: 100%; margin-bottom: 1rem; }
 .search-form input { flex: 1; padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-radius: 4px; font-size: 0.9rem; font-family: var(--font-ui); background: var(--bg-card); }
 .search-form input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-light); }
 .search-form button { padding: 0.5rem 1rem; background: var(--accent); color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85rem; font-family: var(--font-ui); font-weight: 600; }
@@ -328,8 +328,14 @@ mark { background: color-mix(in srgb, var(--accent-light) 60%, transparent); col
 .word-timeline { margin: 1.5rem 0; }
 .word-timeline h2 { font-family: var(--font-ui); font-size: 0.85rem; font-weight: 600; margin-bottom: 0.25rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-light); }
 
+/* === Topic detail header === */
+.topic-header-stats { font-family: var(--font-ui); font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.25rem; }
+.topic-mentions { font-variant-numeric: tabular-nums; }
+.topic-distinctiveness { font-family: var(--font-ui); font-size: 0.78rem; color: var(--text-light); margin-bottom: 0.75rem; }
+.topic-related { font-family: var(--font-ui); font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem; }
+.topic-related-label { font-weight: 600; color: var(--text-light); }
+
 /* === Topic Ladder of Abstraction === */
-.topic-sparkline { margin: 1.5rem 0; padding: 1rem; background: var(--bg-warm); border: 1px solid var(--border); border-radius: 6px; }
 .topic-sparkline { margin: 1rem 0; }
 .topic-spark-svg { width: 100%; height: auto; display: block; }
 

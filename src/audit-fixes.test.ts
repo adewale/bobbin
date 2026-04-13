@@ -39,14 +39,7 @@ describe("S3: FTS5 injection safety", () => {
   });
 });
 
-// B1: Regex injection in word stats highlight
-describe("B1: Regex safety in word stats", () => {
-  it("word stats word with regex metacharacters does not crash", async () => {
-    // These would crash with unescaped RegExp
-    const res = await SELF.fetch("http://localhost/word-stats/ecosystem");
-    expect(res.status).toBe(200);
-  });
-});
+// B1: Regex injection in highlight — word-stats route removed, covered by highlight unit tests
 
 // B3: NaN from bad query params
 describe("B3: Bad query params", () => {

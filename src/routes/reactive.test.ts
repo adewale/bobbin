@@ -43,10 +43,3 @@ describe("GET /api/word-stats", () => {
   });
 });
 
-describe("GET /word-stats (interactive)", () => {
-  it("includes the reactive JS bundle", async () => {
-    const res = await SELF.fetch("http://localhost/word-stats");
-    const html = await res.text();
-    expect(html).toContain("reactive.js");
-  });
-});

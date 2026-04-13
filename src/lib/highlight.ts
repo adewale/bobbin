@@ -38,7 +38,7 @@ export function highlightInExcerpt(text: string, word: string): string {
 /**
  * Return a substring of `text` centred on the first occurrence of `word`.
  */
-export function getExcerptAroundWord(
+function getExcerptAroundWord(
   text: string,
   word: string,
   maxLen = 300,

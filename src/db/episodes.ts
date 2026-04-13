@@ -1,5 +1,5 @@
 import type { EpisodeRow, ChunkRow, TopicRow } from "../types";
-import { isNoiseTopic } from "../services/topic-quality";
+import { isNoiseTopic, suppressComponentWords } from "../services/topic-quality";
 
 export async function getRecentEpisodes(db: D1Database, limit: number): Promise<EpisodeRow[]> {
   const result = await db.prepare(
@@ -50,16 +50,7 @@ export async function getEpisodeTopicsBlended(
   const N = totalEps?.c || 1;
 
   const filtered = (epTopics.results as any[]).filter(t => !isNoiseTopic(t.name));
-
-  // Suppress single words that are components of multi-word topics in THIS episode
-  const multiWords = filtered.filter(t => (t.name as string).includes(" "));
-  const componentWords = new Set<string>();
-  for (const mw of multiWords) {
-    for (const word of (mw.name as string).toLowerCase().split(/\s+/)) {
-      componentWords.add(word);
-    }
-  }
-  const topics = filtered.filter(t => (t.name as string).includes(" ") || !componentWords.has((t.name as string).toLowerCase()));
+  const topics = suppressComponentWords(filtered);
 
   // Main: top topics by raw chunk count (what this episode covers)
   const main = topics.slice(0, mainLimit) as TopicRow[];

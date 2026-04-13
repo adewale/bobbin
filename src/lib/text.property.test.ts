@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import fc from "fast-check";
-import { tokenize, stripToPlainText, countWords, STOPWORDS } from "./text";
+import { tokenize, countWords, STOPWORDS } from "./text";
 
 describe("tokenize properties", () => {
   it("output never contains a stopword", () => {
@@ -38,36 +38,6 @@ describe("tokenize properties", () => {
 
   it("empty input produces empty output", () => {
     expect(tokenize("")).toHaveLength(0);
-  });
-});
-
-describe("stripToPlainText properties", () => {
-  it("strips all HTML tags from input", () => {
-    fc.assert(
-      fc.property(
-        // Use only alphanumeric + spaces to avoid entity/special char edge cases
-        fc.stringMatching(/^[a-zA-Z0-9 ]{1,80}$/),
-        (content) => {
-          const html = `<div class="test"><p>${content}</p></div>`;
-          const result = stripToPlainText(html);
-          expect(result).not.toContain("<div");
-          expect(result).not.toContain("<p>");
-          const normalized = content.trim().replace(/\s+/g, " ");
-          if (normalized) {
-            expect(result).toContain(normalized);
-          }
-        }
-      )
-    );
-  });
-
-  it("output never has consecutive spaces", () => {
-    fc.assert(
-      fc.property(fc.string({ minLength: 1, maxLength: 300 }), (input) => {
-        const result = stripToPlainText(input);
-        expect(result).not.toContain("  ");
-      })
-    );
   });
 });
 

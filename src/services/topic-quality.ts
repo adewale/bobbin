@@ -52,6 +52,21 @@ export function isNoiseTopic(name: string): boolean {
 }
 
 /**
+ * Suppress single words that are components of multi-word topics in the same context.
+ * E.g., if "prompt injection" is present, suppress standalone "prompt" and "injection".
+ */
+export function suppressComponentWords<T extends { name: string }>(topics: T[]): T[] {
+  const multiWords = topics.filter(t => t.name.includes(" "));
+  const componentWords = new Set<string>();
+  for (const mw of multiWords) {
+    for (const word of mw.name.toLowerCase().split(/\s+/)) {
+      componentWords.add(word);
+    }
+  }
+  return topics.filter(t => t.name.includes(" ") || !componentWords.has(t.name.toLowerCase()));
+}
+
+/**
  * Filter and rank topics for display quality.
  * - Removes noise words
  * - Suppresses single words that mostly appear inside phrase topics

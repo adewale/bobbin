@@ -1,6 +1,8 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../types";
-import { fetchGoogleDoc, parseHtmlDocument, ingestParsedEpisodes, enrichChunks, finalizeEnrichment, isEnrichmentComplete } from "../crawler";
+import { fetchGoogleDoc } from "../crawler/fetch";
+import { parseHtmlDocument } from "../services/html-parser";
+import { ingestParsedEpisodes, enrichChunks, finalizeEnrichment, isEnrichmentComplete } from "../jobs/ingest";
 import { ftsSearch } from "../services/search";
 import { parseSearchQuery } from "../lib/query-parser";
 import { keywordSearch } from "../db/search";

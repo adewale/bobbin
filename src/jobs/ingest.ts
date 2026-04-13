@@ -1,6 +1,7 @@
 import { slugify } from "../lib/slug";
 import { formatDate } from "../lib/date";
 import { countWords } from "../lib/text";
+import { batchExec } from "../lib/db";
 import { extractTopics, computeCorpusStats, type CorpusStats } from "../services/topic-extractor";
 import { tokenizeForWordStats } from "../services/word-stats";
 import { extractCorpusNgrams } from "../services/ngram-extractor";
@@ -9,13 +10,6 @@ import { generateEmbeddings } from "../services/embeddings";
 import { getExistingDatesForSource, getSourceTag } from "../db/sources";
 import { getUnenrichedChunks, isEnrichmentDone } from "../db/ingestion";
 import type { Bindings, ParsedEpisode } from "../types";
-
-
-async function batchExec(db: D1Database, stmts: D1PreparedStatement[], size = 50) {
-  for (let i = 0; i < stmts.length; i += size) {
-    await db.batch(stmts.slice(i, i + size));
-  }
-}
 
 /**
  * Phase 1: Fast insert — episodes and chunks only.

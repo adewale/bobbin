@@ -1,5 +1,5 @@
 import type { ChunkWithEpisode, TopicRow } from "../types";
-import { isNoiseTopic } from "../services/topic-quality";
+import { isNoiseTopic, suppressComponentWords } from "../services/topic-quality";
 
 export async function getChunkBySlug(db: D1Database, slug: string): Promise<ChunkWithEpisode | null> {
   return await db.prepare(
@@ -23,16 +23,7 @@ export async function getChunkTopics(db: D1Database, chunkId: number): Promise<T
   ).bind(chunkId).all<TopicRow>();
 
   const filtered = result.results.filter(t => !isNoiseTopic(t.name));
-
-  // Suppress single words that are components of multi-word topics in THIS chunk
-  const multiWords = filtered.filter(t => t.name.includes(" "));
-  const componentWords = new Set<string>();
-  for (const mw of multiWords) {
-    for (const word of mw.name.toLowerCase().split(/\s+/)) {
-      componentWords.add(word);
-    }
-  }
-  return filtered.filter(t => t.name.includes(" ") || !componentWords.has(t.name.toLowerCase()));
+  return suppressComponentWords(filtered);
 }
 
 export async function getRelatedByTopics(db: D1Database, chunkId: number, limit = 5): Promise<any[]> {

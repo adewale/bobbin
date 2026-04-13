@@ -7,6 +7,7 @@
  * - "extract-ngrams": load all chunk texts, extract corpus n-grams, and dispatch assign-ngram messages
  */
 import { slugify } from "../lib/slug";
+import { batchExec } from "../lib/db";
 import { extractCorpusNgrams } from "../services/ngram-extractor";
 import type { Bindings } from "../types";
 
@@ -16,12 +17,6 @@ export interface EnrichmentMessage {
   topicId?: number;
   // assign-ngram
   phrase?: string;
-}
-
-async function batchExec(db: D1Database, stmts: D1PreparedStatement[], size = 50) {
-  for (let i = 0; i < stmts.length; i += size) {
-    await db.batch(stmts.slice(i, i + size));
-  }
 }
 
 async function handleComputeRelated(db: D1Database, topicId: number) {

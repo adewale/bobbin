@@ -50,28 +50,7 @@ beforeEach(async () => {
   await seedRichData();
 });
 
-// === Feature 1: Word usage over time ===
-describe("Word usage timeline on /word-stats/:word", () => {
-  it("includes a timeline data attribute with per-episode counts", async () => {
-    const res = await SELF.fetch("http://localhost/word-stats/ecosystem");
-    expect(res.status).toBe(200);
-    const html = await res.text();
-    // Should contain a data structure for the sparkline
-    expect(html).toContain("word-timeline");
-    // Should contain episode dates in chronological order
-    expect(html).toContain("2024-01-15");
-    expect(html).toContain("2024-02-12");
-    expect(html).toContain("2024-03-18");
-  });
-
-  it("shows counts per episode in the timeline", async () => {
-    const res = await SELF.fetch("http://localhost/word-stats/ecosystem");
-    const html = await res.text();
-    // The timeline should show the counts per episode
-    // Jan: 1, Feb: 2, Mar: 1
-    expect(html).toContain("data-timeline");
-  });
-});
+// Feature 1 (word usage timeline) removed: /word-stats route was deleted as dead code.
 
 // === Feature 2: Related chunks as margin annotations ===
 describe("Margin annotations on /chunks/:slug", () => {

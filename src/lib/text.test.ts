@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { tokenize, stripToPlainText, countWords } from "./text";
+import { tokenize, countWords } from "./text";
 
 describe("tokenize", () => {
   it("splits text into lowercase words", () => {
@@ -40,16 +40,6 @@ describe("tokenize", () => {
     expect(tokens).toContain("dynamics");
     expect(tokens).toContain("emergent");
     expect(tokens).toContain("behavior");
-  });
-});
-
-describe("stripToPlainText", () => {
-  it("removes HTML tags", () => {
-    expect(stripToPlainText("<p>Hello <b>world</b></p>")).toBe("Hello world");
-  });
-
-  it("collapses whitespace", () => {
-    expect(stripToPlainText("  hello   world  ")).toBe("hello world");
   });
 });
 
