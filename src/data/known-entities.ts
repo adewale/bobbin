@@ -23,7 +23,7 @@ export const KNOWN_ENTITIES: KnownEntity[] = [
   { name: "Satya Nadella", kind: "person", aliases: ["nadella"] },
   { name: "Jensen Huang", kind: "person", aliases: ["huang", "jensen"] },
   { name: "Dario Amodei", kind: "person", aliases: ["amodei", "dario"] },
-  { name: "Geoffrey Litt", kind: "person", aliases: ["litt"] },
+  { name: "Geoffrey Litt", kind: "person", aliases: ["geoffrey litt"] },
   { name: "Ben Follington", kind: "person", aliases: ["follington"] },
   { name: "Christopher Alexander", kind: "person", aliases: ["alexander"] },
   { name: "Tim O'Reilly", kind: "person", aliases: ["o'reilly", "oreilly"] },

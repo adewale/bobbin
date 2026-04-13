@@ -20,6 +20,8 @@ const NOISE_WORDS = new Set([
   "content", "version", "source", "feature", "user", "users",
   "expensive", "important", "interesting", "different",
   "require", "exist", "expect", "possible", "specific",
+  "scale", "cost", "society", "team", "loop", "care", "other",
+  "context", "tech", "infinite", "signal", "market", "internal",
   // Words only meaningful in specific phrases
   "injection", "labor", "hollow", "coding", "vibe",
 ]);
