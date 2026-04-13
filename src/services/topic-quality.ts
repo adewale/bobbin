@@ -24,6 +24,21 @@ const NOISE_WORDS = new Set([
   "context", "tech", "infinite", "signal", "market", "internal",
   // Words only meaningful in specific phrases
   "injection", "labor", "hollow", "coding", "vibe",
+  // Generic nouns — low distinctiveness, high usage
+  "game", "lead", "love", "wrong", "grow", "social", "focus",
+  "technology", "attention", "opportunity", "incentive", "relationship",
+  "pattern", "human", "conversation", "decision", "environment",
+  "strategy", "creative", "energy", "dynamic", "challenge", "influence",
+  "potential", "resource", "competition", "knowledge", "effort", "rate",
+  "pressure", "risk", "complexity", "effective", "advantage", "fundamental",
+  "structure", "evolution", "community", "standard", "network", "generation",
+  "medium", "capable", "platform", "practice", "operate", "opinion",
+  "force", "argue", "respond", "access", "concern", "emerge", "alignment",
+  // Common verbs that appear as TF-IDF topics but are never navigational
+  "asked", "told", "insisted", "aimed", "ignore", "immediately",
+  "described", "explained", "claimed", "suggested", "proposed", "discussed",
+  "mentioned", "observed", "noted", "argued", "stated", "reported",
+  "revealed", "announced", "published", "presented",
 ]);
 
 /**

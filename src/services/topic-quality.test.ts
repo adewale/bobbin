@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import fc from "fast-check";
-import { curateTopics } from "./topic-quality";
+import { curateTopics, isNoiseTopic } from "./topic-quality";
 
 function makeTopic(name: string, usage_count: number, distinctiveness = 1) {
   return {
@@ -88,6 +88,33 @@ describe("curateTopics", () => {
           expect(result.length).toBeLessThanOrEqual(topics.length);
         }
       )
+    );
+  });
+});
+
+describe("isNoiseTopic", () => {
+  it("returns true for newly added noise word 'game'", () => {
+    expect(isNoiseTopic("game")).toBe(true);
+  });
+
+  it("returns true for newly added verb 'asked'", () => {
+    expect(isNoiseTopic("asked")).toBe(true);
+  });
+
+  it("returns false for non-noise word 'resonant'", () => {
+    expect(isNoiseTopic("resonant")).toBe(false);
+  });
+
+  it("returns false for phrase topics like 'prompt injection'", () => {
+    expect(isNoiseTopic("prompt injection")).toBe(false);
+  });
+
+  it("never crashes on arbitrary input and always returns boolean (PBT)", () => {
+    fc.assert(
+      fc.property(fc.string({ minLength: 0, maxLength: 200 }), (name) => {
+        const result = isNoiseTopic(name);
+        expect(typeof result).toBe("boolean");
+      })
     );
   });
 });

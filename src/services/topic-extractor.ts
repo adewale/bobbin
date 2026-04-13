@@ -143,6 +143,7 @@ export function extractEntities(text: string): TopicResult[] {
           entities.push({
             name: norm,
             slug: slugify(norm),
+            kind: "entity",
           });
         } else if (entityWords.length === 1 && !STOPWORDS.has(normalized) && !ENTITY_SKIP.has(normalized) && normalized.length > 3 && !seen.has(normalized)) {
           // Single capitalized word — likely a product/company name
@@ -152,6 +153,7 @@ export function extractEntities(text: string): TopicResult[] {
           entities.push({
             name: norm,
             slug: slugify(norm),
+            kind: "entity",
           });
         }
 

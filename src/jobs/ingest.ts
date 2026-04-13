@@ -223,6 +223,32 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
     await db.prepare("UPDATE topics SET kind = 'phrase' WHERE name LIKE '% %' AND usage_count >= 5 AND kind = 'concept'").run();
   }
 
+  // Deduplicate phrase pairs: merge plurals and possessive variants
+  const phrasePairs = await db.prepare(
+    `SELECT t1.id as keep_id, t1.name as keep_name, t2.id as dupe_id, t2.name as dupe_name
+     FROM topics t1
+     JOIN topics t2 ON (
+       t2.name = t1.name || 's' OR
+       t2.name = t1.name || 'es' OR
+       t1.name = t2.name || 's' OR
+       t1.name = t2.name || 'es' OR
+       t2.name = REPLACE(t1.name, '''s ', ' ') OR
+       t1.name = REPLACE(t2.name, '''s ', ' ')
+     )
+     WHERE t1.id < t2.id AND t1.usage_count >= t2.usage_count AND t1.usage_count > 0`
+  ).all();
+
+  for (const pair of phrasePairs.results as any[]) {
+    // Move chunk_topics from dupe to keep
+    await db.prepare(
+      "UPDATE OR IGNORE chunk_topics SET topic_id = ? WHERE topic_id = ?"
+    ).bind(pair.keep_id, pair.dupe_id).run();
+    // Delete remaining dupes
+    await db.prepare("DELETE FROM chunk_topics WHERE topic_id = ?").bind(pair.dupe_id).run();
+    await db.prepare("DELETE FROM episode_topics WHERE topic_id = ?").bind(pair.dupe_id).run();
+    await db.prepare("UPDATE topics SET usage_count = 0 WHERE id = ?").bind(pair.dupe_id).run();
+  }
+
   // Precompute distinctiveness from word_stats
   await db.prepare(
     `UPDATE topics SET distinctiveness = COALESCE(
