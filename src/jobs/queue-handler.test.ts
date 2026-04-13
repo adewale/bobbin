@@ -7,6 +7,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
 import { applyTestMigrations } from "../../test/helpers/migrations";
 import { slugify } from "../lib/slug";
+import { handleEnrichBatch } from "./queue-handler";
 
 beforeEach(async () => {
   await applyTestMigrations(env.DB);
@@ -240,5 +241,86 @@ describe("assign-ngram handler behavior", () => {
       "SELECT COUNT(*) as c FROM chunk_topics WHERE chunk_id = ? AND topic_id = ?"
     ).bind(chunkId, topicId).first<{ c: number }>();
     expect(count!.c).toBe(1);
+  });
+});
+
+describe("enrich-batch handler", () => {
+  it("creates topic assignments for specified chunks", async () => {
+    // Seed word_stats so IDF can be loaded
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO word_stats (word, total_count, doc_count) VALUES ('ecosystem', 10, 3)"
+      ),
+      env.DB.prepare(
+        "INSERT INTO word_stats (word, total_count, doc_count) VALUES ('platform', 8, 2)"
+      ),
+      env.DB.prepare(
+        "INSERT INTO word_stats (word, total_count, doc_count) VALUES ('dynamics', 5, 2)"
+      ),
+    ]);
+
+    // Process only chunks 1 and 2
+    await handleEnrichBatch(env.DB, [1, 2]);
+
+    // Verify: topics were created
+    const topics = await env.DB.prepare(
+      "SELECT COUNT(*) as c FROM topics"
+    ).first<{ c: number }>();
+    expect(topics!.c).toBeGreaterThan(0);
+
+    // Verify: chunk_topics were created for the specified chunks
+    const ct = await env.DB.prepare(
+      "SELECT COUNT(*) as c FROM chunk_topics WHERE chunk_id IN (1, 2)"
+    ).first<{ c: number }>();
+    expect(ct!.c).toBeGreaterThan(0);
+
+    // Verify: chunk 3 was NOT processed (not in the batch)
+    const ct3 = await env.DB.prepare(
+      "SELECT COUNT(*) as c FROM chunk_topics WHERE chunk_id = 3"
+    ).first<{ c: number }>();
+    expect(ct3!.c).toBe(0);
+  });
+
+  it("marks chunks as enriched", async () => {
+    // Verify chunks start unenriched
+    const before = await env.DB.prepare(
+      "SELECT enriched FROM chunks WHERE id = 1"
+    ).first<{ enriched: number }>();
+    expect(before!.enriched).toBe(0);
+
+    await handleEnrichBatch(env.DB, [1, 2]);
+
+    // Verify: chunks 1 and 2 are marked enriched
+    const after1 = await env.DB.prepare(
+      "SELECT enriched FROM chunks WHERE id = 1"
+    ).first<{ enriched: number }>();
+    expect(after1!.enriched).toBe(1);
+
+    const after2 = await env.DB.prepare(
+      "SELECT enriched FROM chunks WHERE id = 2"
+    ).first<{ enriched: number }>();
+    expect(after2!.enriched).toBe(1);
+
+    // Verify: chunk 3 is still unenriched
+    const after3 = await env.DB.prepare(
+      "SELECT enriched FROM chunks WHERE id = 3"
+    ).first<{ enriched: number }>();
+    expect(after3!.enriched).toBe(0);
+  });
+
+  it("handles empty chunk IDs gracefully", async () => {
+    // Should not throw for empty array
+    await handleEnrichBatch(env.DB, []);
+
+    // No topics or chunk_topics should be created
+    const topics = await env.DB.prepare(
+      "SELECT COUNT(*) as c FROM topics"
+    ).first<{ c: number }>();
+    expect(topics!.c).toBe(0);
+
+    const ct = await env.DB.prepare(
+      "SELECT COUNT(*) as c FROM chunk_topics"
+    ).first<{ c: number }>();
+    expect(ct!.c).toBe(0);
   });
 });
