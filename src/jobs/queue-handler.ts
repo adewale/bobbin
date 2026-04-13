@@ -1,15 +1,17 @@
 /**
  * Queue consumer for enrichment finalization.
  *
- * Handles two message types:
+ * Handles three message types:
  * - "compute-related": compute related_slugs for a single topic
  * - "assign-ngram": create a phrase topic and assign to matching chunks
+ * - "extract-ngrams": load all chunk texts, extract corpus n-grams, and dispatch assign-ngram messages
  */
 import { slugify } from "../lib/slug";
+import { extractCorpusNgrams } from "../services/ngram-extractor";
 import type { Bindings } from "../types";
 
 export interface EnrichmentMessage {
-  type: "compute-related" | "assign-ngram";
+  type: "compute-related" | "assign-ngram" | "extract-ngrams";
   // compute-related
   topicId?: number;
   // assign-ngram
@@ -67,6 +69,38 @@ async function handleAssignNgram(db: D1Database, phrase: string) {
   ).bind(topic.id, topic.id).run();
 }
 
+async function handleExtractNgrams(db: D1Database, queue: Queue) {
+  // Load chunks in batches to avoid memory limits
+  const count = await db.prepare("SELECT COUNT(*) as c FROM chunks").first<{ c: number }>();
+  if (!count || count.c < 10) return;
+
+  const BATCH = 500;
+  const allTexts: string[] = [];
+  for (let offset = 0; offset < count.c; offset += BATCH) {
+    const batch = await db.prepare(
+      "SELECT content_plain FROM chunks LIMIT ? OFFSET ?"
+    ).bind(BATCH, offset).all<{ content_plain: string }>();
+    allTexts.push(...batch.results.map(c => c.content_plain));
+  }
+
+  const ngrams = extractCorpusNgrams(allTexts, 5, 3).slice(0, 100);
+
+  // Dispatch each n-gram assignment as a separate message
+  if (ngrams.length > 0) {
+    const messages = ngrams.map(ng => ({
+      body: { type: "assign-ngram" as const, phrase: ng.phrase }
+    }));
+    for (let i = 0; i < messages.length; i += 25) {
+      await queue.sendBatch(messages.slice(i, i + 25));
+    }
+  }
+
+  // Set kind='phrase' for multi-word topics
+  await db.prepare(
+    "UPDATE topics SET kind = 'phrase' WHERE name LIKE '% %' AND usage_count >= 5 AND kind = 'concept'"
+  ).run();
+}
+
 export async function handleEnrichmentBatch(
   batch: MessageBatch<EnrichmentMessage>,
   env: Bindings
@@ -77,6 +111,8 @@ export async function handleEnrichmentBatch(
         await handleComputeRelated(env.DB, msg.body.topicId);
       } else if (msg.body.type === "assign-ngram" && msg.body.phrase) {
         await handleAssignNgram(env.DB, msg.body.phrase);
+      } else if (msg.body.type === "extract-ngrams") {
+        await handleExtractNgrams(env.DB, env.ENRICHMENT_QUEUE);
       }
       msg.ack();
     } catch (e) {

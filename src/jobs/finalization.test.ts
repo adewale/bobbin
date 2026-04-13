@@ -144,3 +144,130 @@ describe("Noise cleanup (Issue 5)", () => {
     expect(chunkIds).not.toContain(1); // false match removed
   });
 });
+
+describe("Related slugs computation", () => {
+  beforeEach(async () => {
+    // We need more than 4 chunks to have enough chunk_topics for usage >= 5
+    // Add extra chunks to the base seed data (which already has 4 chunks)
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (1, 'chunk-5', 'Chunk 5', 'Alpha and beta concepts in production.', 'Alpha and beta concepts in production.', 4)"),
+      env.DB.prepare("INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (1, 'chunk-6', 'Chunk 6', 'Alpha and beta revisited for scale.', 'Alpha and beta revisited for scale.', 5)"),
+      env.DB.prepare("INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (1, 'chunk-7', 'Chunk 7', 'More alpha coverage in this chunk.', 'More alpha coverage in this chunk.', 6)"),
+    ]);
+  });
+
+  it("computes related_slugs for topics with usage >= 5 via batch SQL", async () => {
+    // Create two topics that co-occur in multiple chunks
+    await env.DB.prepare("INSERT INTO topics (name, slug, kind, usage_count) VALUES ('alpha', 'alpha', 'concept', 0)").run();
+    await env.DB.prepare("INSERT INTO topics (name, slug, kind, usage_count) VALUES ('beta', 'beta', 'concept', 0)").run();
+
+    // Alpha assigned to 6 chunks, beta assigned to 5 chunks — both will have usage >= 5 after recount
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 1)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (2, 1)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (3, 1)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (4, 1)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (5, 1)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (6, 1)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 2)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (2, 2)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (3, 2)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (4, 2)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (5, 2)"),
+    ]);
+
+    await finalizeEnrichment(env.DB);
+
+    // Alpha (usage 6 after recount) should have beta as related
+    const alpha = await env.DB.prepare("SELECT related_slugs FROM topics WHERE slug = 'alpha'").first<{ related_slugs: string | null }>();
+    expect(alpha).not.toBeNull();
+    expect(alpha!.related_slugs).not.toBeNull();
+    const alphaParsed = JSON.parse(alpha!.related_slugs!);
+    expect(alphaParsed).toContain("beta");
+
+    // Beta (usage 5 after recount) should have alpha as related
+    const beta = await env.DB.prepare("SELECT related_slugs FROM topics WHERE slug = 'beta'").first<{ related_slugs: string | null }>();
+    expect(beta).not.toBeNull();
+    expect(beta!.related_slugs).not.toBeNull();
+    const betaParsed = JSON.parse(beta!.related_slugs!);
+    expect(betaParsed).toContain("alpha");
+  });
+
+  it("produces valid JSON array format for related_slugs", async () => {
+    await env.DB.prepare("INSERT INTO topics (name, slug, kind, usage_count) VALUES ('topicA', 'topic-a', 'concept', 0)").run();
+    await env.DB.prepare("INSERT INTO topics (name, slug, kind, usage_count) VALUES ('topicB', 'topic-b', 'concept', 0)").run();
+    await env.DB.prepare("INSERT INTO topics (name, slug, kind, usage_count) VALUES ('topicC', 'topic-c', 'concept', 0)").run();
+
+    // topicA assigned to 6 chunks, topicB to 5, topicC to 5 — all >= 5 after recount
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 1)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (2, 1)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (3, 1)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (4, 1)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (5, 1)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (6, 1)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 2)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (2, 2)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (3, 2)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (4, 2)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (5, 2)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 3)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (2, 3)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (3, 3)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (4, 3)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (5, 3)"),
+    ]);
+
+    await finalizeEnrichment(env.DB);
+
+    const topicA = await env.DB.prepare("SELECT related_slugs FROM topics WHERE slug = 'topic-a'").first<{ related_slugs: string | null }>();
+    expect(topicA).not.toBeNull();
+    expect(topicA!.related_slugs).not.toBeNull();
+
+    // Verify it's valid JSON array
+    const parsed = JSON.parse(topicA!.related_slugs!);
+    expect(Array.isArray(parsed)).toBe(true);
+    expect(parsed.length).toBeGreaterThan(0);
+    // Each element should be a string slug
+    for (const slug of parsed) {
+      expect(typeof slug).toBe("string");
+    }
+  });
+});
+
+describe("N-gram phrase topics (inline without queue)", () => {
+  it("creates phrase topics from n-gram extraction when enough data exists", async () => {
+    // Need at least 10 chunks with repeated phrases for n-gram extraction to work
+    // Insert many chunks with a common phrase appearing in multiple docs
+    const phrase = "machine learning";
+    const stmts: D1PreparedStatement[] = [];
+    for (let i = 0; i < 15; i++) {
+      stmts.push(
+        env.DB.prepare(
+          "INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (1, ?, ?, ?, ?, ?)"
+        ).bind(
+          `ngram-chunk-${i}`,
+          `Chunk ${i}`,
+          `This chunk discusses ${phrase} and deep ${phrase} models in production.`,
+          `This chunk discusses ${phrase} and deep ${phrase} models in production.`,
+          i + 10
+        )
+      );
+    }
+    for (let i = 0; i < stmts.length; i += 50) {
+      await env.DB.batch(stmts.slice(i, i + 50));
+    }
+
+    // Run finalization without queue — n-grams should be processed inline
+    await finalizeEnrichment(env.DB);
+
+    // Check that a phrase topic was created (any topic with kind='phrase')
+    const phrases = await env.DB.prepare(
+      "SELECT name, slug, kind FROM topics WHERE kind = 'phrase'"
+    ).all<{ name: string; slug: string; kind: string }>();
+
+    // The "machine learning" phrase should appear frequently enough to be extracted
+    const hasPhraseTopic = phrases.results.some(t => t.name.includes("machine") && t.name.includes("learning"));
+    expect(hasPhraseTopic).toBe(true);
+  });
+});

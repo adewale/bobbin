@@ -196,29 +196,12 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
   await mergeCoOccurringTopics(db);
 
   // Corpus-level n-gram extraction: discover phrase topics
-  // Load chunks in batches to avoid memory issues at scale
-  const chunkCount = await db.prepare("SELECT COUNT(*) as c FROM chunks").first<{ c: number }>();
-  if (chunkCount && chunkCount.c >= 10) {
-    const BATCH = 1000;
-    const allTexts: string[] = [];
-    for (let offset = 0; offset < chunkCount.c; offset += BATCH) {
-      const batch = await db.prepare("SELECT content_plain FROM chunks LIMIT ? OFFSET ?").bind(BATCH, offset).all<{ content_plain: string }>();
-      allTexts.push(...batch.results.map(c => c.content_plain));
-    }
-
-    const ngrams = extractCorpusNgrams(allTexts, 5, 3).slice(0, 100);
-
-    if (queue && ngrams.length > 0) {
-      // Dispatch n-gram assignments to queue for parallel processing
-      const ngramMessages = ngrams.map(ng => ({ body: { type: "assign-ngram" as const, phrase: ng.phrase } }));
-      for (let i = 0; i < ngramMessages.length; i += 25) {
-        await queue.sendBatch(ngramMessages.slice(i, i + 25));
-      }
-    } else if (ngrams.length > 0) {
-      // No queue — process inline (slower but works)
-      await extractAndStoreNgrams(db);
-    }
-
+  // Instead of loading all chunk texts here, dispatch to queue when available
+  if (queue) {
+    await queue.send({ type: "extract-ngrams" });
+  } else {
+    // Fallback: inline extraction for tests/dev
+    await extractAndStoreNgrams(db);
     // Set kind='phrase' for all multi-word topics with enough usage
     await db.prepare("UPDATE topics SET kind = 'phrase' WHERE name LIKE '% %' AND usage_count >= 5 AND kind = 'concept'").run();
   }
@@ -230,34 +213,53 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
     )`
   ).run();
 
-  // Precompute related_slugs — dispatch to queue or process inline
-  const allTopics = await db.prepare(
-    "SELECT id, slug FROM topics WHERE usage_count >= 3"
-  ).all<{ id: number; slug: string }>();
+  // Precompute related_slugs — try batch SQL first, fall back to queue or N+1
+  try {
+    await db.prepare(`
+      UPDATE topics SET related_slugs = (
+        SELECT '[' || GROUP_CONCAT('"' || t2.slug || '"') || ']'
+        FROM (
+          SELECT t.slug, COUNT(*) as cnt
+          FROM chunk_topics ct1
+          JOIN chunk_topics ct2 ON ct1.chunk_id = ct2.chunk_id AND ct1.topic_id != ct2.topic_id
+          JOIN topics t ON ct2.topic_id = t.id
+          WHERE ct1.topic_id = topics.id
+          GROUP BY ct2.topic_id
+          ORDER BY cnt DESC
+          LIMIT 5
+        ) t2
+      )
+      WHERE usage_count >= 5
+    `).run();
+  } catch {
+    // Batch too heavy — dispatch to queue or process inline
+    if (queue) {
+      const topics = await db.prepare("SELECT id FROM topics WHERE usage_count >= 5").all<{ id: number }>();
+      const messages = topics.results.map(t => ({ body: { type: "compute-related" as const, topicId: t.id } }));
+      for (let i = 0; i < messages.length; i += 25) {
+        await queue.sendBatch(messages.slice(i, i + 25));
+      }
+    } else {
+      // Inline N+1 fallback for tests/dev
+      const allTopics = await db.prepare(
+        "SELECT id, slug FROM topics WHERE usage_count >= 5"
+      ).all<{ id: number; slug: string }>();
+      for (const topic of allTopics.results) {
+        const related = await db.prepare(
+          `SELECT t.slug FROM chunk_topics ct1
+           JOIN chunk_topics ct2 ON ct1.chunk_id = ct2.chunk_id AND ct1.topic_id != ct2.topic_id
+           JOIN topics t ON ct2.topic_id = t.id
+           WHERE ct1.topic_id = ?
+           GROUP BY ct2.topic_id
+           ORDER BY COUNT(*) DESC
+           LIMIT 5`
+        ).bind(topic.id).all<{ slug: string }>();
 
-  if (queue && allTopics.results.length > 0) {
-    // Dispatch related_slugs computation to queue for parallel processing
-    const relatedMessages = allTopics.results.map(t => ({ body: { type: "compute-related" as const, topicId: t.id } }));
-    for (let i = 0; i < relatedMessages.length; i += 25) {
-      await queue.sendBatch(relatedMessages.slice(i, i + 25));
-    }
-  } else {
-    // No queue — process inline
-    for (const topic of allTopics.results) {
-      const related = await db.prepare(
-        `SELECT t.slug FROM chunk_topics ct1
-         JOIN chunk_topics ct2 ON ct1.chunk_id = ct2.chunk_id AND ct1.topic_id != ct2.topic_id
-         JOIN topics t ON ct2.topic_id = t.id
-         WHERE ct1.topic_id = ?
-         GROUP BY ct2.topic_id
-         ORDER BY COUNT(*) DESC
-         LIMIT 5`
-      ).bind(topic.id).all<{ slug: string }>();
-
-      const slugs = JSON.stringify(related.results.map(r => r.slug));
-      await db.prepare(
-        "UPDATE topics SET related_slugs = ? WHERE id = ?"
-      ).bind(slugs, topic.id).run();
+        const slugs = JSON.stringify(related.results.map(r => r.slug));
+        await db.prepare(
+          "UPDATE topics SET related_slugs = ? WHERE id = ?"
+        ).bind(slugs, topic.id).run();
+      }
     }
   }
 
