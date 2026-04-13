@@ -432,8 +432,8 @@ mark { background: color-mix(in srgb, var(--accent-light) 60%, transparent); col
 }
 
 /* === Latest episode panel === */
-.latest-episode-panel { padding: 1rem; margin-bottom: 1.5rem; background: var(--bg-warm); border: 1px solid var(--border); border-radius: 6px; }
-.latest-episode-panel h2 { font-family: var(--font-ui); font-size: 0.95rem; font-weight: 600; font-style: normal; margin-bottom: 0.5rem; }
+.latest-episode-panel { padding: 0.75rem; margin-bottom: 1.5rem; background: var(--bg-warm); border: 1px solid var(--border); border-radius: 6px; }
+.latest-episode-panel h2 { font-family: var(--font-ui); font-size: 0.95rem; font-weight: 600; font-style: normal; margin: 0 0 0.5rem; }
 .latest-episode-panel h2 a { color: var(--text); text-decoration: none; }
 .latest-episode-panel h2 a:hover { color: var(--accent); }
 .latest-chunks { list-style: none; font-size: 0.85rem; color: var(--text-muted); }
