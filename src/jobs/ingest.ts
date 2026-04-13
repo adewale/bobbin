@@ -196,11 +196,17 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
   await mergeCoOccurringTopics(db);
 
   // Corpus-level n-gram extraction: discover phrase topics
-  // Extract n-grams in-process, then dispatch assignment to queue (or inline)
-  const allChunks = await db.prepare("SELECT id, content_plain FROM chunks").all<{ id: number; content_plain: string }>();
-  if (allChunks.results.length >= 10) {
-    const texts = allChunks.results.map(c => c.content_plain);
-    const ngrams = extractCorpusNgrams(texts, 5, 3).slice(0, 100);
+  // Load chunks in batches to avoid memory issues at scale
+  const chunkCount = await db.prepare("SELECT COUNT(*) as c FROM chunks").first<{ c: number }>();
+  if (chunkCount && chunkCount.c >= 10) {
+    const BATCH = 1000;
+    const allTexts: string[] = [];
+    for (let offset = 0; offset < chunkCount.c; offset += BATCH) {
+      const batch = await db.prepare("SELECT content_plain FROM chunks LIMIT ? OFFSET ?").bind(BATCH, offset).all<{ content_plain: string }>();
+      allTexts.push(...batch.results.map(c => c.content_plain));
+    }
+
+    const ngrams = extractCorpusNgrams(allTexts, 5, 3).slice(0, 100);
 
     if (queue && ngrams.length > 0) {
       // Dispatch n-gram assignments to queue for parallel processing
@@ -208,10 +214,13 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
       for (let i = 0; i < ngramMessages.length; i += 25) {
         await queue.sendBatch(ngramMessages.slice(i, i + 25));
       }
-    } else {
+    } else if (ngrams.length > 0) {
       // No queue — process inline (slower but works)
       await extractAndStoreNgrams(db);
     }
+
+    // Set kind='phrase' for all multi-word topics with enough usage
+    await db.prepare("UPDATE topics SET kind = 'phrase' WHERE name LIKE '% %' AND usage_count >= 5 AND kind = 'concept'").run();
   }
 
   // Precompute distinctiveness from word_stats
