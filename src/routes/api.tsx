@@ -80,8 +80,10 @@ api.get("/ingest", async (c) => {
     if (docId) {
       source = await c.env.DB.prepare("SELECT * FROM sources WHERE google_doc_id = ?").bind(docId).first();
     } else {
+      // Default: pick the most recently created source (the "current" doc),
+      // not the oldest last_fetched_at (which may be an archive)
       source = await c.env.DB.prepare(
-        "SELECT * FROM sources ORDER BY last_fetched_at IS NOT NULL, last_fetched_at ASC LIMIT 1"
+        "SELECT * FROM sources ORDER BY created_at DESC LIMIT 1"
       ).first();
     }
 
