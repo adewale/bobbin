@@ -1,9 +1,10 @@
 import { slugify } from "../lib/slug";
 import { formatDate } from "../lib/date";
 import { countWords } from "../lib/text";
-import { extractTopics } from "../services/topic-extractor";
+import { extractTopics, computeCorpusStats, type CorpusStats } from "../services/topic-extractor";
 import { tokenizeForWordStats } from "../services/word-stats";
 import { extractCorpusNgrams } from "../services/ngram-extractor";
+import { isNoiseTopic } from "../services/topic-quality";
 import { generateEmbeddings } from "../services/embeddings";
 import { getExistingDatesForSource, getSourceTag } from "../db/sources";
 import { getUnenrichedChunks, isEnrichmentDone } from "../db/ingestion";
@@ -86,13 +87,18 @@ export async function enrichChunks(
   const chunks = await getUnenrichedChunks(db, batchSize);
   if (!chunks.length) return { chunksProcessed: 0 };
 
-  // Collect all topics
+  // Compute corpus IDF stats for this batch (improves topic quality)
+  const corpusStats = computeCorpusStats(chunks.map(c => c.content_plain));
+
+  // Collect all topics — filter noise at insert time
   const uniqueTopics = new Map<string, { name: string; kind: string }>();
   const chunkTopicPairs: { chunkId: number; episodeId: number; topicSlug: string }[] = [];
 
   for (const chunk of chunks) {
-    const topics = extractTopics(chunk.content_plain);
+    const topics = extractTopics(chunk.content_plain, 15, corpusStats);
     for (const topic of topics) {
+      // Filter noise at insert time — entities always pass
+      if (topic.kind !== "entity" && isNoiseTopic(topic.name)) continue;
       uniqueTopics.set(topic.slug, { name: topic.name, kind: topic.kind || "concept" });
       chunkTopicPairs.push({ chunkId: chunk.id, episodeId: chunk.episode_id, topicSlug: topic.slug });
     }

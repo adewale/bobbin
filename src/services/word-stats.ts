@@ -1,4 +1,5 @@
 import { tokenize } from "../lib/text";
+import { decodeHtmlEntities } from "../lib/html";
 
 async function batchExec(db: D1Database, stmts: D1PreparedStatement[], size = 50) {
   for (let i = 0; i < stmts.length; i += size) {
@@ -7,7 +8,7 @@ async function batchExec(db: D1Database, stmts: D1PreparedStatement[], size = 50
 }
 
 export function tokenizeForWordStats(text: string): Map<string, number> {
-  const words = tokenize(text);
+  const words = tokenize(decodeHtmlEntities(text));
   const freq = new Map<string, number>();
   for (const word of words) {
     freq.set(word, (freq.get(word) || 0) + 1);

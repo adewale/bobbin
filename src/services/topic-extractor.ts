@@ -233,10 +233,10 @@ export function extractTopics(
   const clean = decodeHtmlEntities(text);
 
   // Layer 1: Known entities (highest priority, bypass TF-IDF)
-  const knownEntities = extractKnownEntities(text);
+  const knownEntities = extractKnownEntities(clean);
 
   // Step 1: Extract named entities via capitalization heuristics
-  const heuristicEntities = extractEntities(text);
+  const heuristicEntities = extractEntities(clean);
   const entityNames = new Set(
     heuristicEntities.flatMap((e) => e.name.toLowerCase().split(" "))
   );
@@ -250,16 +250,10 @@ export function extractTopics(
     termFreq.set(word, (termFreq.get(word) || 0) + 1);
   }
 
-  // Step 3: Extract bigrams (non-entity)
-  const bigrams = extractBigrams(clean);
-  for (const [bigram, count] of bigrams) {
-    // Skip bigrams that overlap with entities
-    const parts = bigram.split(" ");
-    if (parts.some((p) => entityNames.has(p))) continue;
-    termFreq.set(bigram, count * 2);
-  }
+  // Note: per-chunk bigrams removed — corpus-level n-gram extraction (in finalizeEnrichment)
+  // discovers phrase topics more reliably across documents.
 
-  // Step 4: Score with TF-IDF
+  // Step 3: Score with TF-IDF
   const N = corpusStats?.totalChunks || 1;
   const scored = [...termFreq.entries()]
     .filter(([word]) => {

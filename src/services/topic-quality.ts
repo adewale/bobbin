@@ -1,4 +1,4 @@
-/** Words that are never standalone topics -- too generic or grammatical */
+/** Words that are never standalone topics — too generic or grammatical */
 const NOISE_WORDS = new Set([
   // Comparative/superlative adjectives
   "harder", "easier", "faster", "slower", "bigger", "smaller", "better", "worse",
@@ -7,12 +7,19 @@ const NOISE_WORDS = new Set([
   "aligned", "leverage", "focused", "driven", "based", "built", "designed",
   "allow", "create", "enable", "require", "involve", "include",
   "fundamentally", "basically", "essentially", "relatively",
+  "become", "becoming", "happened", "happening", "imagine", "assume",
+  "consider", "approach", "change", "changing", "started",
   // Too generic nouns — not navigational even in a tech corpus
   "software", "system", "model", "data", "code", "product", "tool", "tools",
   "products", "apps", "thing", "things", "people", "person", "world", "point",
   "part", "kind", "type", "time", "place", "work", "idea", "value", "case",
-  "form", "record", "trust", "quality", "business",
+  "form", "record", "trust", "quality", "business", "power", "matter",
+  "action", "process", "company", "individual", "future", "order",
+  "space", "level", "layer", "number", "result", "problem", "question",
+  "state", "sense", "reason", "experience", "example", "information",
+  "content", "version", "source", "feature", "user", "users",
   "expensive", "important", "interesting", "different",
+  "require", "exist", "expect", "possible", "specific",
   // Words only meaningful in specific phrases
   "injection", "labor", "hollow", "coding", "vibe",
 ]);

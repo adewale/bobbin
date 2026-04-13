@@ -43,11 +43,12 @@ describe("extractTopics", () => {
     expect(topics.length).toBeLessThanOrEqual(3);
   });
 
-  it("detects repeated bigrams", () => {
+  it("extracts single-word topics via TF-IDF (bigrams handled by corpus n-grams)", () => {
     const topics = extractTopics(
-      "platform markets are growing. platform markets will expand. platform markets dominate. platform markets lead."
+      "platform markets are growing. platform markets will expand. platform markets dominate."
     );
     const names = topics.map((t) => t.name);
-    expect(names).toContain("platform market");
+    // "platform" should appear as a single-word topic via TF
+    expect(names).toContain("platform");
   });
 });
