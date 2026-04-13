@@ -3,6 +3,7 @@ import { formatDate } from "../lib/date";
 import { countWords } from "../lib/text";
 import { extractTopics } from "../services/topic-extractor";
 import { tokenizeForWordStats } from "../services/word-stats";
+import { extractCorpusNgrams } from "../services/ngram-extractor";
 import { generateEmbeddings } from "../services/embeddings";
 import { getExistingDatesForSource, getSourceTag } from "../db/sources";
 import { getUnenrichedChunks, isEnrichmentDone } from "../db/ingestion";
@@ -170,6 +171,9 @@ export async function enrichChunks(
   // Auto-merge split concepts based on co-occurrence
   await mergeCoOccurringTopics(db);
 
+  // Corpus-level n-gram extraction: discover phrase topics across all chunks
+  await extractAndStoreNgrams(db);
+
   // Precompute distinctiveness from word_stats
   await db.prepare(
     `UPDATE topics SET distinctiveness = COALESCE(
@@ -250,6 +254,56 @@ async function mergeCoOccurringTopics(db: D1Database) {
     await db.prepare(
       "UPDATE topics SET usage_count = (SELECT COUNT(*) FROM chunk_topics WHERE topic_id = ?) WHERE id = ?"
     ).bind(mergedTopic.id, mergedTopic.id).run();
+  }
+}
+
+/**
+ * Corpus-level n-gram extraction.
+ * Discovers phrase topics (bigrams/trigrams) that appear frequently across chunks.
+ * Creates topics with kind='phrase' and assigns them to chunks containing the phrase.
+ */
+async function extractAndStoreNgrams(db: D1Database) {
+  // Get all chunk texts
+  const allChunks = await db.prepare(
+    "SELECT id, content_plain FROM chunks"
+  ).all<{ id: number; content_plain: string }>();
+
+  if (allChunks.results.length < 10) return; // not enough data for meaningful n-grams
+
+  const texts = allChunks.results.map(c => c.content_plain);
+  const ngrams = extractCorpusNgrams(texts, 5, 3); // min 5 occurrences, min 3 documents
+
+  // Create phrase topics for discovered n-grams
+  const topNgrams = ngrams.slice(0, 100); // limit to top 100
+  for (const ng of topNgrams) {
+    const slug = slugify(ng.phrase);
+    if (!slug || slug.length < 3) continue;
+
+    await db.prepare(
+      "INSERT OR IGNORE INTO topics (name, slug, kind) VALUES (?, ?, 'phrase')"
+    ).bind(ng.phrase, slug).run();
+
+    const topic = await db.prepare(
+      "SELECT id FROM topics WHERE slug = ?"
+    ).bind(slug).first<{ id: number }>();
+    if (!topic) continue;
+
+    // Find chunks containing this phrase and assign the topic
+    const phrasePattern = `%${ng.phrase}%`;
+    const matchingChunks = await db.prepare(
+      "SELECT id FROM chunks WHERE LOWER(content_plain) LIKE ? ESCAPE '\\'"
+    ).bind(phrasePattern).all<{ id: number }>();
+
+    const stmts = matchingChunks.results.map(c =>
+      db.prepare("INSERT OR IGNORE INTO chunk_topics (chunk_id, topic_id) VALUES (?, ?)")
+        .bind(c.id, topic.id)
+    );
+    await batchExec(db, stmts);
+
+    // Update usage count
+    await db.prepare(
+      "UPDATE topics SET usage_count = (SELECT COUNT(*) FROM chunk_topics WHERE topic_id = ?) WHERE id = ?"
+    ).bind(topic.id, topic.id).run();
   }
 }
 
