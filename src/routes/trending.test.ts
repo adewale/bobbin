@@ -126,53 +126,35 @@ beforeEach(async () => {
   await seedTrendingData();
 });
 
-describe("Trending topics on episode page", () => {
-  it("shows trending-topics section when a topic spikes", async () => {
+describe("Blended topics on episode page", () => {
+  it("shows main topics tier with chunk-count-ranked topics", async () => {
     const res = await SELF.fetch("http://localhost/episodes/2025-01-01-ep");
     const html = await res.text();
     expect(res.status).toBe(200);
-    expect(html).toContain("trending-topics");
+    expect(html).toContain("topic-tier-main");
+    // Agent has 5 chunks — should be the top main topic
+    expect(html).toContain("agent");
   });
 
-  it("shows spike ratio formatted as +N.Nx", async () => {
+  it("shows topics marginalia on episodes with topics", async () => {
     const res = await SELF.fetch("http://localhost/episodes/2025-01-01-ep");
     const html = await res.text();
-    expect(res.status).toBe(200);
-    // agent spikes significantly in this episode vs corpus average
-    // Format: (+N.N×) where N.N > 2.0
-    expect(html).toMatch(/\(\+\d+\.\d+\u00d7\)/); // matches (+N.N×) pattern
-    expect(html).toContain("trending-ratio");
+    expect(html).toContain("topics-margin");
   });
 
-  it("does NOT show trending section when no topic spikes", async () => {
-    // Episode 2 has 1 agent chunk (avg is 1) and 1 llms chunk (avg is 1) -- no spike
+  it("episode with fewer topics still shows main tier", async () => {
     const res = await SELF.fetch("http://localhost/episodes/2025-01-02-ep");
     const html = await res.text();
     expect(res.status).toBe(200);
-    expect(html).not.toContain("trending-topics");
-  });
-
-  it("excludes topics with low usage_count from trending", async () => {
-    // "rare" has usage_count=3 (<5) so even with 2 chunks in ep1, it should not appear
-    const res = await SELF.fetch("http://localhost/episodes/2025-01-01-ep");
-    const html = await res.text();
-    expect(res.status).toBe(200);
-    // trending section should show agent but not rare
-    expect(html).toContain("agent");
-    const trendingStart = html.indexOf("trending-topics");
-    const trendingEnd = html.indexOf("</div>", trendingStart + 100);
-    const trendingSection = html.substring(trendingStart, trendingEnd);
-    expect(trendingSection).not.toContain("rare");
+    expect(html).toContain("topics-margin");
   });
 });
 
-describe("Trending topics on chunk page", () => {
-  it("shows trending from parent episode on chunk page", async () => {
-    // Chunk from episode 1 (the spike episode) should show trending
+describe("Blended topics on chunk page", () => {
+  it("shows chunk-level topics and episode-level distinctive", async () => {
     const res = await SELF.fetch("http://localhost/chunks/agent-chunk-0-2025-01-01");
     const html = await res.text();
     expect(res.status).toBe(200);
-    expect(html).toContain("trending-topics");
-    expect(html).toMatch(/\(\+\d+\.\d+\u00d7\)/); // matches (+N.N×) pattern
+    expect(html).toContain("topics-margin");
   });
 });

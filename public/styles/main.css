@@ -157,8 +157,9 @@ details.topic-tier .topic-cloud { margin-top: 0.5rem; }
 }
 
 /* Trending topics indicator */
-.trending-topics { margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border); }
-.trending-topics h4 { font-size: 0.65rem; font-family: var(--font-ui); color: var(--accent); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; margin-bottom: 0.2rem; }
+.distinctive-topics { margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border); }
+.distinctive-topics h4 { font-size: 0.65rem; font-family: var(--font-ui); color: var(--accent); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; margin-bottom: 0.2rem; }
+.topic-distinctive { border-color: var(--accent-light); background: var(--accent-light); }
 .trending-item { display: block; font-size: 0.72rem; font-family: var(--font-ui); color: var(--text); text-decoration: none; padding: 0.1rem 0; }
 .trending-item:hover { color: var(--accent); }
 .trending-ratio { color: var(--accent); font-size: 0.65rem; }

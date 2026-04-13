@@ -3,7 +3,7 @@ import type { AppEnv, EpisodeRow, ChunkRow, TopicRow } from "../types";
 import { Layout } from "../components/Layout";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { monthName } from "../lib/date";
-import { getAllEpisodesGrouped, getEpisodeBySlug, getChunksByEpisode, getEpisodeTopics, getAdjacentEpisodes } from "../db/episodes";
+import { getAllEpisodesGrouped, getEpisodeBySlug, getChunksByEpisode, getEpisodeTopicsBlended, getAdjacentEpisodes } from "../db/episodes";
 import { getTrendingTopicsForEpisode } from "../db/topics";
 
 const episodes = new Hono<AppEnv>();
@@ -65,10 +65,9 @@ episodes.get("/:slug", async (c) => {
   const episode = await getEpisodeBySlug(c.env.DB, slug);
   if (!episode) return c.notFound();
 
-  const [chunksList, topicsList, trending, adjacent] = await Promise.all([
+  const [chunksList, blendedTopics, adjacent] = await Promise.all([
     getChunksByEpisode(c.env.DB, episode.id),
-    getEpisodeTopics(c.env.DB, episode.id),
-    getTrendingTopicsForEpisode(c.env.DB, episode.id),
+    getEpisodeTopicsBlended(c.env.DB, episode.id, 5, 5),
     getAdjacentEpisodes(c.env.DB, episode.published_date),
   ]);
 
@@ -83,24 +82,30 @@ episodes.get("/:slug", async (c) => {
       <article class="episode-detail">
         <h1>{episode.title}</h1>
         <time datetime={episode.published_date}>{episode.published_date}</time>
-        {topicsList.length > 0 && (
+        {(blendedTopics.main.length > 0 || blendedTopics.distinctive.length > 0) && (
           <aside class="topics-margin">
-            <h3>Topics</h3>
-            <div class="topics">
-              {topicsList.map((topic) => (
-                <a key={topic.id} href={`/topics/${topic.slug}`} class="topic">
-                  {topic.name}
-                </a>
-              ))}
-            </div>
-            {trending.length > 0 && (
-              <div class="trending-topics">
-                <h4>Trending &#x2191;</h4>
-                {trending.map((t) => (
-                  <a key={t.slug} href={`/topics/${t.slug}`} class="trending-item">
-                    {t.name} <span class="trending-ratio">(+{t.spikeRatio.toFixed(1)}&times;)</span>
-                  </a>
-                ))}
+            {blendedTopics.main.length > 0 && (
+              <div class="topic-tier-main">
+                <h3>Topics</h3>
+                <div class="topics">
+                  {blendedTopics.main.map((topic) => (
+                    <a key={topic.id} href={`/topics/${topic.slug}`} class="topic">
+                      {topic.name}
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+            {blendedTopics.distinctive.length > 0 && (
+              <div class="distinctive-topics">
+                <h4>Distinctive</h4>
+                <div class="topics">
+                  {blendedTopics.distinctive.map((topic) => (
+                    <a key={topic.id} href={`/topics/${topic.slug}`} class="topic topic-distinctive">
+                      {topic.name}
+                    </a>
+                  ))}
+                </div>
               </div>
             )}
           </aside>
