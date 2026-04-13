@@ -27,14 +27,14 @@ Warm editorial palette inspired by printed essay collections. The accent colour 
 
 ## Design principles
 
-1. **Content first** — the observations are the product. Minimise chrome.
+1. **Content first** — the chunks are the product. Minimise chrome.
 2. **Tuftean data-ink** ��� every visual element should encode data. No decorative elements.
 3. **Consistent width** — 44rem max-width everywhere. No layout shift between pages.
 4. **Active nav** — current section underlined in the header. No breadcrumbs on top-level pages.
-5. **Progressive disclosure** — accordions for episode observations, collapsible tag diffs, details/summary for tags on mobile.
+5. **Progressive disclosure** — accordions for episode chunks, details/summary for topics on mobile.
 6. **Stable scrollbar** — `scrollbar-gutter: stable` prevents layout shift.
 
 ## Page hierarchy
 
-**Top-level** (no breadcrumbs, no h1): /, /episodes, /tags, /concordance, /search
-**Detail** (breadcrumbs, h1): /episodes/:slug, /chunks/:slug, /tags/:slug, /concordance/:word
+**Top-level** (no breadcrumbs, no h1): /, /episodes, /topics, /search
+**Detail** (breadcrumbs, h1): /episodes/:slug, /chunks/:slug, /topics/:slug

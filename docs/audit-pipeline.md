@@ -1,5 +1,7 @@
 # Bobbin Data Normalization Pipeline Audit
 
+**Date:** 2026-04-12
+
 ## 1. Order of Operations
 
 ### Current Sequence

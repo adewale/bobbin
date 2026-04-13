@@ -54,7 +54,7 @@ This list is intentionally aggressive. It's better to show 15 high-quality topic
 
 During enrichment:
 1. N-gram extraction runs on all chunk texts → creates phrase topics in DB
-2. Quality curation runs at query time (in getTopTopicsWithSparklines and getThemeRiverData)
+2. Quality curation runs at query time (in getTopTopicsWithSparklines)
 3. The topics grid shows a unified view: phrases and single words interleaved, ranked by quality
 
 At display time:

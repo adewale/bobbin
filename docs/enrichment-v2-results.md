@@ -1,5 +1,7 @@
 Enrichment Pipeline v2: Results
 
+> **Historical snapshot (2026-04-12).** This document records the state of the pipeline at the time v2 was deployed. Metrics reflect the database at that point and may not match current values.
+
 ## Before/After Metrics
 
 | Metric | Before (v1) | After (v2) | Change |

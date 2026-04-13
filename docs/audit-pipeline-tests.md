@@ -1,5 +1,7 @@
 # Enrichment Pipeline Test Quality Audit
 
+**Date:** 2026-04-12
+
 ## Step 1: Sabotage Detection
 
 **No sabotage found.** The test suite is clean:

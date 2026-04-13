@@ -147,3 +147,47 @@ After building the app with 122 unit and route tests, a deep audit found:
 10. Ingestion performance should be designed for, not patched after the fact
 11. TDD validates correctness, not quality — you need both
 12. A test suite that reports 100% green can still describe a bad product
+
+## What we learned in the topics migration
+
+The move from tags to topics was the largest refactoring since the initial build. It touched the database schema, the extraction pipeline, the display layer, and the search system. Here is what it taught us.
+
+### Taxonomy matters
+
+Calling everything "concept" led to 2,241 misclassified proper nouns. People, companies, and products were all `kind='concept'` in the database, which meant the entity validation step in finalization skipped them entirely. Adding a `kind` column with values `concept`, `entity`, and `phrase` was the single most impactful schema change. It enabled entity-specific validation, phrase subsumption logic, and better ranking on the topics grid.
+
+### Noise filtering: display time vs insert time
+
+The original design filtered noise words at display time across three query files. This meant garbage topics were stored, had `usage_count` computed, had `related_slugs` computed, and had `reach` contributions calculated — all wasted work for topics that would never be shown. Moving the `isNoiseTopic` check to insert time in `enrichChunks` prevented the waste from accumulating. Keep the display-time filter as a safety net, but the primary gate should be at insertion.
+
+### IDF was dead code for weeks
+
+`extractTopics` accepted an optional `corpusStats` parameter, but `enrichChunks` never passed it. All TF-IDF scoring silently fell back to pure TF (no IDF). Nobody noticed because there were no tests that verified the IDF path was active during actual ingestion. The fix was straightforward — compute corpus stats before enrichment and pass them in — but the lesson is: if a function has an optional parameter that changes behavior, test both paths.
+
+### Entity detection via curated list + heuristics is good enough
+
+The three-layer entity detection system (curated known-entities list, heuristic capitalization detection, TF-IDF keywords) produces zero false positives and near-perfect recall for curated entities. AI-based entity extraction would be nice-to-have for discovering new entities, but the deterministic approach is predictable, testable, and free.
+
+### N-gram extraction needs to run at corpus level, not per-chunk
+
+Per-chunk bigram extraction fails because chunks are too short (50-500 words) for any bigram to appear multiple times. The corpus-level approach discovers phrases like "prompt injection" (81 chunks), "vibe coding" (37), and "cognitive labor" (35) that span the corpus. This is one of those cases where the "obvious" approach (extract per-document) is wrong and the batch approach (extract across the corpus) is right.
+
+### Queue-based parallelization turned a 5-minute timeout into a 15-second operation
+
+Computing `related_slugs` for 6,000 topics requires 6,000 individual queries. Running them serially timed out. Dispatching them to the `bobbin-enrichment` queue with 10 concurrent consumers brought the wall clock time to roughly 6 seconds. The same pattern works for n-gram chunk assignment. The queue is free tier (under 10K ops/day) and the fallback to serial inline processing still works for tests and dev.
+
+### Wide event logging should be there from day 1
+
+The canonical log line pattern (one structured JSON object per cron run with per-step timing) was added retroactively. Before that, debugging production failures meant grep-ing through scattered `console.log` calls. The `RefreshEvent` type in `refresh.ts` and the `queue_batch` log in `index.tsx` now make it possible to see at a glance what happened, how long each step took, and where it failed.
+
+### Pipeline order matters
+
+Extracting topics before computing word stats meant IDF was unavailable during topic extraction. Discovering n-grams after per-chunk extraction meant phrase topics were only created during finalization, not during the main enrichment pass. The correct order is: build word_stats first, extract corpus n-grams, then run per-chunk topic extraction with both IDF and known phrases available.
+
+### The enrichment script is essential
+
+`scripts/run-enrichment.sh` wraps the manual admin API calls (ingest, enrich, finalize) into a single script. Without it, re-enriching the corpus after a pipeline change required remembering the correct sequence and curl commands. Operational tooling is not optional.
+
+### Dead code removal is healthy
+
+Going from 507 tests to 496 tests after removing dead code (ThemeRiver, tag-generator, concordance routes, RSS feeds, sitemap, timeline, reading mode) is a sign the codebase is getting cleaner, not worse. Tests for dead code should be removed with the code they test.

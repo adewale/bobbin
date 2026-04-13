@@ -10,14 +10,14 @@ Google Docs (mobilebasic HTML)
       ▼
   [Cron: Monday 6am UTC]
       │
-  fetch → parse → ingest
-      │
-      ├──▶ D1 (episodes, chunks, tags, concordance)
+  fetch → parse → ingest → enrich → finalize
+      │                        │          │
+      ├──▶ D1 (episodes, chunks, topics, word_stats)
       ├──▶ Vectorize (768-dim BGE embeddings)
-      └──▶ Workers AI (summaries)
+      └──▶ ENRICHMENT_QUEUE (n-gram + related_slugs)
       │
       ▼
-  Hono SSR (22 routes)
+  Hono SSR
       │
       ▼
   Browser (HTML + progressive JS)
@@ -29,29 +29,25 @@ Google Docs (mobilebasic HTML)
 |---------|------|---------|
 | `DB` | D1 Database | All structured data (bobbin-db) |
 | `VECTORIZE` | Vector Index | Semantic search (bobbin-chunks, 768-dim, cosine) |
-| `AI` | Workers AI | BGE embeddings + BART summarization |
-| `ADMIN_SECRET` | Secret | Bearer token for `/api/ingest` and `/api/embed` |
+| `AI` | Workers AI | BGE embeddings |
+| `ADMIN_SECRET` | Secret | Bearer token for admin API endpoints |
+| `ENRICHMENT_QUEUE` | Queue | Async n-gram assignment + related_slugs computation |
 
 ## Routes
 
 ### Content
 | Route | Purpose |
 |-------|---------|
-| `GET /` | Homepage: recent episodes, search, tag cloud |
+| `GET /` | Homepage: latest episode panel, margin layout with Recent Episodes + Popular Topics |
 | `GET /episodes` | Paginated episode list (20/page) |
-| `GET /episodes/:slug` | Episode detail with all chunks and tags |
+| `GET /episodes/:slug` | Episode detail with all chunks and topics |
 | `GET /chunks/:slug` | Chunk detail with cross-references as margin notes |
 
 ### Browse
 | Route | Purpose |
 |-------|---------|
-| `GET /tags` | All tags sorted by usage |
-| `GET /tags/:slug` | Ladder of abstraction: sparkline + episodes + chunks + excerpts |
-| `GET /tags/:slug/diff` | Chronological evolution of a tag |
-| `GET /timeline` | Years → `/timeline/:year` → months → episodes |
-| `GET /timeline/:year/:month/:day` | Redirects to episode |
-| `GET /concordance` | Top 200 words (≥3 occurrences, ≥2 chunks, ≥4 chars) |
-| `GET /concordance/:word` | Usage over time sparkline + chunk excerpts |
+| `GET /topics` | Topic grid: small multiples with sparklines, sorted by quality |
+| `GET /topics/:slug` | Topic detail: sparkline, dispersion plot, KWIC, slopegraph, episode timeline |
 
 ### Search
 | Route | Purpose |
@@ -59,24 +55,21 @@ Google Docs (mobilebasic HTML)
 | `GET /search?q=` | Hybrid FTS5 + Vectorize search with merge/rerank |
 | `GET /api/search?q=` | JSON search results |
 
-### Feeds
-| Route | Purpose |
-|-------|---------|
-| `GET /feed.xml` | Atom feed (20 latest episodes) |
-| `GET /tags/:slug/feed.xml` | Per-tag Atom feed (50 latest chunks) |
-| `GET /sitemap.xml` | XML sitemap (all episodes, chunks, tags) |
-
 ### Admin (requires `Authorization: Bearer ADMIN_SECRET`)
 | Route | Purpose |
 |-------|---------|
 | `GET /api/ingest?limit=N&doc=ID` | Fetch doc, parse, ingest N new episodes |
 | `GET /api/embed?limit=N` | Batch-embed N chunks to Vectorize |
+| `GET /api/enrich?batch=N` | Enrich unenriched chunks (topics, word stats) |
+| `GET /api/finalize` | Run finalization (n-grams, related slugs, cleanup) |
+| `GET /api/health` | Pipeline health check (chunk/topic counts, unenriched) |
+| `GET /api/ingestion-log` | View recent ingestion history |
 
 ### Reactive API (for client-side JS)
 | Route | Purpose |
 |-------|---------|
-| `GET /api/concordance?from=&to=&limit=` | Word frequencies with date filtering |
-| `GET /api/timeline` | Episode counts per month |
+| `GET /api/word-stats?from=&to=&limit=` | Word frequencies with date filtering |
+| `GET /api/topics?q=` | Topic name search (autocomplete) |
 
 ## Database schema
 
@@ -84,10 +77,10 @@ Google Docs (mobilebasic HTML)
 sources ──1:N──▶ episodes ──1:N──▶ chunks
                      │                 │
                      ▼                 ▼
-               episode_tags ◀── tags ──▶ chunk_tags
+             episode_topics ◀── topics ──▶ chunk_topics
                                           │
                                           ▼
-                                     chunk_words ──▶ concordance (aggregate)
+                                     chunk_words ──▶ word_stats (aggregate)
 
 chunks_fts (FTS5 virtual table, auto-synced via triggers)
 ingestion_log (audit trail)
@@ -95,65 +88,85 @@ ingestion_log (audit trail)
 
 ### Core tables
 - **sources**: Google Doc IDs being tracked (`google_doc_id`, `last_fetched_at`)
-- **episodes**: Weekly editions (`slug` = date like `2024-04-08`, `year/month/day`)
-- **chunks**: Individual observations (`content`, `content_plain`, `vector_id`, `position`)
+- **episodes**: Weekly editions (`slug` = date like `2024-04-08`, `year/month/day`, `format`)
+- **chunks**: Individual chunks (`content`, `content_plain`, `vector_id`, `position`, `reach`)
+
+### Topic tables
+- **topics**: Extracted topics (`name`, `slug`, `usage_count`, `kind`, `distinctiveness`, `related_slugs`)
+- **chunk_topics**: Many-to-many link between chunks and topics
+- **episode_topics**: Many-to-many link between episodes and topics
 
 ### Search tables
 - **chunks_fts**: FTS5 virtual table over `title` + `content_plain`, Porter stemming
-- **concordance**: Aggregated word frequencies (`word`, `total_count`, `doc_count`)
-- **chunk_words**: Per-chunk word counts (source for concordance rebuilds)
+- **word_stats**: Aggregated word frequencies (`word`, `total_count`, `doc_count`, `distinctiveness`, `in_baseline`)
+- **chunk_words**: Per-chunk word counts (source for word_stats rebuilds)
 
 ## Ingestion pipeline
 
 ```
-1. Fetch   │ fetchGoogleDocHtml(docId) → mobilebasic HTML
+1. Fetch   │ fetchGoogleDoc(docId) → mobilebasic HTML
 2. Parse   │ parseHtmlDocument(html) → ParsedEpisode[]
            │   Split on <h1> (episode dates)
-           │   Split on margin-left:36pt (level-0 observations)
+           │   Split on margin-left:36pt (level-0 chunks)
            │   Group sub-points (72pt, 108pt) with parent
 3. Dedup   │ Skip episodes with existing published_date
-4. Batch   │ Insert in groups of 50:
-           │   episodes → chunks → tags → chunk_tags → episode_tags → chunk_words
-5. Embed   │ generateEmbeddings(AI, texts) → VECTORIZE.upsert(vectors)
-6. Summary │ generateSummary(AI, text) → episode.summary
-7. Rebuild │ DELETE concordance; INSERT...SELECT from chunk_words
+4. Ingest  │ Insert in groups of 50:
+           │   episodes → chunks
+5. Enrich  │ Per unenriched chunk (with time budget):
+           │   decode HTML entities → extract topics (entities + TF-IDF)
+           │   → noise filter at insert time → INSERT topics, chunk_topics
+           │   → tokenize → INSERT chunk_words
+6. Final   │ Rebuild word_stats, compute distinctiveness, n-grams (via queue),
+           │   related_slugs (via queue), entity validation, noise cleanup, prune
+7. Embed   │ generateEmbeddings(AI, texts) → VECTORIZE.upsert(vectors)
 ```
 
 Triggered by:
-- **Cron**: `0 6 * * 1` (Monday 6am UTC)
-- **Manual**: `GET /api/ingest` with Bearer auth
+- **Cron**: `0 6 * * 1` (Monday 6am UTC) — runs the full pipeline via `runRefresh`
+- **Manual**: Admin API endpoints with Bearer auth
 
 ## Search pipeline
 
 ```
 User query
     │
+    ├──▶ Parse: extract operators (year:, before:, after:, topic:, "...")
+    │
+    ├──▶ Entity alias expansion (known-entities.ts)
+    │
     ├──▶ FTS5: sanitize → MATCH → bm25(title: 5x, content: 1x) → normalize to 0-1
     │
-    ├──▶ Vectorize: embed query → cosine topK=15 → hydrate from D1
+    ├──▶ Vectorize: embed query → cosine topK=15 → filter < 0.72 → hydrate from D1
+    │         (skipped for quoted phrase queries)
     │
-    └──▶ Merge & Rerank (Reciprocal Rank Fusion):
+    ├──▶ Topic boost: +0.15 for chunks assigned to matching topics
+    │
+    └──▶ Merge & Rerank:
            Both:     ftsScore * 0.4 + vecScore * 0.6 + 0.1 (crossover bonus)
            FTS only: ftsScore * 0.4
            Vec only: vecScore * 0.6
            Sort descending
 ```
 
-Fallback chain: FTS5 → LIKE (if FTS table missing) → keyword only (if AI unavailable)
+Fallback chain: FTS5 + Vectorize → FTS5 only → LIKE keyword search
 
 ## File organization
 
 ```
 src/
-  index.tsx              Entry point, route registration, scheduled handler
+  index.tsx              Entry point, route registration, scheduled + queue handlers
   types.ts               Bindings, DB row types, parsed types
-  components/            JSX components (Layout, EpisodeCard, ChunkCard, etc.)
-  routes/                Hono sub-routers (one file per feature area)
-  services/              Domain logic (search, cross-refs, HTML parsing, tags)
-  jobs/                  Batch operations (ingest, refresh)
-  lib/                   Pure utilities (slug, date, text, html escaping)
-migrations/              D1 schema migrations
-public/                  Static assets (CSS, JS, robots.txt)
+  components/            JSX components (Layout, EpisodeCard, ChunkCard, TopicCloud, etc.)
+  routes/                Hono sub-routers (home, episodes, chunks, topics, search, api)
+  services/              Domain logic (search, topic extraction, entity detection, n-grams, word stats)
+  jobs/                  Pipeline operations (ingest, refresh, queue-handler)
+  db/                    Database query functions (episodes, chunks, topics, word-stats, search)
+  data/                  Static data (known-entities.ts)
+  lib/                   Pure utilities (slug, date, text, html, query-parser, entity-aliases)
+  crawler/               Google Docs fetcher
+migrations/              D1 schema migrations (0001-0007)
+scripts/                 Manual operations (run-enrichment.sh)
+public/                  Static assets (CSS, favicon.svg, robots.txt)
 test/                    Fixtures and helpers
 docs/                    Architecture and lessons learned
 ```
@@ -170,9 +183,12 @@ docs/                    Architecture and lessons learned
 
 ## Key design decisions
 
-1. **SSR over SPA**: Full HTML responses for SEO. Client JS only for progressive enhancement (live search, reactive concordance).
+1. **SSR over SPA**: Full HTML responses for SEO. Client JS only for progressive enhancement.
 2. **No auth for content fetching**: Google Docs `/mobilebasic` URL works without auth for publicly shared docs.
-3. **Margin-based chunking**: Each `margin-left:36pt` list item is a standalone observation. Sub-points (72pt+) group with their parent.
-4. **Hybrid search**: FTS for keyword precision, vectors for semantic matching, merged with crossover boost.
+3. **Margin-based chunking**: Each `margin-left:36pt` list item is a standalone chunk. Sub-points (72pt+) group with their parent.
+4. **Hybrid search**: FTS for keyword precision, vectors for semantic matching, merged with crossover boost. Topic boost rewards thematic relevance.
 5. **Batched writes**: D1 operations in groups of 50 to stay within limits.
-6. **Tag extraction via TF-IDF**: Deterministic, no AI quota. Expanded stopword list filters generic words.
+6. **Three-layer topic extraction**: Curated entity list + heuristic capitalization detection + TF-IDF keywords. Noise filtered at insert time.
+7. **Corpus-level n-grams**: Bigrams and trigrams discovered across the full corpus, not per-chunk. Phrase subsumption suppresses component words.
+8. **Queue-based parallelization**: Slow enrichment steps (n-gram assignment, related_slugs) dispatched to ENRICHMENT_QUEUE for parallel processing.
+9. **Wide event logging**: Canonical log lines for cron (`refresh` event) and queue (`queue_batch` event) with per-step timing.

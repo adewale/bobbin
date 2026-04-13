@@ -47,13 +47,13 @@ After all chunks are enriched:
 | Entity kind | Set by UPDATE after INSERT OR IGNORE | Set during INSERT + UPDATE fallback |
 | HTML decode | Inconsistent (raw vs decoded) | Always decoded before any processing |
 
-## Issues to fix
+## Issues fixed (all resolved)
 
-1. Pass corpus IDF stats to extractTopics during enrichment
-2. Remove per-chunk bigrams from extractTopics (corpus n-grams are better)
-3. Add isNoiseTopic check before INSERT in enrichChunks
-4. Fix extractKnownEntities to use decoded text
-5. Expand NOISE_WORDS with ~60 more generic words
-6. Add missing entities (Dario Amodei, Satya Nadella, 5 more people)
-7. Unify tokenization (share between TF-IDF and word stats)
-8. Add substring phrase dedup in finalizeEnrichment
+1. **Pass corpus IDF stats to extractTopics** — done: `enrichChunks` calls `computeCorpusStats` and passes it to `extractTopics`
+2. **Remove per-chunk bigrams** — done: corpus-level n-gram extraction in `finalizeEnrichment` replaces per-chunk `extractBigrams`
+3. **Add isNoiseTopic check at INSERT time** — done: `enrichChunks` filters noise before insertion (entities exempt)
+4. **Fix extractKnownEntities to use decoded text** — done: both `extractKnownEntities` and `extractEntities` now use `clean` (decoded) text
+5. **Expand NOISE_WORDS** — done: ~140 entries covering generic nouns, verbs, adjectives
+6. **Add missing entities** — done: known-entities list expanded
+7. **Unify tokenization** — done: single `decodeHtmlEntities` call, shared tokenization path
+8. **Add substring phrase dedup** — done: handled in `finalizeEnrichment`

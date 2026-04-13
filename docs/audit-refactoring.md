@@ -1,5 +1,7 @@
 # Bobbin Refactoring Audit
 
+**Date:** 2026-04-12
+
 ## 1. Duplicated Code
 
 ### 1a. `batchExec` -- 3 identical copies (HIGH)

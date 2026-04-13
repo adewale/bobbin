@@ -1,5 +1,7 @@
 Enrichment v3: Self-Healing Fixes — Before/After
 
+> **Historical snapshot (2026-04-12).** This document records the state of the pipeline at the time v3 self-healing was deployed. Metrics reflect the database at that point and may not match current values.
+
 ## Metrics
 
 | Metric | Before | After | Change |

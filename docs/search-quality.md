@@ -24,7 +24,7 @@ Search Quality
 - Demonstrates that crossover bonus correctly rewards results found by both FTS and vector search
 
 ### Topic filter and date filter
-- `topic:economics` narrows results to economics-tagged chunks
+- `topic:economics` narrows results to chunks assigned to the economics topic
 - `after:2025-02-01` excludes earlier episodes
 
 ## Bugs found and fixed
