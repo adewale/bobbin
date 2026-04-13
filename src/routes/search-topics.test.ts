@@ -51,6 +51,38 @@ describe("GET /api/search", () => {
   });
 });
 
+describe("Entity alias expansion in search", () => {
+  beforeEach(async () => {
+    // Add a chunk mentioning a known entity by alias
+    await env.DB.prepare(
+      "INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (1, 'willison-chunk', 'Simon Willison post', 'Simon Willison shared a great insight about LLMs.', 'Simon Willison shared a great insight about LLMs.', 1)"
+    ).run();
+  });
+
+  it("searching a known entity name returns results (not broken by OR expansion)", async () => {
+    const res = await SELF.fetch("http://localhost/search?q=simon+willison");
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    // Must find the chunk — the alias expansion must not break FTS5
+    expect(html).toContain("Simon Willison");
+    expect(html).not.toContain("0 result");
+  });
+
+  it("searching an entity alias returns results via expansion", async () => {
+    const res = await SELF.fetch("http://localhost/search?q=willison");
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("Simon Willison");
+  });
+
+  it("quoted phrase search works for multi-word names", async () => {
+    const res = await SELF.fetch('http://localhost/search?q=%22simon+willison%22');
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("Simon Willison");
+  });
+});
+
 describe("GET /topics", () => {
   it("returns 200 with topic list", async () => {
     const res = await SELF.fetch("http://localhost/topics");
