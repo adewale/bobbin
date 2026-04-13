@@ -1,8 +1,23 @@
 import { STOPWORDS } from "../lib/text";
 
+/** Additional words that produce garbage n-gram phrases */
+const NGRAM_STOP = new Set([
+  ...STOPWORDS,
+  "how", "what", "that", "this", "just", "very", "also", "still", "already",
+  "allow", "make", "take", "give", "come", "going", "want", "need", "think",
+  "know", "look", "find", "seem", "feel", "tell", "show", "keep", "help",
+  "really", "thing", "things", "something", "everything", "nothing",
+  "matter", "figure", "point", "kind", "sort",
+]);
+
+function isStopWord(w: string): boolean {
+  return NGRAM_STOP.has(w);
+}
+
 /**
  * Extract significant bigrams and trigrams from a corpus of texts.
  * Returns phrases that appear in multiple documents with frequency above threshold.
+ * All words in a phrase are checked against stopwords (not just first/last).
  */
 export function extractCorpusNgrams(
   texts: string[],
@@ -15,15 +30,15 @@ export function extractCorpusNgrams(
   for (let docIdx = 0; docIdx < texts.length; docIdx++) {
     const words = texts[docIdx]
       .toLowerCase()
+      .replace(/[\u2018\u2019\u201C\u201D]/g, "'") // normalize curly quotes
       .replace(/[^a-z0-9\s'-]/g, " ")
       .split(/\s+/)
-      .filter(w => w.length >= 3);
+      .filter(w => w.length >= 3 && !isStopWord(w));
 
     const seenInDoc = new Set<string>();
 
     // Bigrams
     for (let i = 0; i < words.length - 1; i++) {
-      if (STOPWORDS.has(words[i]) || STOPWORDS.has(words[i + 1])) continue;
       const bigram = `${words[i]} ${words[i + 1]}`;
       if (seenInDoc.has(bigram)) continue;
       seenInDoc.add(bigram);
@@ -32,9 +47,8 @@ export function extractCorpusNgrams(
       phraseDocs.get(bigram)!.add(docIdx);
     }
 
-    // Trigrams
+    // Trigrams (only if all 3 words passed the filter above)
     for (let i = 0; i < words.length - 2; i++) {
-      if (STOPWORDS.has(words[i]) || STOPWORDS.has(words[i + 2])) continue;
       const trigram = `${words[i]} ${words[i + 1]} ${words[i + 2]}`;
       if (seenInDoc.has(trigram)) continue;
       seenInDoc.add(trigram);

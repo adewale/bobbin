@@ -87,22 +87,31 @@ export async function enrichChunks(
   if (!chunks.length) return { chunksProcessed: 0 };
 
   // Collect all topics
-  const uniqueTopics = new Map<string, string>();
+  const uniqueTopics = new Map<string, { name: string; kind: string }>();
   const chunkTopicPairs: { chunkId: number; episodeId: number; topicSlug: string }[] = [];
 
   for (const chunk of chunks) {
     const topics = extractTopics(chunk.content_plain);
     for (const topic of topics) {
-      uniqueTopics.set(topic.slug, topic.name);
+      uniqueTopics.set(topic.slug, { name: topic.name, kind: topic.kind || "concept" });
       chunkTopicPairs.push({ chunkId: chunk.id, episodeId: chunk.episode_id, topicSlug: topic.slug });
     }
   }
 
   // Batch: insert unique topics
-  const topicInserts = [...uniqueTopics.entries()].map(([slug, name]) =>
+  const topicInserts = [...uniqueTopics.entries()].map(([slug, { name }]) =>
     db.prepare("INSERT OR IGNORE INTO topics (name, slug) VALUES (?, ?)").bind(name, slug)
   );
   await batchExec(db, topicInserts);
+
+  // Set kind for entity topics (handles INSERT OR IGNORE conflict where entity exists with kind='concept')
+  const entitySlugs = [...uniqueTopics.entries()].filter(([, v]) => v.kind === "entity").map(([slug]) => slug);
+  if (entitySlugs.length > 0) {
+    const entityUpdates = entitySlugs.map(slug =>
+      db.prepare("UPDATE topics SET kind = 'entity' WHERE slug = ? AND kind != 'entity'").bind(slug)
+    );
+    await batchExec(db, entityUpdates);
+  }
 
   // Batch: chunk_topics
   const ctStmts: D1PreparedStatement[] = [];
