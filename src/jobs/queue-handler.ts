@@ -10,6 +10,7 @@
 import { slugify } from "../lib/slug";
 import { batchExec } from "../lib/db";
 import { extractCorpusNgrams } from "../services/ngram-extractor";
+import { extractPMIPhrases } from "../services/pmi-phrases";
 import { extractTopics, type CorpusStats } from "../services/topic-extractor";
 import { tokenizeForWordStats } from "../services/word-stats";
 import { markChunksEnriched } from "../db/ingestion";
@@ -71,25 +72,37 @@ async function handleAssignNgram(db: D1Database, phrase: string) {
 }
 
 async function handleExtractNgrams(db: D1Database, queue: Queue) {
-  // Load chunks in batches to avoid memory limits
   const count = await db.prepare("SELECT COUNT(*) as c FROM chunks").first<{ c: number }>();
   if (!count || count.c < 10) return;
 
-  const BATCH = 500;
-  const allTexts: string[] = [];
-  for (let offset = 0; offset < count.c; offset += BATCH) {
-    const batch = await db.prepare(
-      "SELECT content_plain FROM chunks LIMIT ? OFFSET ?"
-    ).bind(BATCH, offset).all<{ content_plain: string }>();
-    allTexts.push(...batch.results.map(c => c.content_plain));
+  // Try PMI-based extraction first (uses chunk_words, no text loading needed)
+  const chunkWordsCount = await db.prepare(
+    "SELECT COUNT(*) as c FROM chunk_words"
+  ).first<{ c: number }>();
+
+  let phrases: string[] = [];
+
+  if (chunkWordsCount && chunkWordsCount.c >= 20) {
+    const pmiPhrases = await extractPMIPhrases(db, 3.0, 5, 100);
+    phrases = pmiPhrases.map(p => p.phrase);
+  } else {
+    // Fall back to raw n-gram extraction from text
+    const BATCH = 500;
+    const allTexts: string[] = [];
+    for (let offset = 0; offset < count.c; offset += BATCH) {
+      const batch = await db.prepare(
+        "SELECT content_plain FROM chunks LIMIT ? OFFSET ?"
+      ).bind(BATCH, offset).all<{ content_plain: string }>();
+      allTexts.push(...batch.results.map(c => c.content_plain));
+    }
+    const ngrams = extractCorpusNgrams(allTexts, 5, 3).slice(0, 100);
+    phrases = ngrams.map(ng => ng.phrase);
   }
 
-  const ngrams = extractCorpusNgrams(allTexts, 5, 3).slice(0, 100);
-
-  // Dispatch each n-gram assignment as a separate message
-  if (ngrams.length > 0) {
-    const messages = ngrams.map(ng => ({
-      body: { type: "assign-ngram" as const, phrase: ng.phrase }
+  // Dispatch each phrase assignment as a separate message
+  if (phrases.length > 0) {
+    const messages = phrases.map(phrase => ({
+      body: { type: "assign-ngram" as const, phrase }
     }));
     for (let i = 0; i < messages.length; i += 25) {
       await queue.sendBatch(messages.slice(i, i + 25));

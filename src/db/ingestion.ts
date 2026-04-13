@@ -22,21 +22,29 @@ export async function failIngestionLog(db: D1Database, logId: number, error: str
 }
 
 export async function getUnenrichedChunks(db: D1Database, limit: number) {
+  // Also pick up chunks with outdated enrichment_version
+  const { CURRENT_ENRICHMENT_VERSION } = await import("../jobs/ingest");
   const result = await db.prepare(
     `SELECT c.id, c.episode_id, c.content_plain
      FROM chunks c
-     WHERE c.enriched = 0
+     WHERE c.enriched = 0 OR c.enrichment_version < ?
      LIMIT ?`
-  ).bind(limit).all();
+  ).bind(CURRENT_ENRICHMENT_VERSION, limit).all();
   return result.results as any[];
 }
 
 export async function markChunksEnriched(db: D1Database, chunkIds: number[]) {
   if (!chunkIds.length) return;
-  const placeholders = chunkIds.map(() => "?").join(",");
-  await db.prepare(
-    `UPDATE chunks SET enriched = 1 WHERE id IN (${placeholders})`
-  ).bind(...chunkIds).run();
+  const { CURRENT_ENRICHMENT_VERSION } = await import("../jobs/ingest");
+  // Batch to avoid SQLite variable limit (max ~99 per statement, leave room for version param)
+  const BATCH_SIZE = 90;
+  for (let i = 0; i < chunkIds.length; i += BATCH_SIZE) {
+    const batch = chunkIds.slice(i, i + BATCH_SIZE);
+    const placeholders = batch.map(() => "?").join(",");
+    await db.prepare(
+      `UPDATE chunks SET enriched = 1, enrichment_version = ? WHERE id IN (${placeholders})`
+    ).bind(CURRENT_ENRICHMENT_VERSION, ...batch).run();
+  }
 }
 
 export async function resetEnrichmentFlags(db: D1Database) {
@@ -44,8 +52,9 @@ export async function resetEnrichmentFlags(db: D1Database) {
 }
 
 export async function isEnrichmentDone(db: D1Database): Promise<boolean> {
+  const { CURRENT_ENRICHMENT_VERSION } = await import("../jobs/ingest");
   const result = await db.prepare(
-    "SELECT COUNT(*) as c FROM chunks WHERE enriched = 0"
-  ).first<{ c: number }>();
+    "SELECT COUNT(*) as c FROM chunks WHERE enriched = 0 OR enrichment_version < ?"
+  ).bind(CURRENT_ENRICHMENT_VERSION).first<{ c: number }>();
   return (result?.c || 0) === 0;
 }

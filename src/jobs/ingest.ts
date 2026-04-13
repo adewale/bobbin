@@ -5,11 +5,15 @@ import { batchExec } from "../lib/db";
 import { extractTopics, computeCorpusStats, type CorpusStats } from "../services/topic-extractor";
 import { tokenizeForWordStats } from "../services/word-stats";
 import { extractCorpusNgrams } from "../services/ngram-extractor";
+import { extractPMIPhrases } from "../services/pmi-phrases";
 import { isNoiseTopic } from "../services/topic-quality";
 import { generateEmbeddings } from "../services/embeddings";
 import { getExistingDatesForSource, getSourceTag } from "../db/sources";
 import { getUnenrichedChunks, markChunksEnriched, isEnrichmentDone } from "../db/ingestion";
 import type { Bindings, ParsedEpisode } from "../types";
+
+/** Current enrichment algorithm version. Bump to re-enrich all chunks. */
+export const CURRENT_ENRICHMENT_VERSION = 1;
 
 /**
  * Phase 1: Fast insert — episodes and chunks only.
@@ -426,22 +430,77 @@ async function mergeCoOccurringTopics(db: D1Database) {
 
 /**
  * Corpus-level n-gram extraction.
- * Discovers phrase topics (bigrams/trigrams) that appear frequently across chunks.
+ * Uses PMI (Pointwise Mutual Information) from chunk_words when available,
+ * falling back to raw bigram counting otherwise.
  * Creates topics with kind='phrase' and assigns them to chunks containing the phrase.
  */
 async function extractAndStoreNgrams(db: D1Database) {
-  // Get all chunk texts
+  // Check if chunk_words has enough data for PMI
+  const chunkWordsCount = await db.prepare(
+    "SELECT COUNT(*) as c FROM chunk_words"
+  ).first<{ c: number }>();
+
+  if (chunkWordsCount && chunkWordsCount.c >= 20) {
+    // Use PMI-based extraction from chunk_words
+    await extractAndStoreNgramsPMI(db);
+  } else {
+    // Fall back to raw n-gram extraction
+    await extractAndStoreNgramsRaw(db);
+  }
+}
+
+/**
+ * PMI-based phrase extraction from chunk_words.
+ * Replaces raw bigram counting with statistical significance testing.
+ */
+async function extractAndStoreNgramsPMI(db: D1Database) {
+  const pmiPhrases = await extractPMIPhrases(db, 3.0, 5, 100);
+
+  for (const p of pmiPhrases) {
+    const slug = slugify(p.phrase);
+    if (!slug || slug.length < 3) continue;
+
+    await db.prepare(
+      "INSERT OR IGNORE INTO topics (name, slug, kind) VALUES (?, ?, 'phrase')"
+    ).bind(p.phrase, slug).run();
+
+    const topic = await db.prepare(
+      "SELECT id FROM topics WHERE slug = ?"
+    ).bind(slug).first<{ id: number }>();
+    if (!topic) continue;
+
+    // Find chunks containing this phrase and assign the topic
+    const phrasePattern = `%${p.phrase}%`;
+    const matchingChunks = await db.prepare(
+      "SELECT id FROM chunks WHERE LOWER(content_plain) LIKE ? ESCAPE '\\'"
+    ).bind(phrasePattern).all<{ id: number }>();
+
+    const stmts = matchingChunks.results.map(c =>
+      db.prepare("INSERT OR IGNORE INTO chunk_topics (chunk_id, topic_id) VALUES (?, ?)")
+        .bind(c.id, topic.id)
+    );
+    await batchExec(db, stmts);
+
+    await db.prepare(
+      "UPDATE topics SET usage_count = (SELECT COUNT(*) FROM chunk_topics WHERE topic_id = ?) WHERE id = ?"
+    ).bind(topic.id, topic.id).run();
+  }
+}
+
+/**
+ * Raw n-gram extraction fallback (used when chunk_words is sparse).
+ */
+async function extractAndStoreNgramsRaw(db: D1Database) {
   const allChunks = await db.prepare(
     "SELECT id, content_plain FROM chunks"
   ).all<{ id: number; content_plain: string }>();
 
-  if (allChunks.results.length < 10) return; // not enough data for meaningful n-grams
+  if (allChunks.results.length < 10) return;
 
   const texts = allChunks.results.map(c => c.content_plain);
-  const ngrams = extractCorpusNgrams(texts, 5, 3); // min 5 occurrences, min 3 documents
+  const ngrams = extractCorpusNgrams(texts, 5, 3);
 
-  // Create phrase topics for discovered n-grams
-  const topNgrams = ngrams.slice(0, 100); // limit to top 100
+  const topNgrams = ngrams.slice(0, 100);
   for (const ng of topNgrams) {
     const slug = slugify(ng.phrase);
     if (!slug || slug.length < 3) continue;
@@ -455,7 +514,6 @@ async function extractAndStoreNgrams(db: D1Database) {
     ).bind(slug).first<{ id: number }>();
     if (!topic) continue;
 
-    // Find chunks containing this phrase and assign the topic
     const phrasePattern = `%${ng.phrase}%`;
     const matchingChunks = await db.prepare(
       "SELECT id FROM chunks WHERE LOWER(content_plain) LIKE ? ESCAPE '\\'"
@@ -467,7 +525,6 @@ async function extractAndStoreNgrams(db: D1Database) {
     );
     await batchExec(db, stmts);
 
-    // Update usage count
     await db.prepare(
       "UPDATE topics SET usage_count = (SELECT COUNT(*) FROM chunk_topics WHERE topic_id = ?) WHERE id = ?"
     ).bind(topic.id, topic.id).run();

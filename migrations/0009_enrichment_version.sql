@@ -1,0 +1,1 @@
+ALTER TABLE chunks ADD COLUMN enrichment_version INTEGER NOT NULL DEFAULT 0;
