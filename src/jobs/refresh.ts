@@ -1,4 +1,4 @@
-import { fetchGoogleDoc, parseHtmlDocument, ingestEpisodesOnly, enrichChunks } from "../crawler";
+import { fetchGoogleDoc, parseHtmlDocument, ingestEpisodesOnly, enrichAllChunks, finalizeEnrichment } from "../crawler";
 import { ensureSource, getSourceByDocId, updateSourceFetchedAt } from "../db/sources";
 import { createIngestionLog, completeIngestionLog, failIngestionLog } from "../db/ingestion";
 import type { Bindings } from "../types";
@@ -17,9 +17,9 @@ export async function runRefresh(env: Bindings): Promise<void> {
     const episodes = parseHtmlDocument(fetched.html);
     const result = await ingestEpisodesOnly(env.DB, source.id, episodes);
 
-    if (result.chunksAdded > 0) {
-      await enrichChunks(env.DB, result.chunksAdded + 10);
-    }
+    // Enrich new chunks (with time budget) + full finalization
+    await enrichAllChunks(env.DB, 200, 120000); // 2 min for chunk enrichment
+    await finalizeEnrichment(env.DB); // remaining time for finalization
 
     await updateSourceFetchedAt(env.DB, source.id);
     await completeIngestionLog(env.DB, logId, result.episodesAdded, result.chunksAdded);

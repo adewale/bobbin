@@ -225,6 +225,63 @@ export async function finalizeEnrichment(db: D1Database): Promise<void> {
       "UPDATE topics SET related_slugs = ? WHERE id = ?"
     ).bind(slugs, topic.id).run();
   }
+
+  // === Self-healing cleanup steps ===
+
+  // Issue 1: Validate entity assignments — remove false matches
+  const entities = await db.prepare(
+    "SELECT id, name FROM topics WHERE kind = 'entity' AND usage_count > 0"
+  ).all<{ id: number; name: string }>();
+  for (const entity of entities.results) {
+    await db.prepare(
+      `DELETE FROM chunk_topics WHERE topic_id = ? AND chunk_id NOT IN (
+        SELECT id FROM chunks WHERE LOWER(content_plain) LIKE ?
+      )`
+    ).bind(entity.id, `%${entity.name.toLowerCase()}%`).run();
+  }
+
+  // Issue 5: Remove chunk_topics for noise-word topics
+  const noiseCandidates = await db.prepare(
+    "SELECT id, name, kind FROM topics WHERE usage_count > 0"
+  ).all<{ id: number; name: string; kind: string }>();
+  const noiseIds = noiseCandidates.results
+    .filter(t => t.kind !== "entity" && isNoiseTopic(t.name))
+    .map(t => t.id);
+  if (noiseIds.length > 0) {
+    for (const id of noiseIds) {
+      await db.prepare("DELETE FROM chunk_topics WHERE topic_id = ?").bind(id).run();
+      await db.prepare("DELETE FROM episode_topics WHERE topic_id = ?").bind(id).run();
+    }
+  }
+
+  // Recalculate usage counts after cleanup
+  await db.prepare(
+    "UPDATE topics SET usage_count = (SELECT COUNT(*) FROM chunk_topics WHERE topic_id = topics.id)"
+  ).run();
+
+  // Issue 3: Prune topics with usage <= 1 (single-occurrence noise)
+  await db.prepare("DELETE FROM chunk_topics WHERE topic_id IN (SELECT id FROM topics WHERE usage_count <= 1)").run();
+  await db.prepare("DELETE FROM episode_topics WHERE topic_id IN (SELECT id FROM topics WHERE usage_count <= 1)").run();
+  await db.prepare("UPDATE topics SET usage_count = 0 WHERE usage_count <= 1").run();
+}
+
+/**
+ * Enrich all unenriched chunks within a time budget.
+ * Loops internally — no need for the caller to loop.
+ */
+export async function enrichAllChunks(db: D1Database, batchSize = 100, maxMs = 25000): Promise<number> {
+  let total = 0;
+  let lastProcessed = -1;
+  const start = Date.now();
+  while (Date.now() - start < maxMs) {
+    const result = await enrichChunks(db, batchSize);
+    if (result.chunksProcessed === 0) break;
+    // Prevent infinite loop: if we processed the same count twice, some chunks can't be enriched
+    if (result.chunksProcessed === lastProcessed) break;
+    lastProcessed = result.chunksProcessed;
+    total += result.chunksProcessed;
+  }
+  return total;
 }
 
 /**

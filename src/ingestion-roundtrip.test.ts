@@ -129,7 +129,8 @@ describe("Ingestion roundtrip: no data loss", () => {
     const testEnv = { ...env, AI: null as any, VECTORIZE: null as any };
     await ingestParsedEpisodes(testEnv, 1, parsed);
 
-    const topics = await env.DB.prepare("SELECT * FROM topics").all();
+    const topics = await env.DB.prepare("SELECT * FROM topics WHERE usage_count > 0").all();
+    expect(topics.results.length).toBeGreaterThan(0);
     for (const topic of topics.results as any[]) {
       expect(topic.usage_count).toBeGreaterThan(0);
       expect(topic.name.length).toBeGreaterThan(0);
