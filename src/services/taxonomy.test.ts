@@ -31,6 +31,38 @@ describe("extractEntities taxonomy", () => {
   });
 });
 
+describe("extractEntities does NOT classify sentence-start words as entities", () => {
+  it("does not return common words capitalised at sentence start", () => {
+    const text = "Fascinating discoveries were made. Suddenly the market shifted. Previously this was impossible.";
+    const results = extractEntities(text);
+    const names = results.map(r => r.name);
+    // These are ordinary words at sentence start, NOT entities
+    expect(names).not.toContain("fascinating");
+    expect(names).not.toContain("suddenly");
+    expect(names).not.toContain("previously");
+  });
+
+  it("DOES return genuine mid-sentence proper nouns", () => {
+    const text = "The team at OpenAI built something. Then Anthropic responded quickly.";
+    const results = extractEntities(text);
+    const names = results.map(r => r.name);
+    // "OpenAI" is mid-sentence capitalised — genuine entity
+    expect(names).toContain("openai");
+    // "Anthropic" starts a sentence but is a known proper noun
+    // The heuristic can't distinguish this without a dictionary,
+    // so we accept it may or may not appear
+  });
+
+  it("returns multi-word entities even at sentence start", () => {
+    // Multi-word capitalised sequences at sentence start ARE likely entities
+    const text = "Simon Willison wrote about it. Claude Code is impressive.";
+    const results = extractEntities(text);
+    const names = results.map(r => r.name);
+    expect(names).toContain("simon willison");
+    expect(names).toContain("claude code");
+  });
+});
+
 describe("extractTopics taxonomy", () => {
   it("includes heuristic entities with kind='entity' in results", () => {
     // Use a name NOT in the known entities list so it relies on heuristic detection

@@ -74,13 +74,16 @@ describe("Multi-word entity detection", () => {
     expect(names).not.toContain("Some will");
   });
 
-  it("detects product and company names", () => {
+  it("detects product and company names mid-sentence", () => {
     const entities = extractEntities(
-      "OpenAI released ChatGPT and it changed everything. Meta acquired Gizmo."
+      "The company OpenAI released ChatGPT and it changed everything. Then Meta acquired Gizmo."
     );
     const names = entities.map((e) => e.name);
-    expect(names).toContain("chatgpt");
+    // Mid-sentence capitalised words are detected as entities
     expect(names).toContain("openai");
+    expect(names).toContain("chatgpt");
+    // Sentence-start single words ("Then") are NOT detected — that's correct
+    expect(names).not.toContain("then");
   });
 
   it("entity topics are included in extractTopics output", () => {

@@ -145,9 +145,9 @@ export function extractEntities(text: string): TopicResult[] {
             slug: slugify(norm),
             kind: "entity",
           });
-        } else if (entityWords.length === 1 && !STOPWORDS.has(normalized) && !ENTITY_SKIP.has(normalized) && normalized.length > 3 && !seen.has(normalized)) {
-          // Single capitalized word — likely a product/company name
-          // Only include if it doesn't look like a common word
+        } else if (entityWords.length === 1 && !atSentenceStart && !STOPWORDS.has(normalized) && !ENTITY_SKIP.has(normalized) && normalized.length > 3 && !seen.has(normalized)) {
+          // Single capitalized word MID-SENTENCE — likely a product/company name
+          // Skip sentence-start words (just normal capitalisation, not entities)
           seen.add(normalized);
           const norm = normalizeTerm(entityName);
           entities.push({
