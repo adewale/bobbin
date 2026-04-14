@@ -88,9 +88,9 @@ describe("Document frequency quality gate (df≥5)", () => {
 
     await finalizeEnrichment(env.DB);
 
-    // rare-word (df=2) should be pruned
+    // rare-word (df=2) should be pruned (deleted by orphan cleanup)
     const rare = await env.DB.prepare("SELECT usage_count FROM topics WHERE slug = 'rare-word'").first<any>();
-    expect(rare.usage_count).toBe(0);
+    expect(!rare || rare.usage_count === 0).toBe(true);
 
     // popular (df=5) should survive
     const popular = await env.DB.prepare("SELECT usage_count FROM topics WHERE slug = 'popular'").first<any>();
@@ -140,8 +140,9 @@ describe("Noise cleanup (Issue 5)", () => {
     expect(softwareLinks!.c).toBe(0);
 
     // Usage counts should be 0
+    // Noise topics deleted by orphan cleanup
     const systemTopic = await env.DB.prepare("SELECT usage_count FROM topics WHERE slug = 'system'").first<any>();
-    expect(systemTopic.usage_count).toBe(0);
+    expect(!systemTopic || systemTopic.usage_count === 0).toBe(true);
   });
 
   it("does NOT remove entity assignments where chunk genuinely mentions the entity", async () => {

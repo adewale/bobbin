@@ -52,7 +52,8 @@ describe("df≥5 quality gate", () => {
     await finalizeEnrichment(env.DB);
 
     const rare = await env.DB.prepare("SELECT usage_count FROM topics WHERE slug = 'rare-topic'").first<any>();
-    expect(rare.usage_count).toBe(0); // pruned
+    // Pruned — either usage=0 or deleted by orphan cleanup
+    expect(!rare || rare.usage_count === 0).toBe(true);
 
     const common = await env.DB.prepare("SELECT usage_count FROM topics WHERE slug = 'common-topic'").first<any>();
     expect(common.usage_count).toBeGreaterThanOrEqual(5); // survived
@@ -97,7 +98,8 @@ describe("stem merge", () => {
     const aggregated = await env.DB.prepare("SELECT usage_count FROM topics WHERE slug = 'aggregated'").first<any>();
 
     expect(aggregate.usage_count).toBeGreaterThan(0); // survived
-    expect(aggregated.usage_count).toBe(0); // merged away
+    // Merged away — either usage=0 or deleted by orphan cleanup
+    expect(!aggregated || aggregated.usage_count === 0).toBe(true);
   });
 
   it("merges build + building → keep build", async () => {
@@ -115,7 +117,7 @@ describe("stem merge", () => {
     const building = await env.DB.prepare("SELECT usage_count FROM topics WHERE slug = 'building'").first<any>();
 
     expect(build.usage_count).toBeGreaterThan(0);
-    expect(building.usage_count).toBe(0);
+    expect(!building || building.usage_count === 0).toBe(true);
   });
 });
 
@@ -137,7 +139,9 @@ describe("similarity clustering", () => {
 
     // Longer phrase is the representative, shorter merges into it
     // OR shorter absorbs longer — either way one should be 0
-    const oneIsMerged = consumerAi.usage_count === 0 || consumerAiGoes.usage_count === 0;
+    // One should be merged away (deleted or usage=0)
+    const oneIsMerged = !consumerAi || consumerAi.usage_count === 0 ||
+                        !consumerAiGoes || consumerAiGoes.usage_count === 0;
     expect(oneIsMerged).toBe(true);
   });
 

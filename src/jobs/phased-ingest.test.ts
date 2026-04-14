@@ -159,14 +159,12 @@ describe("E2E: Phase 1 → Phase 2 produces same result as old pipeline", () => 
     // Verify everything exists
     const eps = await env.DB.prepare("SELECT COUNT(*) as c FROM episodes").first();
     const chunks = await env.DB.prepare("SELECT COUNT(*) as c FROM chunks").first();
-    // Topics are created during enrichment (before df≥5 quality gate)
-    const allTopics = await env.DB.prepare("SELECT COUNT(*) as c FROM topics").first();
+    // With YAKE + df≥5 + orphan deletion, small fixtures may have 0 surviving topics.
+    // Verify pipeline ran via word_stats (always populated during enrichment).
     const ws = await env.DB.prepare("SELECT COUNT(*) as c FROM word_stats").first();
 
     expect((eps as any).c).toBe(3);
     expect((chunks as any).c).toBeGreaterThan(0);
-    // Topics exist in DB (quality gate may prune their usage to 0 with small data)
-    expect((allTopics as any).c).toBeGreaterThan(0);
     expect((ws as any).c).toBeGreaterThan(0);
   });
 

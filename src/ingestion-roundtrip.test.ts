@@ -129,15 +129,11 @@ describe("Ingestion roundtrip: no data loss", () => {
     const testEnv = { ...env, AI: null as any, VECTORIZE: null as any };
     await ingestParsedEpisodes(testEnv, 1, parsed);
 
-    // With df≥5 quality gate, small test fixtures may have all topics pruned
-    // Verify topics were created (even if usage is 0 after quality gate)
-    const allTopics = await env.DB.prepare("SELECT * FROM topics").all();
-    expect(allTopics.results.length).toBeGreaterThan(0);
-    for (const topic of allTopics.results as any[]) {
-      expect(topic.name.length).toBeGreaterThan(0);
-      expect(topic.slug.length).toBeGreaterThan(0);
-    }
-    // Topics with usage > 0 should have valid counts
+    // With YAKE + df≥5 quality gate + orphan deletion, small fixtures may
+    // have zero surviving topics. Verify extraction ran via word_stats.
+    const wordStats = await env.DB.prepare("SELECT COUNT(*) as c FROM word_stats").first<{ c: number }>();
+    expect(wordStats!.c).toBeGreaterThan(0);
+    // Topics with usage > 0 (if any) should have valid counts
     const activeTopics = await env.DB.prepare("SELECT * FROM topics WHERE usage_count > 0").all();
     for (const topic of activeTopics.results as any[]) {
       expect(topic.usage_count).toBeGreaterThan(0);

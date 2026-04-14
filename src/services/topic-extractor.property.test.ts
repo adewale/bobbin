@@ -4,14 +4,16 @@ import { extractTopics } from "./topic-extractor";
 import { STOPWORDS } from "../lib/text";
 
 describe("extractTopics properties", () => {
-  it("never exceeds maxTopics", () => {
+  it("non-entity topics never exceed maxTopics", () => {
     fc.assert(
       fc.property(
         fc.string({ minLength: 10, maxLength: 500 }),
         fc.integer({ min: 1, max: 10 }),
         (text, maxTopics) => {
           const topics = extractTopics(text, maxTopics);
-          expect(topics.length).toBeLessThanOrEqual(maxTopics);
+          // Entities are exempt from the limit (always included)
+          const nonEntities = topics.filter(t => t.kind !== "entity");
+          expect(nonEntities.length).toBeLessThanOrEqual(maxTopics);
         }
       )
     );

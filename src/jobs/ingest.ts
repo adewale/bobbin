@@ -14,12 +14,12 @@ import type { Bindings, ParsedEpisode } from "../types";
 
 /** Current enrichment algorithm version. Bump to re-enrich all chunks.
  * v1: Initial TF-IDF extraction (maxTopics=15, no noise filter on heuristics)
- * v2: Quality improvements — maxTopics=10, noise filter on all sources,
- *     expanded NOISE_WORDS (+80 words), suffix heuristics, curly quote fix
- * v3: processChunkBatch deletes old chunk_topics before inserting new ones;
- *     finalization steps batched to stay under D1 CPU time limit
+ * v2: Quality improvements — maxTopics=10, noise filter on all sources
+ * v3: Batched finalization, clean old chunk_topics during re-enrichment
+ * v4: YAKE replaces TF-IDF (5 keyphrases/chunk), df≥5 gate, stem merge,
+ *     similarity clustering, orphan topic deletion
  */
-export const CURRENT_ENRICHMENT_VERSION = 3;
+export const CURRENT_ENRICHMENT_VERSION = 4;
 
 /**
  * Phase 1: Fast insert — episodes and chunks only.
@@ -319,42 +319,9 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
     }
   });
 
-  // Step 6: Deduplicate phrase pairs (BATCHED — not individual queries)
-  await runStep("phrase_dedup", steps, async () => {
-    // Only check topics that actually have usage — skip the 10,000+ dead topics
-    const phrasePairs = await db.prepare(
-      `SELECT t1.id as keep_id, t1.name as keep_name, t2.id as dupe_id, t2.name as dupe_name
-       FROM topics t1
-       JOIN topics t2 ON (
-         t2.name = t1.name || 's' OR
-         t2.name = t1.name || 'es' OR
-         t1.name = t2.name || 's' OR
-         t1.name = t2.name || 'es' OR
-         t2.name = REPLACE(t1.name, '''s ', ' ') OR
-         t1.name = REPLACE(t2.name, '''s ', ' ')
-       )
-       WHERE t1.id < t2.id AND t1.usage_count >= t2.usage_count
-         AND t1.usage_count > 0 AND t2.usage_count > 0`
-    ).all();
+  // Phrase dedup moved after quality gates (step 12+) where topic table is small
 
-    if (phrasePairs.results.length > 0) {
-      // Batch the dedup operations instead of individual queries per pair
-      const stmts: D1PreparedStatement[] = [];
-      for (const pair of phrasePairs.results as any[]) {
-        stmts.push(
-          db.prepare("UPDATE OR IGNORE chunk_topics SET topic_id = ? WHERE topic_id = ?")
-            .bind(pair.keep_id, pair.dupe_id),
-          db.prepare("DELETE FROM chunk_topics WHERE topic_id = ?").bind(pair.dupe_id),
-          db.prepare("DELETE FROM episode_topics WHERE topic_id = ?").bind(pair.dupe_id),
-          db.prepare("UPDATE topics SET usage_count = 0 WHERE id = ?").bind(pair.dupe_id),
-        );
-      }
-      await batchExec(db, stmts);
-    }
-    return `${phrasePairs.results.length} pairs merged`;
-  });
-
-  // Step 7: Precompute distinctiveness (batched)
+  // Step 6: Precompute distinctiveness (batched)
   await runStep("distinctiveness", steps, async () => {
     const topicCount = await db.prepare("SELECT MAX(id) as m FROM topics").first<{ m: number }>();
     const maxId = topicCount?.m || 0;
@@ -594,6 +561,60 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
         "UPDATE topics SET usage_count = (SELECT COUNT(*) FROM chunk_topics WHERE topic_id = topics.id) WHERE id > ? AND id <= ?"
       ).bind(start, start + BATCH).run();
     }
+  });
+
+  // Step 16: Delete orphan topics (usage=0, no chunk_topics) to prevent table bloat
+  // Without this, the topics table accumulates rows from every enrichment version
+  await runStep("delete_orphans", steps, async () => {
+    const orphanCount = await db.prepare(
+      "SELECT COUNT(*) as c FROM topics WHERE usage_count = 0 AND kind != 'entity'"
+    ).first<{ c: number }>();
+    const count = orphanCount?.c || 0;
+    if (count > 0) {
+      // Delete in batches to stay under D1 CPU limit
+      const BATCH = 500;
+      let deleted = 0;
+      while (deleted < count) {
+        const result = await db.prepare(
+          "DELETE FROM topics WHERE id IN (SELECT id FROM topics WHERE usage_count = 0 AND kind != 'entity' LIMIT ?)"
+        ).bind(BATCH).run();
+        deleted += result.meta.changes || 0;
+        if ((result.meta.changes || 0) === 0) break;
+      }
+      return `${deleted} orphan topics deleted`;
+    }
+    return "0 orphans";
+  });
+
+  // Step 17: Phrase dedup (moved here — after orphan deletion, topic table is small)
+  await runStep("phrase_dedup", steps, async () => {
+    const phrasePairs = await db.prepare(
+      `SELECT t1.id as keep_id, t2.id as dupe_id
+       FROM topics t1
+       JOIN topics t2 ON (
+         t2.name = t1.name || 's' OR
+         t2.name = t1.name || 'es' OR
+         t1.name = t2.name || 's' OR
+         t1.name = t2.name || 'es'
+       )
+       WHERE t1.id < t2.id AND t1.usage_count >= t2.usage_count
+         AND t1.usage_count > 0 AND t2.usage_count > 0`
+    ).all();
+
+    if (phrasePairs.results.length > 0) {
+      const stmts: D1PreparedStatement[] = [];
+      for (const pair of phrasePairs.results as any[]) {
+        stmts.push(
+          db.prepare("UPDATE OR IGNORE chunk_topics SET topic_id = ? WHERE topic_id = ?")
+            .bind(pair.keep_id, pair.dupe_id),
+          db.prepare("DELETE FROM chunk_topics WHERE topic_id = ?").bind(pair.dupe_id),
+          db.prepare("DELETE FROM episode_topics WHERE topic_id = ?").bind(pair.dupe_id),
+          db.prepare("UPDATE topics SET usage_count = 0 WHERE id = ?").bind(pair.dupe_id),
+        );
+      }
+      await batchExec(db, stmts);
+    }
+    return `${phrasePairs.results.length} pairs merged`;
   });
 
   result.total_ms = Date.now() - totalStart;

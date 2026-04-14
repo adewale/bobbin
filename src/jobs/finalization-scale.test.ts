@@ -39,7 +39,7 @@ beforeEach(async () => {
       : "";
     chunkStmts.push(
       env.DB.prepare(
-        "INSERT INTO chunks (episode_id, slug, title, content, content_plain, position, enriched, enrichment_version) VALUES (1, ?, ?, ?, ?, ?, 1, 3)"
+        "INSERT INTO chunks (episode_id, slug, title, content, content_plain, position, enriched, enrichment_version) VALUES (1, ?, ?, ?, ?, ?, 1, 4)"
       ).bind(
         `chunk-${i}`, `Chunk ${i}`,
         `Content for chunk ${i}.${entityMention}`,
