@@ -86,9 +86,10 @@ describe("isNoiseTopic", () => {
     expect(isNoiseTopic("ml")).toBe(true);
   });
 
-  it("does NOT filter short multi-word phrases", () => {
-    // "ai ml" has a space, so the < 4 char rule should not apply
-    expect(isNoiseTopic("ai ml")).toBe(false);
+  it("does NOT filter domain multi-word phrases", () => {
+    // Multi-word phrases with domain words are kept
+    expect(isNoiseTopic("prompt injection")).toBe(false);
+    expect(isNoiseTopic("claude code")).toBe(false);
   });
 
   it("allows 4-char words that are not in the noise set", () => {

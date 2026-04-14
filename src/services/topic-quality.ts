@@ -77,6 +77,10 @@ const NOISE_WORDS = new Set([
   "turn", "start", "stop", "open", "close", "pull", "hold",
   "real", "true", "clear", "high", "long", "good", "best",
   "full", "free", "easy", "fast", "huge", "able", "sure",
+  // Round 4: stragglers from local corpus analysis at full scale
+  "used", "life", "great", "answer", "impossible", "alway",
+  "always", "little", "become", "single", "sort", "sense",
+  "bring", "miss", "learn", "rest", "fact", "idea",
 ]);
 
 /**
@@ -91,6 +95,26 @@ export function isNoiseTopic(name: string): boolean {
   const lower = name.toLowerCase();
   if (NOISE_WORDS.has(lower)) return true;
   if (!lower.includes(" ") && lower.length < 4) return true;
+
+  // Multi-word phrases: reject if starts with generic pronoun/determiner
+  if (lower.includes(" ")) {
+    const words = lower.split(/\s+/);
+    const GENERIC_STARTERS = new Set([
+      "someone", "everyone", "something", "everything", "anyone", "anything",
+      "nobody", "nothing", "whoever", "whatever", "however",
+    ]);
+    if (GENERIC_STARTERS.has(words[0])) return true;
+    // Reject if ALL words are common verbs/adjectives (not domain nouns)
+    const FILLER_WORDS = new Set([
+      "make", "take", "give", "keep", "come", "show", "play", "move", "turn",
+      "need", "want", "like", "feel", "think", "know", "believe", "tell",
+      "good", "best", "real", "true", "hard", "fast", "high", "long",
+      "work", "thing", "place", "world", "point", "part",
+    ]);
+    const allFiller = words.every(w => FILLER_WORDS.has(w) || w.length < 4);
+    if (allFiller) return true;
+    return false;
+  }
 
   // Suffix heuristics for single words only — catch structural patterns
   // that the explicit list can't cover exhaustively

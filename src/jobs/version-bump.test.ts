@@ -40,9 +40,10 @@ describe("topic name data migration", () => {
   });
 
   it("fixes topic names with dangling apostrophes (actual production bug)", async () => {
-    // Production has names like "someone else'" — apostrophe char, not HTML entity
+    // Production has names like "goodhart' law" — apostrophe char, not HTML entity
+    // Use a name that won't be filtered by noise rules after fixing
     await env.DB.prepare(
-      "INSERT INTO topics (name, slug, usage_count) VALUES ('someone else''', 'someone-else', 10)"
+      "INSERT INTO topics (name, slug, usage_count) VALUES ('coasian'' floor', 'coasian-floor', 10)"
     ).run();
     for (let i = 1; i <= 5; i++) {
       await env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (?, 1)").bind(i).run();
@@ -51,11 +52,11 @@ describe("topic name data migration", () => {
     await finalizeEnrichment(env.DB);
 
     const topic = await env.DB.prepare(
-      "SELECT name FROM topics WHERE usage_count > 0 AND name LIKE 'someone%'"
+      "SELECT name FROM topics WHERE name LIKE 'coasian%'"
     ).first<{ name: string }>();
     expect(topic).not.toBeNull();
     expect(topic!.name).not.toContain("'");
-    expect(topic!.name).toBe("someone else");
+    expect(topic!.name).toBe("coasian floor");
   });
 
   it("fixes goodhart' law → goodhart law (apostrophe mid-name)", async () => {
