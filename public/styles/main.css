@@ -143,7 +143,7 @@ a:hover { text-decoration: underline; }
 .topic-cloud { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 .topic-tier { margin: 1.5rem 0; }
 .topic-search-results { display: flex; flex-wrap: wrap; gap: 0.3rem; margin: 0.5rem 0; }
-.topic-tier h2 { font-family: var(--font-ui); font-size: 0.9rem; font-weight: 700; font-style: normal; margin-bottom: 0.5rem; }
+.topic-tier h2 { font-family: var(--font-ui); font-size: 0.85rem; font-weight: 600; font-style: normal; margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-light); }
 details.topic-tier summary { font-family: var(--font-ui); font-size: 0.85rem; color: var(--text-muted); cursor: pointer; margin-bottom: 0.5rem; }
 details.topic-tier .topic-cloud { margin-top: 0.5rem; }
 
@@ -189,7 +189,7 @@ details.topic-tier .topic-cloud { margin-top: 0.5rem; }
 /* === Word Stats === */
 .word-stats-table { width: 100%; border-collapse: collapse; font-family: var(--font-ui); font-size: 0.85rem; }
 .word-stats-table th, .word-stats-table td { padding: 0.4rem 0.6rem; text-align: left; border-bottom: 1px solid var(--border); }
-.word-stats-table th { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-light); font-weight: 600; }
+.word-stats-table th { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-light); font-weight: 600; }
 .word-stats-table a { text-decoration: none; }
 .word-stats-table td:first-child { font-weight: 600; }
 .word-stats-table td:nth-child(2), .word-stats-table td:nth-child(3) { font-variant-numeric: tabular-nums; color: var(--text-muted); }
@@ -197,7 +197,7 @@ details.topic-tier .topic-cloud { margin-top: 0.5rem; }
 /* === Tufte bar table === */
 .word-stats-bars { width: 100%; border-collapse: collapse; font-family: var(--font-ui); font-size: 0.85rem; }
 .word-stats-bars th, .word-stats-bars td { padding: 0.5rem 0.5rem; border-bottom: 1px solid var(--border); min-height: 2.75rem; }
-.word-stats-bars th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-light); font-weight: 600; text-align: left; }
+.word-stats-bars th { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-light); font-weight: 600; text-align: left; }
 .word-stats-bars .col-word { min-width: 8rem; }
 .word-stats-bars .col-bar { width: 40%; min-width: 100px; }
 .word-stats-bars .col-num { width: 4rem; text-align: right; font-variant-numeric: tabular-nums; color: var(--text-muted); font-size: 0.8rem; }
@@ -237,7 +237,7 @@ details.topic-tier .topic-cloud { margin-top: 0.5rem; }
 .word-stats-sort a { padding: 0.4rem 0.7rem; border: 1px solid var(--border); border-radius: 3px; text-decoration: none; color: var(--text-muted); line-height: 1; }
 .word-stats-sort a.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 .word-stats-sort a:hover { border-color: var(--accent); }
-.sip-badge { display: inline-block; margin-left: 0.3rem; padding: 0.05rem 0.3rem; font-size: 0.6rem; font-family: var(--font-ui); font-weight: 700; background: var(--accent-light); color: var(--accent); border-radius: 2px; vertical-align: middle; letter-spacing: 0.05em; }
+.sip-badge { display: inline-block; margin-left: 0.3rem; padding: 0.05rem 0.3rem; font-size: 0.6rem; font-family: var(--font-ui); font-weight: 600; background: var(--accent-light); color: var(--accent); border-radius: 2px; vertical-align: middle; letter-spacing: 0.05em; }
 
 .word-stats-entry { padding: 1rem 0; border-bottom: 1px solid var(--border); }
 .word-stats-entry h2 { font-family: var(--font-ui); font-weight: 600; font-size: 0.95rem; font-style: normal; }
@@ -318,7 +318,7 @@ mark { background: color-mix(in srgb, var(--accent-light) 60%, transparent); col
 .browse-episodes a { font-family: var(--font-ui); font-size: 0.88rem; color: var(--text); text-decoration: none; }
 .browse-episodes a:hover { color: var(--accent); }
 .browse-episodes .meta { font-size: 0.72rem; font-family: var(--font-ui); color: var(--text-light); white-space: nowrap; }
-.format-badge { display: inline-block; padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 0.65rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; margin-left: 0.35rem; }
+.format-badge { display: inline-block; padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 0.65rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-left: 0.35rem; }
 .format-badge.essay { background: var(--accent-light); color: var(--accent); }
 
 /* === Sparkline === */
@@ -331,7 +331,7 @@ mark { background: color-mix(in srgb, var(--accent-light) 60%, transparent); col
 .word-timeline h2 { font-family: var(--font-ui); font-size: 0.85rem; font-weight: 600; margin-bottom: 0.25rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-light); }
 
 /* === Topic detail header === */
-.topic-header-stats { font-family: var(--font-ui); font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.25rem; }
+.topic-header-stats { font-family: var(--font-ui); font-size: 0.85rem; color: var(--text-light); margin-bottom: 0.25rem; }
 .topic-mentions { font-variant-numeric: tabular-nums; }
 .topic-distinctiveness { font-family: var(--font-ui); font-size: 0.78rem; color: var(--text-light); margin-bottom: 0.75rem; }
 .topic-related { font-family: var(--font-ui); font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem; }
@@ -351,7 +351,7 @@ mark { background: color-mix(in srgb, var(--accent-light) 60%, transparent); col
 .ep-density-count { font-variant-numeric: tabular-nums; color: var(--text-light); min-width: 1.5rem; text-align: right; }
 
 .topic-diff-section { margin: 1rem 0; }
-.topic-diff-section summary { font-family: var(--font-ui); font-size: 0.85rem; font-weight: 600; color: var(--text-muted); cursor: pointer; padding: 0.5rem 0; }
+.topic-diff-section summary { font-family: var(--font-ui); font-size: 0.85rem; font-weight: 600; color: var(--text-light); cursor: pointer; padding: 0.5rem 0; }
 .topic-diff-section .diff-view { padding-left: 1rem; border-left: 2px solid var(--accent); margin-top: 0.5rem; }
 .topic-diff-section .diff-entry { padding: 0.3rem 0; display: flex; gap: 0.5rem; align-items: baseline; font-size: 0.85rem; }
 .topic-diff-section .diff-date time { font-family: var(--font-ui); font-size: 0.75rem; color: var(--text-light); font-variant-numeric: tabular-nums; }
@@ -401,7 +401,7 @@ mark { background: color-mix(in srgb, var(--accent-light) 60%, transparent); col
 
 /* === KWIC table === */
 .topic-kwic { margin: 1.5rem 0; }
-.topic-kwic h2 { font-family: var(--font-ui); font-size: 0.9rem; font-weight: 600; font-style: normal; margin-bottom: 0.5rem; }
+.topic-kwic h2 { font-family: var(--font-ui); font-size: 0.85rem; font-weight: 600; font-style: normal; margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-light); }
 .kwic-table { width: 100%; font-family: var(--font-mono); font-size: 0.78rem; line-height: 1.6; border-collapse: collapse; }
 .kwic-table td { padding: 0.15rem 0.3rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 20rem; }
 .kwic-left { text-align: right; color: var(--text-muted); }
