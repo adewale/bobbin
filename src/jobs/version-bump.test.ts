@@ -23,6 +23,58 @@ describe("enrichment version", () => {
   });
 });
 
+describe("topic name data migration", () => {
+  beforeEach(async () => {
+    await applyTestMigrations(env.DB);
+    await env.DB.prepare("INSERT INTO sources (google_doc_id, title) VALUES ('test', 'Test')").run();
+    await env.DB.prepare(
+      "INSERT INTO episodes (source_id, slug, title, published_date, year, month, day, chunk_count) VALUES (1, '2025-01-06', 'Ep 1', '2025-01-06', 2025, 1, 6, 5)"
+    ).run();
+    const stmts: D1PreparedStatement[] = [];
+    for (let i = 0; i < 5; i++) {
+      stmts.push(env.DB.prepare(
+        "INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (1, ?, ?, 'x', 'x', ?)"
+      ).bind(`c-${i}`, `C ${i}`, i));
+    }
+    await batchExec(env.DB, stmts);
+  });
+
+  it("fixes topic names containing &#39; HTML entities", async () => {
+    await env.DB.prepare(
+      "INSERT INTO topics (name, slug, usage_count) VALUES ('someone else&#39;', 'someone-else-39', 10)"
+    ).run();
+    for (let i = 1; i <= 5; i++) {
+      await env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (?, 1)").bind(i).run();
+    }
+
+    await finalizeEnrichment(env.DB);
+
+    const topic = await env.DB.prepare(
+      "SELECT name FROM topics WHERE usage_count > 0 AND name LIKE 'someone%'"
+    ).first<{ name: string }>();
+    expect(topic).not.toBeNull();
+    expect(topic!.name).not.toContain("&#39;");
+    expect(topic!.name).not.toContain("&#");
+  });
+
+  it("fixes goodhart&#39; law → goodhart law", async () => {
+    await env.DB.prepare(
+      "INSERT INTO topics (name, slug, usage_count) VALUES ('goodhart&#39; law', 'goodhart-39-law', 10)"
+    ).run();
+    for (let i = 1; i <= 5; i++) {
+      await env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (?, 1)").bind(i).run();
+    }
+
+    await finalizeEnrichment(env.DB);
+
+    const topic = await env.DB.prepare(
+      "SELECT name FROM topics WHERE usage_count > 0 AND name LIKE 'goodhart%'"
+    ).first<{ name: string }>();
+    expect(topic).not.toBeNull();
+    expect(topic!.name).toBe("goodhart law");
+  });
+});
+
 describe("orphan topic cleanup in finalization", () => {
   beforeEach(async () => {
     await applyTestMigrations(env.DB);

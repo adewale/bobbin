@@ -252,19 +252,42 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
     total_ms: 0,
   };
 
-  // Step 0: Early orphan purge — delete topics with no chunk_topics links
-  // This reduces the table BEFORE expensive correlated UPDATEs
+  // Step 0a: Fix topic names with HTML entities (data migration)
+  await runStep("fix_topic_names", steps, async () => {
+    const badTopics = await db.prepare(
+      "SELECT id, name FROM topics WHERE name LIKE '%&#%' OR name LIKE '%&amp;%'"
+    ).all<{ id: number; name: string }>();
+    if (badTopics.results.length === 0) return "0 topics fixed";
+
+    const { decodeHtmlEntities } = await import("../lib/html");
+    const stmts: D1PreparedStatement[] = [];
+    for (const t of badTopics.results) {
+      let fixed = decodeHtmlEntities(t.name);
+      // Strip possessives and dangling apostrophes left by decode
+      fixed = fixed.replace(/'s\b/g, "").replace(/'\s/g, " ").replace(/'\s*$/g, "").trim();
+      // Clean up double spaces
+      fixed = fixed.replace(/\s{2,}/g, " ").trim();
+      if (fixed !== t.name) {
+        const newSlug = slugify(fixed);
+        stmts.push(
+          db.prepare("UPDATE topics SET name = ?, slug = ? WHERE id = ?").bind(fixed, newSlug, t.id)
+        );
+      }
+    }
+    if (stmts.length > 0) await batchExec(db, stmts);
+    return `${stmts.length} topic names fixed`;
+  });
+
+  // Step 0b: Early orphan purge — delete topics with no chunk_topics links
+  // Uses NOT EXISTS (faster than LEFT JOIN on large tables)
   await runStep("early_orphan_purge", steps, async () => {
     let deleted = 0;
     const BATCH = 500;
     while (true) {
       const result = await db.prepare(
-        `DELETE FROM topics WHERE kind != 'entity' AND id IN (
-          SELECT t.id FROM topics t
-          LEFT JOIN chunk_topics ct ON t.id = ct.topic_id
-          WHERE ct.chunk_id IS NULL AND t.kind != 'entity'
-          LIMIT ?
-        )`
+        `DELETE FROM topics WHERE kind != 'entity'
+         AND NOT EXISTS (SELECT 1 FROM chunk_topics WHERE topic_id = topics.id)
+         AND id IN (SELECT id FROM topics WHERE kind != 'entity' LIMIT ?)`
       ).bind(BATCH).run();
       deleted += result.meta.changes || 0;
       if ((result.meta.changes || 0) === 0) break;
