@@ -191,3 +191,54 @@ Extracting topics before computing word stats meant IDF was unavailable during t
 ### Dead code removal is healthy
 
 Going from 507 tests to 496 tests after removing dead code (ThemeRiver, tag-generator, concordance routes, RSS feeds, sitemap, timeline, reading mode) is a sign the codebase is getting cleaner, not worse. Tests for dead code should be removed with the code they test.
+
+## What we learned in the YAKE migration and finalization fix
+
+The move from TF-IDF to YAKE keyword extraction and the finalization reliability work taught us the most about D1 at scale and about the difference between algorithms that work on small data and algorithms that work on real data.
+
+### TF-IDF was the wrong algorithm
+
+TF-IDF was designed for document retrieval (which documents match a query?), not topic extraction (what are the key concepts?). With short texts (50-200 words per chunk), TF-IDF can't distinguish domain terms from random English words. It produced 12,000+ topics from 5,700 chunks — most of them garbage like "emergent", "resonant", "moment". YAKE (Campos et al., 2020) uses within-document features (position, casing, frequency, context) and naturally produces multi-word keyphrases. Switching from TF-IDF to a pure TypeScript YAKE implementation, combined with a df≥5 quality gate, reduced active topics from 12,000 to 531. The top topics are now actual newsletter concepts: "Claude Code", "coasian floor", "gilded turd", "hyper era".
+
+### The noise word list doesn't scale
+
+We went through four rounds of expanding the NOISE_WORDS set (from ~90 to ~250+ words). Each round caught the current batch of garbage but new garbage appeared. The fundamental issue: any word list is finite but English is not. The structural fixes that actually worked were: (1) YAKE instead of TF-IDF, (2) the df≥5 corpus-wide quality gate, (3) suffix heuristics for verb/adjective patterns (-ly, -ize, -ment), and (4) multi-word phrase filtering for generic pronoun starters ("everyone", "someone"). The noise list is a safety net, not the primary filter.
+
+### Finalization must be resilient, not atomic
+
+The original `finalizeEnrichment` threw on the first error, losing all progress. With 18 steps, any one failure meant "Finalization failed" with no information about which step failed or what succeeded. Making `runStep` non-throwing (continue on error, return partial results) was the single most important observability change. It turned an opaque failure into: "14 steps OK, step 6 failed with D1 CPU limit, steps 7-18 continued and succeeded."
+
+### D1 has per-query CPU limits, not just request timeouts
+
+The Workers timeout (30s) is separate from D1's per-query CPU limit. A single correlated UPDATE across 13,000 topics can exceed D1's CPU budget even if the Workers request has time remaining. The fix: batch every correlated UPDATE by actual row IDs. We also learned that batching by ID range (0-1000, 1000-2000...) is a trap when the ID space is sparse — if MAX(id)=434K but only 500 rows exist, you run 434 empty queries. Always fetch actual IDs first, then batch by those.
+
+### Re-enrichment must delete before inserting
+
+`processChunkBatch` originally did INSERT OR IGNORE for chunk_topics, which meant re-enrichment accumulated old links alongside new ones. When we changed the extraction algorithm (TF-IDF → YAKE), the old chunk_topics from TF-IDF kept 400K dead topics alive because they still had links. The fix: DELETE old chunk_topics for the batch before inserting new ones. Clean slate on re-enrichment.
+
+### Orphan accumulation is the production-scale failure mode
+
+With a small test corpus (4-10 chunks), topics table stays small. At production scale (5,700 chunks × 4 enrichment versions), the topics table grew to 434K rows. Each enrichment version created new topic rows (INSERT OR IGNORE), but old rows were never deleted. The orphan deletion step must be aggressive: delete all topics with zero chunk_topics links, and run it before expensive operations (usage recount, distinctiveness) so those operations process a small table.
+
+### Test locally with 1 and 10 episodes before deploying
+
+We deployed 8 times before learning this lesson. The local pipeline script (`scripts/local-pipeline.ts`) runs the full ingest → enrich → finalize loop in under 10 seconds against real data. The apostrophe bug was found and fixed locally in 2 minutes; without local testing, it took 3 deploy cycles. The `scripts/analyze-topics.ts` corpus analysis tool was equally valuable — it showed us exactly what topics each parameter change produced.
+
+### The right number of topics follows Heap's law
+
+For a corpus of N documents, Heap's law predicts sqrt(N) to N^0.4 navigational topics. For N=5,700 chunks, that's 75-250. Our final count of 531 is slightly above that range (because entities are exempt from the df gate), but in the right order of magnitude. The old count of 12,000+ was 20-50x too many — a clear signal that the algorithm was wrong, not just the parameters.
+
+### Per-step timing is the most useful telemetry
+
+The `FinalizeResult.steps[]` array with per-step name, duration_ms, status, and detail is more valuable than any other logging. It immediately shows: which step is the bottleneck (usage_recount was 5s, now 135ms), which step failed (phrase_dedup hit CPU limit), and whether a fix worked (delete_orphans went from 0 to 66). Add this pattern to any multi-step pipeline from day 1.
+
+### Updated lesson list
+
+13. TF-IDF is for document retrieval, not topic extraction — use YAKE or similar for short texts
+14. Noise word lists don't scale — use structural filters (df thresholds, suffix heuristics, POS patterns)
+15. Multi-step pipelines must be resilient (continue on error) with per-step observability
+16. D1 has per-query CPU limits — batch by actual rows, not sparse ID ranges
+17. Re-enrichment must clean up old state, not accumulate alongside new state
+18. Test locally with real data before deploying — the feedback loop is 100x faster
+19. Heap's law gives you the expected topic count for your corpus size — use it as a sanity check
+20. Per-step timing is the highest-value telemetry for pipeline debugging

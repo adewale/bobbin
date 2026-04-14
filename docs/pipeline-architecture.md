@@ -31,51 +31,50 @@ WEEKLY CRON (Mon 6am UTC, 15 min budget on paid plan)
    enrichAllChunks(db, 200, 120000)
    Loops with 2-min time budget, processes batches of unenriched chunks.
 
-   For each unenriched chunk:
-     a. decodeHtmlEntities (normalize curly quotes)                    O(1)
-     b. extractTopics(text, 15, corpusStats)                          O(words)
-        - extractKnownEntities (curated list match)
-        - extractEntities (capitalization heuristics)
-        - TF-IDF keywords (with corpus IDF)
-     c. isNoiseTopic filter at INSERT time                            O(1)
+   For each unenriched chunk batch (processChunkBatch):
+     a. DELETE old chunk_topics for batch (clean slate on re-enrichment)
+     b. extractTopics(text, 5)                                        O(words)
+        - extractKnownEntities (curated list, always included)
+        - extractEntities (capitalization heuristics, noise-filtered)
+        - YAKE keyphrases (within-document features, replaces TF-IDF)
+     c. isNoiseTopic filter (250+ words, suffix heuristics, phrase rules)
      d. INSERT topics, chunk_topics, episode_topics                   O(topics)
      e. tokenizeForWordStats -> INSERT chunk_words                    O(words)
 
-   SCALING NOTE: extractTopics does TF-IDF per chunk. computeCorpusStats
-   scans all chunk texts in the current batch to compute IDF. At 50K chunks,
-   this should be precomputed into word_stats instead of per-batch.
+   NOTE: YAKE is per-document — no corpus stats needed. 5 keyphrases/chunk
+   (was 10-15 with TF-IDF). Multi-word phrases extracted naturally.
 
   |
   v
-5. FINALIZE ENRICHMENT ------------------------------------------------ mixed
+5. FINALIZE ENRICHMENT (18 steps, ~3s total) ------------------------- mixed
    finalizeEnrichment(db, queue)
+   All steps are resilient (continue on error, report per-step timing).
 
-   FAST STEPS (inline, < 5s total):
-   a. Recalculate usage_count ---- 1 SQL UPDATE ---------------------- O(1)
-   b. Rebuild word_stats --------- 2 SQL (DELETE + UPSERT) ----------- O(1)
-   c. Precompute reach ----------- 1 SQL UPDATE ---------------------- O(1)
-   d. Merge co-occurring topics -- 5 hardcoded rules ----------------- O(1)
-   e. Precompute distinctiveness - 1 SQL UPDATE ---------------------- O(1)
+   DATA MIGRATION:
+   0a. Fix topic names ----------- decode HTML entities, strip apostrophes
+   0b. Early orphan purge -------- DELETE topics with no chunk_topics
 
-   SLOW STEPS (dispatched to QUEUE when available, inline fallback):
-   f. N-gram extraction
-      extractCorpusNgrams(allTexts) -- in-memory, fast
-      Then per discovered phrase: LIKE scan to find matching chunks
-      SCALING: O(phrases x chunks). 100 phrases x 50K chunks = 5M row scans.
-      With queue: 100 messages, 10 concurrent consumers, ~10s wall clock.
-      Without queue: ~30-60s serial. Times out at >120s.
+   CORE AGGREGATION (batched by actual row IDs):
+   1. Recalculate usage_count ---- batched UPDATE by topic IDs -------- O(topics)
+   2. Rebuild word_stats --------- DELETE orphans + UPSERT ------------ O(words)
+   3. Precompute reach ----------- batched UPDATE by chunk IDs -------- O(chunks)
+   4. Merge co-occurring topics -- 5 hardcoded rules ----------------- O(1)
+   5. N-gram extraction ---------- dispatched to queue or inline ------ O(phrases)
+   6. Precompute distinctiveness - batched UPDATE by topic IDs -------- O(topics)
+   7. Related slugs -------------- batch SQL or queue fallback -------- O(topics)
 
-   g. Related slugs
-      Per topic (usage >= 3): co-occurrence JOIN + UPDATE
-      SCALING: O(topics). N+1 pattern. 6K topics = 6K queries.
-      With queue: 6K messages, 10 concurrent consumers, ~6s wall clock.
-      Without queue: ~60s serial. Times out at >3K topics.
+   CLEANUP:
+   8. Entity validation ---------- DELETE false chunk_topics ---------- O(entities)
+   9. Noise cleanup -------------- batched IN-clause DELETEs --------- O(noise)
+   10. Usage recalculation ------- batched by actual IDs -------------- O(topics)
 
-   CLEANUP STEPS (inline, < 5s total):
-   h. Entity validation ---------- DELETE false chunk_topics --------- O(entities)
-   i. Noise cleanup -------------- DELETE noise chunk_topics ---------- O(noise_words)
-   j. Usage recalculation -------- 1 SQL UPDATE ---------------------- O(1)
-   k. Prune usage<=1 ------------- DELETE + UPDATE (exempt entities) -- O(1)
+   QUALITY GATES (corpus-wide, Yang & Pedersen 1997):
+   11. df≥5 gate ----------------- prune topics appearing in <5 chunks  O(topics)
+   12. Stem merge ---------------- merge inflectional variants -------- O(active)
+   13. Similarity cluster -------- Dice coefficient ≥0.7 ------------- O(active²)
+   14. Final usage recount ------- batched by actual IDs -------------- O(topics)
+   15. Delete orphans ------------ remove usage=0 non-entity topics --- O(orphans)
+   16. Phrase dedup --------------- merge plural variants ------------- O(active)
 ```
 
 ## Queue architecture
