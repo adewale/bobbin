@@ -252,10 +252,11 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
     total_ms: 0,
   };
 
-  // Step 0a: Fix topic names with HTML entities (data migration)
+  // Step 0a: Fix topic names with dangling apostrophes or HTML entities
+  // Production data has names like "someone else'" from old normalizeTerm bug
   await runStep("fix_topic_names", steps, async () => {
     const badTopics = await db.prepare(
-      "SELECT id, name FROM topics WHERE name LIKE '%&#%' OR name LIKE '%&amp;%'"
+      "SELECT id, name FROM topics WHERE name LIKE '%''%' OR name LIKE '%&#%' OR name LIKE '%&amp;%'"
     ).all<{ id: number; name: string }>();
     if (badTopics.results.length === 0) return "0 topics fixed";
 
@@ -263,11 +264,11 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
     const stmts: D1PreparedStatement[] = [];
     for (const t of badTopics.results) {
       let fixed = decodeHtmlEntities(t.name);
-      // Strip possessives and dangling apostrophes left by decode
-      fixed = fixed.replace(/'s\b/g, "").replace(/'\s/g, " ").replace(/'\s*$/g, "").trim();
-      // Clean up double spaces
+      // Remove all apostrophe variants — never meaningful in topic names
+      fixed = fixed.replace(/['\u2018\u2019\u201A]/g, "");
+      // Clean up double spaces and trim
       fixed = fixed.replace(/\s{2,}/g, " ").trim();
-      if (fixed !== t.name) {
+      if (fixed !== t.name && fixed.length > 0) {
         const newSlug = slugify(fixed);
         stmts.push(
           db.prepare("UPDATE topics SET name = ?, slug = ? WHERE id = ?").bind(fixed, newSlug, t.id)

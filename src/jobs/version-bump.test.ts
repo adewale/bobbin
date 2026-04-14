@@ -39,9 +39,10 @@ describe("topic name data migration", () => {
     await batchExec(env.DB, stmts);
   });
 
-  it("fixes topic names containing &#39; HTML entities", async () => {
+  it("fixes topic names with dangling apostrophes (actual production bug)", async () => {
+    // Production has names like "someone else'" — apostrophe char, not HTML entity
     await env.DB.prepare(
-      "INSERT INTO topics (name, slug, usage_count) VALUES ('someone else&#39;', 'someone-else-39', 10)"
+      "INSERT INTO topics (name, slug, usage_count) VALUES ('someone else''', 'someone-else', 10)"
     ).run();
     for (let i = 1; i <= 5; i++) {
       await env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (?, 1)").bind(i).run();
@@ -53,13 +54,13 @@ describe("topic name data migration", () => {
       "SELECT name FROM topics WHERE usage_count > 0 AND name LIKE 'someone%'"
     ).first<{ name: string }>();
     expect(topic).not.toBeNull();
-    expect(topic!.name).not.toContain("&#39;");
-    expect(topic!.name).not.toContain("&#");
+    expect(topic!.name).not.toContain("'");
+    expect(topic!.name).toBe("someone else");
   });
 
-  it("fixes goodhart&#39; law → goodhart law", async () => {
+  it("fixes goodhart' law → goodhart law (apostrophe mid-name)", async () => {
     await env.DB.prepare(
-      "INSERT INTO topics (name, slug, usage_count) VALUES ('goodhart&#39; law', 'goodhart-39-law', 10)"
+      "INSERT INTO topics (name, slug, usage_count) VALUES ('goodhart'' law', 'goodhart-law', 10)"
     ).run();
     for (let i = 1; i <= 5; i++) {
       await env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (?, 1)").bind(i).run();
@@ -72,6 +73,24 @@ describe("topic name data migration", () => {
     ).first<{ name: string }>();
     expect(topic).not.toBeNull();
     expect(topic!.name).toBe("goodhart law");
+  });
+
+  it("also fixes HTML entity &#39; if present", async () => {
+    await env.DB.prepare(
+      "INSERT INTO topics (name, slug, usage_count) VALUES ('test&#39;name', 'test-name', 10)"
+    ).run();
+    for (let i = 1; i <= 5; i++) {
+      await env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (?, 1)").bind(i).run();
+    }
+
+    await finalizeEnrichment(env.DB);
+
+    const topic = await env.DB.prepare(
+      "SELECT name FROM topics WHERE usage_count > 0 AND name LIKE 'test%'"
+    ).first<{ name: string }>();
+    expect(topic).not.toBeNull();
+    expect(topic!.name).not.toContain("&#");
+    expect(topic!.name).not.toContain("'");
   });
 });
 
