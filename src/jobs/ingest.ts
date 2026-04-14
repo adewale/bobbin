@@ -230,7 +230,7 @@ async function runStep(
   name: string,
   steps: FinalizeStep[],
   fn: () => Promise<string | void>
-): Promise<void> {
+): Promise<boolean> {
   const start = Date.now();
   try {
     const detail = await fn();
@@ -240,6 +240,7 @@ async function runStep(
       status: "ok",
       ...(detail ? { detail } : {}),
     });
+    return true;
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     steps.push({
@@ -248,7 +249,8 @@ async function runStep(
       status: "error",
       error: msg.substring(0, 500),
     });
-    throw e; // re-throw so caller sees it
+    // Don't re-throw — continue to next step so we can see ALL failures
+    return false;
   }
 }
 
@@ -280,20 +282,22 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
     return `${maxId} topics recounted in ${Math.ceil(maxId / BATCH)} batches`;
   });
 
-  // Step 2: Rebuild word_stats
+  // Step 2: Rebuild word_stats (split into separate queries to stay under CPU limit)
   await runStep("word_stats_rebuild", steps, async () => {
-    await db.batch([
-      db.prepare("DELETE FROM word_stats WHERE word NOT IN (SELECT DISTINCT word FROM chunk_words)"),
-      db.prepare(
-        `INSERT INTO word_stats (word, total_count, doc_count, updated_at)
-         SELECT word, SUM(count), COUNT(DISTINCT chunk_id), datetime('now')
-         FROM chunk_words GROUP BY word
-         ON CONFLICT(word) DO UPDATE SET
-           total_count = excluded.total_count,
-           doc_count = excluded.doc_count,
-           updated_at = excluded.updated_at`
-      ),
-    ]);
+    // Step 2a: Remove orphaned word_stats entries
+    await db.prepare(
+      "DELETE FROM word_stats WHERE word NOT IN (SELECT DISTINCT word FROM chunk_words)"
+    ).run();
+    // Step 2b: Upsert word_stats from chunk_words
+    await db.prepare(
+      `INSERT INTO word_stats (word, total_count, doc_count, updated_at)
+       SELECT word, SUM(count), COUNT(DISTINCT chunk_id), datetime('now')
+       FROM chunk_words GROUP BY word
+       ON CONFLICT(word) DO UPDATE SET
+         total_count = excluded.total_count,
+         doc_count = excluded.doc_count,
+         updated_at = excluded.updated_at`
+    ).run();
     result.word_stats_rebuilt = true;
   });
 
@@ -333,6 +337,7 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
 
   // Step 6: Deduplicate phrase pairs (BATCHED — not individual queries)
   await runStep("phrase_dedup", steps, async () => {
+    // Only check topics that actually have usage — skip the 10,000+ dead topics
     const phrasePairs = await db.prepare(
       `SELECT t1.id as keep_id, t1.name as keep_name, t2.id as dupe_id, t2.name as dupe_name
        FROM topics t1
@@ -344,7 +349,8 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
          t2.name = REPLACE(t1.name, '''s ', ' ') OR
          t1.name = REPLACE(t2.name, '''s ', ' ')
        )
-       WHERE t1.id < t2.id AND t1.usage_count >= t2.usage_count AND t1.usage_count > 0`
+       WHERE t1.id < t2.id AND t1.usage_count >= t2.usage_count
+         AND t1.usage_count > 0 AND t2.usage_count > 0`
     ).all();
 
     if (phrasePairs.results.length > 0) {
@@ -497,19 +503,25 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
     }
   });
 
-  // Step 12: Prune low-usage topics (entities exempt)
+  // Step 12: Prune low-usage topics (entities exempt, batched)
   await runStep("prune_low_usage", steps, async () => {
-    const pruneCount = await db.prepare(
-      "SELECT COUNT(*) as c FROM topics WHERE usage_count <= 1 AND kind != 'entity'"
-    ).first<{ c: number }>();
-    result.pruned = pruneCount?.c || 0;
+    const toPrune = await db.prepare(
+      "SELECT id FROM topics WHERE usage_count <= 1 AND kind != 'entity'"
+    ).all<{ id: number }>();
+    result.pruned = toPrune.results.length;
 
-    await db.batch([
-      db.prepare("DELETE FROM chunk_topics WHERE topic_id IN (SELECT id FROM topics WHERE usage_count <= 1 AND kind != 'entity')"),
-      db.prepare("DELETE FROM episode_topics WHERE topic_id IN (SELECT id FROM topics WHERE usage_count <= 1 AND kind != 'entity')"),
-      db.prepare("UPDATE topics SET usage_count = 0 WHERE usage_count <= 1 AND kind != 'entity'"),
-    ]);
-    return `${result.pruned} topics pruned`;
+    const ids = toPrune.results.map(t => t.id);
+    const BATCH = 90;
+    for (let i = 0; i < ids.length; i += BATCH) {
+      const batch = ids.slice(i, i + BATCH);
+      const ph = batch.map(() => "?").join(",");
+      await db.batch([
+        db.prepare(`DELETE FROM chunk_topics WHERE topic_id IN (${ph})`).bind(...batch),
+        db.prepare(`DELETE FROM episode_topics WHERE topic_id IN (${ph})`).bind(...batch),
+        db.prepare(`UPDATE topics SET usage_count = 0 WHERE id IN (${ph})`).bind(...batch),
+      ]);
+    }
+    return `${result.pruned} topics pruned in ${Math.ceil(ids.length / BATCH)} batches`;
   });
 
   result.total_ms = Date.now() - totalStart;

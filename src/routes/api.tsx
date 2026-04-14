@@ -217,10 +217,13 @@ api.get("/finalize", async (c) => {
 
   try {
     const result = await finalizeEnrichment(c.env.DB, c.env.ENRICHMENT_QUEUE);
+    const failedSteps = result.steps.filter(s => s.status === "error");
+    if (failedSteps.length > 0) {
+      return c.json({ status: "partial", failed_count: failedSteps.length, ...result });
+    }
     return c.json({ status: "ok", ...result });
   } catch (e: any) {
     console.error("Finalize error:", e);
-    // Return partial results — the steps array shows which step failed and timing
     return c.json({
       error: "Finalization failed",
       failed_step: e.message?.substring(0, 200),
