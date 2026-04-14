@@ -117,7 +117,7 @@ a:hover { text-decoration: underline; }
 
 /* === Related === */
 .related-chunks { padding: 1rem; background: var(--bg-warm); border: 1px solid var(--border); border-radius: 6px; height: fit-content; }
-.related-chunks h3 { font-size: 0.85rem; margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-light); }
+.related-chunks h3 { font-size: 0.85rem; margin: 0 0 0.5rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-light); }
 .related-chunks ul { list-style: none; }
 .related-chunks li { padding: 0.25rem 0; font-size: 0.85rem; }
 
@@ -265,8 +265,8 @@ mark { background: color-mix(in srgb, var(--accent-light) 60%, transparent); col
 .episode-chunks .chunk-row-single { display: flex; align-items: baseline; gap: 0.5rem; padding: 0.6rem 0; min-height: 2.75rem; }
 
 /* === Most Connected === */
-.most-connected { margin: 2rem 0; padding: 1.25rem; background: var(--bg-warm); border: 1px solid var(--border); border-radius: 6px; }
-.most-connected h2 { font-family: var(--font-ui); font-size: 1rem; font-weight: 700; font-style: normal; margin-bottom: 0.15rem; }
+.most-connected { margin: 2rem 0; padding: 1rem; background: var(--bg-warm); border: 1px solid var(--border); border-radius: 6px; }
+.most-connected h2 { font-family: var(--font-ui); font-size: 1rem; font-weight: 700; font-style: normal; margin: 0 0 0.5rem; }
 .section-subtitle { font-size: 0.8rem; font-family: var(--font-ui); color: var(--text-light); margin-bottom: 0.75rem; }
 .most-connected ul { list-style: none; }
 .most-connected li { padding: 0.3rem 0; border-bottom: 1px solid var(--border); }
@@ -275,8 +275,8 @@ mark { background: color-mix(in srgb, var(--accent-light) 60%, transparent); col
 .most-connected .meta { font-size: 0.72rem; font-family: var(--font-ui); color: var(--text-light); }
 
 /* === More On This Topic (Thread) === */
-.more-on-this { margin: 2rem 0; padding: 1.25rem; background: var(--bg-warm); border: 1px solid var(--border); border-radius: 6px; }
-.more-on-this h2 { font-family: var(--font-ui); font-size: 1rem; font-weight: 700; font-style: normal; margin-bottom: 0.15rem; }
+.more-on-this { margin: 2rem 0; padding: 1rem; background: var(--bg-warm); border: 1px solid var(--border); border-radius: 6px; }
+.more-on-this h2 { font-family: var(--font-ui); font-size: 1rem; font-weight: 700; font-style: normal; margin: 0 0 0.5rem; }
 .more-on-this ul { list-style: none; }
 .more-on-this li { padding: 0.3rem 0; border-bottom: 1px solid var(--border); }
 .more-on-this li a { font-family: var(--font-ui); font-size: 0.88rem; font-weight: 500; text-decoration: none; color: var(--text); display: block; }
@@ -378,7 +378,7 @@ mark { background: color-mix(in srgb, var(--accent-light) 60%, transparent); col
 
 /* === Reactive timeline brush === */
 .reactive-timeline { margin: 1.5rem 0; padding: 1rem; background: var(--bg-warm); border: 1px solid var(--border); border-radius: 6px; }
-.reactive-timeline h2 { font-family: var(--font-ui); font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-light); margin-bottom: 0.5rem; }
+.reactive-timeline h2 { font-family: var(--font-ui); font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-light); margin: 0 0 0.5rem; }
 .filter-status { font-size: 0.8rem; font-family: var(--font-ui); color: var(--text-light); margin-bottom: 0.5rem; }
 .brush-area { position: relative; }
 .brush-bars { display: flex; align-items: flex-end; gap: 2px; height: 64px; }
@@ -426,8 +426,8 @@ mark { background: color-mix(in srgb, var(--accent-light) 60%, transparent); col
 .home-with-margin { display: grid; grid-template-columns: 1fr 13rem; gap: 2rem; margin-top: 1rem; }
 .home-main { min-width: 0; }
 .home-margin { font-family: var(--font-ui); }
-.home-margin h3 { font-size: 0.7rem; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; margin-bottom: 0.5rem; }
-.home-margin section { margin-bottom: 1rem; padding: 0.75rem; background: var(--bg-warm); border: 1px solid var(--border); border-radius: 6px; }
+.home-margin h3 { font-size: 0.7rem; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; margin: 0 0 0.5rem; }
+.home-margin section { margin-bottom: 1rem; padding: 1rem; background: var(--bg-warm); border: 1px solid var(--border); border-radius: 6px; }
 .recent-ep-link { display: flex; justify-content: space-between; gap: 0.5rem; font-size: 0.78rem; color: var(--text-muted); text-decoration: none; padding: 0.2rem 0; border-bottom: 1px solid var(--border); }
 .recent-ep-link:hover { color: var(--accent); }
 .recent-ep-link time { font-variant-numeric: tabular-nums; }
@@ -438,7 +438,7 @@ mark { background: color-mix(in srgb, var(--accent-light) 60%, transparent); col
 }
 
 /* === Latest episode panel === */
-.latest-episode-panel { padding: 0.75rem; margin-bottom: 1.5rem; background: var(--bg-warm); border: 1px solid var(--border); border-radius: 6px; }
+.latest-episode-panel { padding: 1rem; margin-bottom: 1.5rem; background: var(--bg-warm); border: 1px solid var(--border); border-radius: 6px; }
 .latest-episode-panel h2 { font-family: var(--font-ui); font-size: 0.95rem; font-weight: 600; font-style: normal; margin: 0 0 0.5rem; }
 .latest-episode-panel h2 a { color: var(--text); text-decoration: none; }
 .latest-episode-panel h2 a:hover { color: var(--accent); }
