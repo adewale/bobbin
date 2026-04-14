@@ -149,7 +149,7 @@ details.topic-tier .topic-cloud { margin-top: 0.5rem; }
 
 /* Topics as Tufte marginalia (desktop) / below content (mobile) */
 .topics-margin { font-family: var(--font-ui); }
-.topics-margin h3 { font-size: 0.7rem; font-family: var(--font-ui); color: var(--text-light); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; margin-bottom: 0.3rem; }
+.topics-margin h3 { font-size: 0.85rem; font-family: var(--font-ui); color: var(--text-light); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; margin-bottom: 0.3rem; }
 @media (min-width: 769px) {
   .topics-margin { float: right; width: 12rem; margin: 0 -14rem 1rem 1rem; font-size: 0.78rem; }
   .topics-margin .topics { display: flex; flex-wrap: wrap; gap: 0.3rem; }
@@ -160,7 +160,7 @@ details.topic-tier .topic-cloud { margin-top: 0.5rem; }
 
 /* Trending topics indicator */
 .distinctive-topics { margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border); }
-.distinctive-topics h4 { font-size: 0.65rem; font-family: var(--font-ui); color: var(--accent); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; margin-bottom: 0.2rem; }
+.distinctive-topics h4 { font-size: 0.85rem; font-family: var(--font-ui); color: var(--accent); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; margin-bottom: 0.2rem; }
 .topic-distinctive { border-color: var(--accent-light); background: var(--accent-light); }
 .trending-item { display: block; font-size: 0.72rem; font-family: var(--font-ui); color: var(--text); text-decoration: none; padding: 0.1rem 0; }
 .trending-item:hover { color: var(--accent); }
@@ -191,7 +191,7 @@ details.topic-tier .topic-cloud { margin-top: 0.5rem; }
 .word-stats-table th, .word-stats-table td { padding: 0.4rem 0.6rem; text-align: left; border-bottom: 1px solid var(--border); }
 .word-stats-table th { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-light); font-weight: 600; }
 .word-stats-table a { text-decoration: none; }
-.word-stats-table td:first-child { font-weight: 500; }
+.word-stats-table td:first-child { font-weight: 600; }
 .word-stats-table td:nth-child(2), .word-stats-table td:nth-child(3) { font-variant-numeric: tabular-nums; color: var(--text-muted); }
 
 /* === Tufte bar table === */
@@ -202,7 +202,7 @@ details.topic-tier .topic-cloud { margin-top: 0.5rem; }
 .word-stats-bars .col-bar { width: 40%; min-width: 100px; }
 .word-stats-bars .col-num { width: 4rem; text-align: right; font-variant-numeric: tabular-nums; color: var(--text-muted); font-size: 0.8rem; }
 .word-stats-bars tr.distinctive { background: color-mix(in srgb, var(--accent-light) 30%, transparent); }
-.word-stats-bars a { text-decoration: none; font-weight: 500; color: var(--text); }
+.word-stats-bars a { text-decoration: none; font-weight: 600; color: var(--text); }
 .word-stats-bars a:hover { color: var(--accent); }
 .word-stats-bars .bar { height: 100%; border-radius: 2px; min-width: 2px; }
 .word-stats-bars .bar-distinctive { background: var(--accent); opacity: 0.15; }
@@ -310,9 +310,9 @@ mark { background: color-mix(in srgb, var(--accent-light) 60%, transparent); col
 
 /* === Unified Browse page === */
 .browse-year { margin: 1.5rem 0; }
-.browse-year h2 { font-family: var(--font-ui); font-size: 1.3rem; font-weight: 700; font-style: normal; border-bottom: 2px solid var(--accent); padding-bottom: 0.25rem; margin-bottom: 0.5rem; }
+.browse-year h2 { font-family: var(--font-ui); font-size: 1.3rem; font-weight: 600; font-style: normal; border-bottom: 2px solid var(--accent); padding-bottom: 0.25rem; margin-bottom: 0.5rem; }
 .browse-month { margin: 0.75rem 0 0.75rem 0; }
-.browse-month h3 { font-family: var(--font-ui); font-size: 0.85rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.25rem; }
+.browse-month h3 { font-family: var(--font-ui); font-size: 0.85rem; font-weight: 600; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem; }
 .browse-episodes { list-style: none; }
 .browse-episodes li { padding: 0.5rem 0; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; min-height: 2.75rem; }
 .browse-episodes a { font-family: var(--font-ui); font-size: 0.88rem; color: var(--text); text-decoration: none; }
@@ -430,7 +430,7 @@ mark { background: color-mix(in srgb, var(--accent-light) 60%, transparent); col
 .home-margin { font-family: var(--font-ui); }
 .home-margin h3 { font-size: 0.85rem; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; margin: 0 0 0.5rem; }
 .home-margin section { margin-bottom: 1rem; padding: 1rem; background: var(--bg-warm); border: 1px solid var(--border); border-radius: 6px; }
-.recent-ep-link { display: flex; justify-content: space-between; gap: 0.5rem; font-size: 0.78rem; color: var(--text-muted); text-decoration: none; padding: 0.2rem 0; border-bottom: 1px solid var(--border); }
+.recent-ep-link { display: flex; justify-content: space-between; gap: 0.5rem; font-size: 0.88rem; color: var(--text-muted); text-decoration: none; padding: 0.2rem 0; border-bottom: 1px solid var(--border); }
 .recent-ep-link:hover { color: var(--accent); }
 .recent-ep-link time { font-variant-numeric: tabular-nums; }
 .recent-ep-link span { color: var(--text-light); font-size: 0.7rem; }
@@ -449,6 +449,6 @@ mark { background: color-mix(in srgb, var(--accent-light) 60%, transparent); col
 .latest-chunks li::before { content: '\201C'; color: var(--text-light); }
 .latest-chunks li::after { content: '\201D'; color: var(--text-light); }
 .latest-topics { margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border); font-family: var(--font-ui); }
-.latest-topics h3 { font-size: 0.65rem; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; margin-bottom: 0.25rem; }
+.latest-topics h3 { font-size: 0.85rem; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; margin-bottom: 0.25rem; }
 .latest-topics .topics { display: flex; flex-wrap: wrap; gap: 0.25rem; }
 
