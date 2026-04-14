@@ -61,7 +61,9 @@ Google Docs (mobilebasic HTML)
 | `GET /api/ingest?limit=N&doc=ID` | Fetch doc, parse, ingest N new episodes |
 | `GET /api/embed?limit=N` | Batch-embed N chunks to Vectorize |
 | `GET /api/enrich?batch=N` | Enrich unenriched chunks (topics, word stats) |
-| `GET /api/finalize` | Run finalization (n-grams, related slugs, cleanup) |
+| `GET /api/enrich-parallel?batch=N` | Dispatch enrichment batches to queue |
+| `GET /api/finalize` | Run finalization (18 steps, quality gates, cleanup) |
+| `GET /api/cleanup-stale` | One-time: delete stale chunk_topics + orphan topics |
 | `GET /api/health` | Pipeline health check (chunk/topic counts, unenriched) |
 | `GET /api/ingestion-log` | View recent ingestion history |
 
@@ -112,12 +114,17 @@ ingestion_log (audit trail)
 3. Dedup   │ Skip episodes with existing published_date
 4. Ingest  │ Insert in groups of 50:
            │   episodes → chunks
-5. Enrich  │ Per unenriched chunk (with time budget):
-           │   decode HTML entities → extract topics (entities + TF-IDF)
+5. Enrich  │ Per unenriched chunk batch (processChunkBatch):
+           │   DELETE old chunk_topics (clean slate on re-enrichment)
+           │   → extractTopics: known entities + heuristic entities + YAKE (5 keyphrases)
            │   → noise filter at insert time → INSERT topics, chunk_topics
            │   → tokenize → INSERT chunk_words
-6. Final   │ Rebuild word_stats, compute distinctiveness, n-grams (via queue),
-           │   related_slugs (via queue), entity validation, noise cleanup, prune
+6. Final   │ 18 steps, ~3s total (resilient — continues on error):
+           │   fix names, purge orphans, recount usage, rebuild word_stats,
+           │   precompute reach + distinctiveness, n-grams (via queue),
+           │   related_slugs, entity validation, noise cleanup,
+           │   df≥5 quality gate, stem merge, similarity clustering,
+           │   delete orphans, phrase dedup
 7. Embed   │ generateEmbeddings(AI, texts) → VECTORIZE.upsert(vectors)
 ```
 
@@ -158,14 +165,17 @@ src/
   types.ts               Bindings, DB row types, parsed types
   components/            JSX components (Layout, EpisodeCard, ChunkCard, TopicCloud, etc.)
   routes/                Hono sub-routers (home, episodes, chunks, topics, search, api)
-  services/              Domain logic (search, topic extraction, entity detection, n-grams, word stats)
+  services/              Domain logic (search, YAKE extraction, entity detection, text similarity, n-grams)
   jobs/                  Pipeline operations (ingest, refresh, queue-handler)
   db/                    Database query functions (episodes, chunks, topics, word-stats, search)
   data/                  Static data (known-entities.ts)
   lib/                   Pure utilities (slug, date, text, html, query-parser, entity-aliases)
   crawler/               Google Docs fetcher
-migrations/              D1 schema migrations (0001-0007)
-scripts/                 Manual operations (run-enrichment.sh)
+migrations/              D1 schema migrations (0001-0009)
+scripts/                 Operational tooling:
+                           run-refresh.sh (mirrors cron), run-enrichment.sh (enrich only),
+                           local-pipeline.ts (full local E2E), analyze-topics.ts (corpus analysis),
+                           cleanup-db.sh (one-time DB cleanup)
 public/                  Static assets (CSS, favicon.svg, robots.txt)
 test/                    Fixtures and helpers
 docs/                    Architecture and lessons learned
@@ -188,7 +198,9 @@ docs/                    Architecture and lessons learned
 3. **Margin-based chunking**: Each `margin-left:36pt` list item is a standalone chunk. Sub-points (72pt+) group with their parent.
 4. **Hybrid search**: FTS for keyword precision, vectors for semantic matching, merged with crossover boost. Topic boost rewards thematic relevance.
 5. **Batched writes**: D1 operations in groups of 50 to stay within limits.
-6. **Three-layer topic extraction**: Curated entity list + heuristic capitalization detection + TF-IDF keywords. Noise filtered at insert time.
-7. **Corpus-level n-grams**: Bigrams and trigrams discovered across the full corpus, not per-chunk. Phrase subsumption suppresses component words.
-8. **Queue-based parallelization**: Slow enrichment steps (n-gram assignment, related_slugs) dispatched to ENRICHMENT_QUEUE for parallel processing.
-9. **Wide event logging**: Canonical log lines for cron (`refresh` event) and queue (`queue_batch` event) with per-step timing.
+6. **YAKE keyword extraction**: Replaced TF-IDF with YAKE (Campos et al., 2020) — pure TypeScript, per-document, produces multi-word keyphrases naturally. 5 keyphrases/chunk. Known entities detected separately via curated list.
+7. **Corpus-wide quality gates**: df≥5 threshold (Yang & Pedersen, 1997) + Porter stemming merge + Dice similarity clustering. Reduces 27K raw topics to ~530 navigational topics.
+8. **Resilient finalization**: 18 steps, each wrapped in `runStep()` with timing/error reporting. Continues on error, returns partial results. Batches by actual row IDs, not sparse ID ranges.
+9. **Queue-based parallelization**: Slow enrichment steps (n-gram assignment, related_slugs) dispatched to ENRICHMENT_QUEUE for parallel processing.
+10. **Wide event logging**: Canonical log lines for cron (`refresh` event) and queue (`queue_batch` event) with per-step timing.
+11. **Local development pipeline**: `scripts/local-pipeline.ts` runs full ingest→enrich→finalize against real data in <10s via `getPlatformProxy()`.
