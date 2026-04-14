@@ -14,7 +14,7 @@ import { CURRENT_ENRICHMENT_VERSION, finalizeEnrichment } from "./ingest";
 import { batchExec } from "../lib/db";
 import fc from "fast-check";
 import { extractYakeKeywords } from "../services/yake";
-import { extractTopics } from "../services/topic-extractor";
+import { extractTopics, normalizeTerm } from "../services/topic-extractor";
 
 describe("enrichment version", () => {
   it("CURRENT_ENRICHMENT_VERSION is >= 4 (YAKE migration)", () => {
@@ -78,7 +78,7 @@ describe("orphan topic cleanup in finalization", () => {
   });
 });
 
-describe("HTML entity handling in topic names", () => {
+describe("HTML entity and possessive handling in topic names", () => {
   it("topic names never contain HTML entities", () => {
     fc.assert(
       fc.property(
@@ -98,6 +98,27 @@ describe("HTML entity handling in topic names", () => {
         }
       )
     );
+  });
+
+  it("topic names never end with a dangling apostrophe", () => {
+    const texts = [
+      "someone else's problem to solve. This is someone else's concern.",
+      "Goodhart's law applies here. Goodhart's law is well known.",
+      "the company's strategy works. The company's approach is bold.",
+    ];
+    for (const text of texts) {
+      const topics = extractTopics(text, 5);
+      for (const t of topics) {
+        expect(t.name).not.toMatch(/[''\u2019]$/);
+        expect(t.name).not.toMatch(/[''\u2019]\s/);
+      }
+    }
+  });
+
+  it("normalizeTerm strips possessives cleanly", () => {
+    expect(normalizeTerm("else's")).not.toContain("'");
+    expect(normalizeTerm("goodhart's")).not.toContain("'");
+    expect(normalizeTerm("mckeown\u2019s")).not.toContain("\u2019");
   });
 });
 

@@ -29,6 +29,15 @@ export function normalizeTerm(term: string): string {
 }
 
 function normalizeSingleWord(word: string): string {
+  // Strip possessive suffixes first ('s, 's, 's)
+  if (word.endsWith("'s") || word.endsWith("\u2019s") || word.endsWith("'s")) {
+    word = word.slice(0, -2);
+  }
+  // Strip trailing apostrophe/quote left after other processing
+  if (word.endsWith("'") || word.endsWith("\u2019") || word.endsWith("'")) {
+    word = word.slice(0, -1);
+  }
+
   if (word.length <= 4) return word;
   if (NO_STRIP.has(word)) return word;
 

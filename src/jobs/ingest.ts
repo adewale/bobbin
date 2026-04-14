@@ -252,6 +252,26 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
     total_ms: 0,
   };
 
+  // Step 0: Early orphan purge — delete topics with no chunk_topics links
+  // This reduces the table BEFORE expensive correlated UPDATEs
+  await runStep("early_orphan_purge", steps, async () => {
+    let deleted = 0;
+    const BATCH = 500;
+    while (true) {
+      const result = await db.prepare(
+        `DELETE FROM topics WHERE kind != 'entity' AND id IN (
+          SELECT t.id FROM topics t
+          LEFT JOIN chunk_topics ct ON t.id = ct.topic_id
+          WHERE ct.chunk_id IS NULL AND t.kind != 'entity'
+          LIMIT ?
+        )`
+      ).bind(BATCH).run();
+      deleted += result.meta.changes || 0;
+      if ((result.meta.changes || 0) === 0) break;
+    }
+    return `${deleted} orphan topics deleted`;
+  });
+
   // Step 1: Recalculate topic usage counts (batched to stay under D1 CPU limit)
   await runStep("usage_recount", steps, async () => {
     const topicCount = await db.prepare("SELECT MAX(id) as m FROM topics").first<{ m: number }>();
