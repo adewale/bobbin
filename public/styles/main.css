@@ -270,7 +270,7 @@ mark { background: color-mix(in srgb, var(--accent-light) 60%, transparent); col
 .section-subtitle { font-size: 0.8rem; font-family: var(--font-ui); color: var(--text-light); margin-bottom: 0.75rem; }
 .most-connected ul { list-style: none; }
 .most-connected li { padding: 0.3rem 0; border-bottom: 1px solid var(--border); }
-.most-connected li a { font-family: var(--font-ui); font-size: 0.88rem; font-weight: 500; text-decoration: none; color: var(--text); display: block; }
+.most-connected li a { font-family: var(--font-ui); font-size: 0.88rem; font-weight: 400; text-decoration: none; color: var(--text); display: block; }
 .most-connected li a:hover { color: var(--accent); }
 .most-connected .meta { font-size: 0.72rem; font-family: var(--font-ui); color: var(--text-light); }
 
@@ -279,7 +279,7 @@ mark { background: color-mix(in srgb, var(--accent-light) 60%, transparent); col
 .more-on-this h2 { font-family: var(--font-ui); font-size: 1rem; font-weight: 700; font-style: normal; margin: 0 0 0.5rem; }
 .more-on-this ul { list-style: none; }
 .more-on-this li { padding: 0.3rem 0; border-bottom: 1px solid var(--border); }
-.more-on-this li a { font-family: var(--font-ui); font-size: 0.88rem; font-weight: 500; text-decoration: none; color: var(--text); display: block; }
+.more-on-this li a { font-family: var(--font-ui); font-size: 0.88rem; font-weight: 400; text-decoration: none; color: var(--text); display: block; }
 .more-on-this li a:hover { color: var(--accent); }
 .more-on-this .meta { font-size: 0.72rem; font-family: var(--font-ui); color: var(--text-light); }
 
