@@ -210,6 +210,74 @@ api.get("/enrich-parallel", async (c) => {
   }
 });
 
+// Admin: one-time cleanup of stale chunk_topics and orphan topics
+api.get("/cleanup-stale", async (c) => {
+  const denied = requireAuth(c);
+  if (denied) return denied;
+
+  try {
+    const { CURRENT_ENRICHMENT_VERSION } = await import("../jobs/ingest");
+    const db = c.env.DB;
+
+    // Step 1: Delete chunk_topics for chunks with outdated enrichment_version
+    // These are stale links from v1/v2/v3 enrichment keeping old topics alive
+    const staleChunks = await db.prepare(
+      "SELECT COUNT(*) as c FROM chunks WHERE enrichment_version < ?"
+    ).bind(CURRENT_ENRICHMENT_VERSION).first<{ c: number }>();
+
+    let staleLinksDeleted = 0;
+    if (staleChunks && staleChunks.c > 0) {
+      // Delete in batches of chunk IDs
+      const BATCH = 90;
+      let offset = 0;
+      while (true) {
+        const batch = await db.prepare(
+          "SELECT id FROM chunks WHERE enrichment_version < ? LIMIT ? OFFSET ?"
+        ).bind(CURRENT_ENRICHMENT_VERSION, BATCH, offset).all<{ id: number }>();
+        if (batch.results.length === 0) break;
+
+        const ids = batch.results.map(r => r.id);
+        const ph = ids.map(() => "?").join(",");
+        const result = await db.prepare(
+          `DELETE FROM chunk_topics WHERE chunk_id IN (${ph})`
+        ).bind(...ids).run();
+        staleLinksDeleted += result.meta.changes || 0;
+
+        // Also clean episode_topics
+        const epIds = await db.prepare(
+          `SELECT DISTINCT episode_id FROM chunks WHERE id IN (${ph})`
+        ).bind(...ids).all<{ episode_id: number }>();
+        for (const ep of epIds.results) {
+          await db.prepare("DELETE FROM episode_topics WHERE episode_id = ?").bind(ep.episode_id).run();
+        }
+
+        offset += BATCH;
+      }
+    }
+
+    // Step 2: Delete orphan topics (no chunk_topics links)
+    let orphansDeleted = 0;
+    while (true) {
+      const result = await db.prepare(
+        `DELETE FROM topics WHERE kind != 'entity'
+         AND NOT EXISTS (SELECT 1 FROM chunk_topics WHERE topic_id = topics.id)
+         LIMIT 1000`
+      ).run();
+      orphansDeleted += result.meta.changes || 0;
+      if ((result.meta.changes || 0) === 0) break;
+    }
+
+    return c.json({
+      status: "ok",
+      stale_chunks: staleChunks?.c || 0,
+      stale_links_deleted: staleLinksDeleted,
+      orphans_deleted: orphansDeleted,
+    });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
 // Admin: finalize enrichment (run once after all chunks enriched)
 api.get("/finalize", async (c) => {
   const denied = requireAuth(c);
@@ -256,7 +324,12 @@ api.get("/health", async (c) => {
   const [chunks, topics, unenriched, lastRun] = await Promise.all([
     c.env.DB.prepare("SELECT COUNT(*) as c FROM chunks").first<{ c: number }>(),
     c.env.DB.prepare("SELECT COUNT(*) as c FROM topics WHERE usage_count > 0").first<{ c: number }>(),
-    c.env.DB.prepare("SELECT COUNT(*) as c FROM chunks WHERE id NOT IN (SELECT DISTINCT chunk_id FROM chunk_topics)").first<{ c: number }>(),
+    (async () => {
+      const { CURRENT_ENRICHMENT_VERSION } = await import("../jobs/ingest");
+      return c.env.DB.prepare(
+        "SELECT COUNT(*) as c FROM chunks WHERE enriched = 0 OR enrichment_version < ?"
+      ).bind(CURRENT_ENRICHMENT_VERSION).first<{ c: number }>();
+    })(),
     c.env.DB.prepare("SELECT * FROM ingestion_log ORDER BY started_at DESC LIMIT 1").first(),
   ]);
 
