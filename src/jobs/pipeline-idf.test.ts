@@ -54,7 +54,7 @@ describe("Item 1: IDF from word_stats", () => {
     for (let i = 0; i < 100; i++) {
       dummyInserts.push(
         env.DB.prepare(
-          "INSERT INTO chunks (episode_id, slug, title, content, content_plain, position, word_count, enriched, enrichment_version) VALUES (1, ?, ?, 'x', 'x', ?, 1, 1, 2)"
+          "INSERT INTO chunks (episode_id, slug, title, content, content_plain, position, word_count, enriched, enrichment_version) VALUES (1, ?, ?, 'x', 'x', ?, 1, 1, 3)"
         ).bind(`dummy-${i}`, `Dummy ${i}`, i + 10)
       );
     }

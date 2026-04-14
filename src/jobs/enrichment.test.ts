@@ -66,15 +66,19 @@ describe("Phase 8: Enrichment pipeline improvements", () => {
       const episodes = parseHtmlDocument(sampleHtml);
       await ingestEpisodesOnly(env.DB, 1, episodes);
 
+      // Seed pre-enriched chunks with "prompt" and "injection" as topics.
+      // Mark them enriched at current version so enrichChunks won't re-process
+      // and delete these manually-seeded chunk_topics.
+      const { CURRENT_ENRICHMENT_VERSION } = await import("./ingest");
       const epResult = await env.DB.prepare("SELECT id FROM episodes LIMIT 1").first<{ id: number }>();
       await env.DB.prepare(
-        `INSERT INTO chunks (episode_id, slug, title, content, content_plain, position, word_count)
-         VALUES (?, 'test-pi-1', 'PI 1', 'prompt injection text', 'prompt injection text', 97, 10)`
-      ).bind(epResult!.id).run();
+        `INSERT INTO chunks (episode_id, slug, title, content, content_plain, position, word_count, enriched, enrichment_version)
+         VALUES (?, 'test-pi-1', 'PI 1', 'prompt injection text', 'prompt injection text', 97, 10, 1, ?)`
+      ).bind(epResult!.id, CURRENT_ENRICHMENT_VERSION).run();
       await env.DB.prepare(
-        `INSERT INTO chunks (episode_id, slug, title, content, content_plain, position, word_count)
-         VALUES (?, 'test-pi-2', 'PI 2', 'prompt injection other', 'prompt injection other', 98, 10)`
-      ).bind(epResult!.id).run();
+        `INSERT INTO chunks (episode_id, slug, title, content, content_plain, position, word_count, enriched, enrichment_version)
+         VALUES (?, 'test-pi-2', 'PI 2', 'prompt injection other', 'prompt injection other', 98, 10, 1, ?)`
+      ).bind(epResult!.id, CURRENT_ENRICHMENT_VERSION).run();
 
       await env.DB.prepare("INSERT OR IGNORE INTO topics (name, slug, kind) VALUES ('prompt', 'prompt', 'concept')").run();
       await env.DB.prepare("INSERT OR IGNORE INTO topics (name, slug, kind) VALUES ('injection', 'injection', 'concept')").run();
@@ -91,6 +95,7 @@ describe("Phase 8: Enrichment pipeline improvements", () => {
         env.DB.prepare("INSERT OR IGNORE INTO chunk_topics (chunk_id, topic_id) VALUES (?, ?)").bind(chunk2!.id, injectionTopic!.id),
       ]);
 
+      // enrichChunks won't touch the pre-enriched chunks (correct version)
       await enrichChunks(env.DB, 1000);
       await finalizeEnrichment(env.DB);
 

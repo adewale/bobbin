@@ -16,8 +16,10 @@ import type { Bindings, ParsedEpisode } from "../types";
  * v1: Initial TF-IDF extraction (maxTopics=15, no noise filter on heuristics)
  * v2: Quality improvements — maxTopics=10, noise filter on all sources,
  *     expanded NOISE_WORDS (+80 words), suffix heuristics, curly quote fix
+ * v3: processChunkBatch deletes old chunk_topics before inserting new ones;
+ *     finalization steps batched to stay under D1 CPU time limit
  */
-export const CURRENT_ENRICHMENT_VERSION = 2;
+export const CURRENT_ENRICHMENT_VERSION = 3;
 
 /**
  * Phase 1: Fast insert — episodes and chunks only.
@@ -131,6 +133,15 @@ export async function processChunkBatch(
     await batchExec(db, entityUpdates);
   }
 
+  // Delete old chunk_topics for this batch (clean slate on re-enrichment)
+  const chunkIds = chunks.map(c => c.id);
+  const BATCH_DEL = 90;
+  for (let i = 0; i < chunkIds.length; i += BATCH_DEL) {
+    const batch = chunkIds.slice(i, i + BATCH_DEL);
+    const ph = batch.map(() => "?").join(",");
+    await db.prepare(`DELETE FROM chunk_topics WHERE chunk_id IN (${ph})`).bind(...batch).run();
+  }
+
   // Insert chunk_topics
   const ctStmts: D1PreparedStatement[] = [];
   for (const { chunkId, topicSlug } of chunkTopicPairs) {
@@ -141,8 +152,11 @@ export async function processChunkBatch(
   }
   await batchExec(db, ctStmts);
 
-  // Insert episode_topics
+  // Delete old episode_topics then rebuild
   const episodeIds = [...new Set(chunks.map((c) => c.episode_id))];
+  for (const epId of episodeIds) {
+    await db.prepare("DELETE FROM episode_topics WHERE episode_id = ?").bind(epId).run();
+  }
   const etStmts = episodeIds.flatMap((epId) =>
     chunks
       .filter((c) => c.episode_id === epId)
@@ -252,12 +266,18 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
     total_ms: 0,
   };
 
-  // Step 1: Recalculate topic usage counts from actual chunk_topics
+  // Step 1: Recalculate topic usage counts (batched to stay under D1 CPU limit)
   await runStep("usage_recount", steps, async () => {
-    await db.prepare(
-      "UPDATE topics SET usage_count = (SELECT COUNT(*) FROM chunk_topics WHERE topic_id = topics.id)"
-    ).run();
+    const topicCount = await db.prepare("SELECT MAX(id) as m FROM topics").first<{ m: number }>();
+    const maxId = topicCount?.m || 0;
+    const BATCH = 1000;
+    for (let start = 0; start <= maxId; start += BATCH) {
+      await db.prepare(
+        "UPDATE topics SET usage_count = (SELECT COUNT(*) FROM chunk_topics WHERE topic_id = topics.id) WHERE id > ? AND id <= ?"
+      ).bind(start, start + BATCH).run();
+    }
     result.usage_recalculated = true;
+    return `${maxId} topics recounted in ${Math.ceil(maxId / BATCH)} batches`;
   });
 
   // Step 2: Rebuild word_stats
@@ -277,15 +297,20 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
     result.word_stats_rebuilt = true;
   });
 
-  // Step 3: Precompute reach
+  // Step 3: Precompute reach (batched)
   await runStep("reach_precompute", steps, async () => {
-    await db.prepare(
-      `UPDATE chunks SET reach = (
-         SELECT COALESCE(SUM(t.usage_count), 0)
-         FROM chunk_topics ct JOIN topics t ON ct.topic_id = t.id
-         WHERE ct.chunk_id = chunks.id
-       ) WHERE id IN (SELECT chunk_id FROM chunk_topics)`
-    ).run();
+    const maxChunk = await db.prepare("SELECT MAX(id) as m FROM chunks").first<{ m: number }>();
+    const maxId = maxChunk?.m || 0;
+    const BATCH = 1000;
+    for (let start = 0; start <= maxId; start += BATCH) {
+      await db.prepare(
+        `UPDATE chunks SET reach = (
+           SELECT COALESCE(SUM(t.usage_count), 0)
+           FROM chunk_topics ct JOIN topics t ON ct.topic_id = t.id
+           WHERE ct.chunk_id = chunks.id
+         ) WHERE id > ? AND id <= ? AND id IN (SELECT chunk_id FROM chunk_topics)`
+      ).bind(start, start + BATCH).run();
+    }
   });
 
   // Step 4: Auto-merge split concepts
@@ -339,13 +364,18 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
     return `${phrasePairs.results.length} pairs merged`;
   });
 
-  // Step 7: Precompute distinctiveness
+  // Step 7: Precompute distinctiveness (batched)
   await runStep("distinctiveness", steps, async () => {
-    await db.prepare(
-      `UPDATE topics SET distinctiveness = COALESCE(
-        (SELECT w.distinctiveness FROM word_stats w WHERE w.word = topics.name), 0
-      )`
-    ).run();
+    const topicCount = await db.prepare("SELECT MAX(id) as m FROM topics").first<{ m: number }>();
+    const maxId = topicCount?.m || 0;
+    const BATCH = 1000;
+    for (let start = 0; start <= maxId; start += BATCH) {
+      await db.prepare(
+        `UPDATE topics SET distinctiveness = COALESCE(
+          (SELECT w.distinctiveness FROM word_stats w WHERE w.word = topics.name), 0
+        ) WHERE id > ? AND id <= ?`
+      ).bind(start, start + BATCH).run();
+    }
   });
 
   // Step 8: Precompute related_slugs
@@ -455,11 +485,16 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
     return `${noiseIds.length} noise topics cleaned`;
   });
 
-  // Step 11: Recalculate usage counts after cleanup
+  // Step 11: Recalculate usage counts after cleanup (batched)
   await runStep("usage_recount_final", steps, async () => {
-    await db.prepare(
-      "UPDATE topics SET usage_count = (SELECT COUNT(*) FROM chunk_topics WHERE topic_id = topics.id)"
-    ).run();
+    const topicCount = await db.prepare("SELECT MAX(id) as m FROM topics").first<{ m: number }>();
+    const maxId = topicCount?.m || 0;
+    const BATCH = 1000;
+    for (let start = 0; start <= maxId; start += BATCH) {
+      await db.prepare(
+        "UPDATE topics SET usage_count = (SELECT COUNT(*) FROM chunk_topics WHERE topic_id = topics.id) WHERE id > ? AND id <= ?"
+      ).bind(start, start + BATCH).run();
+    }
   });
 
   // Step 12: Prune low-usage topics (entities exempt)
