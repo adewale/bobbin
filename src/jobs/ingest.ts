@@ -12,8 +12,12 @@ import { getExistingDatesForSource, getSourceTag } from "../db/sources";
 import { getUnenrichedChunks, markChunksEnriched, isEnrichmentDone } from "../db/ingestion";
 import type { Bindings, ParsedEpisode } from "../types";
 
-/** Current enrichment algorithm version. Bump to re-enrich all chunks. */
-export const CURRENT_ENRICHMENT_VERSION = 1;
+/** Current enrichment algorithm version. Bump to re-enrich all chunks.
+ * v1: Initial TF-IDF extraction (maxTopics=15, no noise filter on heuristics)
+ * v2: Quality improvements — maxTopics=10, noise filter on all sources,
+ *     expanded NOISE_WORDS (+80 words), suffix heuristics, curly quote fix
+ */
+export const CURRENT_ENRICHMENT_VERSION = 2;
 
 /**
  * Phase 1: Fast insert — episodes and chunks only.
@@ -105,7 +109,7 @@ export async function processChunkBatch(
   const chunkTopicPairs: { chunkId: number; episodeId: number; topicSlug: string }[] = [];
 
   for (const chunk of chunks) {
-    const topics = extractTopics(chunk.content_plain, 15, corpusStats);
+    const topics = extractTopics(chunk.content_plain, 10, corpusStats);
     for (const topic of topics) {
       uniqueTopics.set(topic.slug, { name: topic.name, kind: topic.kind || "concept" });
       chunkTopicPairs.push({ chunkId: chunk.id, episodeId: chunk.episode_id, topicSlug: topic.slug });
@@ -189,6 +193,14 @@ export async function enrichChunks(
  * Fast steps run inline. Slow steps (related_slugs, n-gram assignment)
  * are dispatched to a queue for parallel processing when a queue is available.
  */
+export interface FinalizeStep {
+  name: string;
+  duration_ms: number;
+  status: "ok" | "error";
+  error?: string;
+  detail?: string;
+}
+
 export interface FinalizeResult {
   usage_recalculated: boolean;
   word_stats_rebuilt: boolean;
@@ -196,9 +208,39 @@ export interface FinalizeResult {
   related_slugs_method: "batch_sql" | "queue" | "inline" | "skipped";
   noise_removed: number;
   pruned: number;
+  steps: FinalizeStep[];
+  total_ms: number;
+}
+
+async function runStep(
+  name: string,
+  steps: FinalizeStep[],
+  fn: () => Promise<string | void>
+): Promise<void> {
+  const start = Date.now();
+  try {
+    const detail = await fn();
+    steps.push({
+      name,
+      duration_ms: Date.now() - start,
+      status: "ok",
+      ...(detail ? { detail } : {}),
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    steps.push({
+      name,
+      duration_ms: Date.now() - start,
+      status: "error",
+      error: msg.substring(0, 500),
+    });
+    throw e; // re-throw so caller sees it
+  }
 }
 
 export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise<FinalizeResult> {
+  const totalStart = Date.now();
+  const steps: FinalizeStep[] = [];
   const result: FinalizeResult = {
     usage_recalculated: false,
     word_stats_rebuilt: false,
@@ -206,183 +248,236 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
     related_slugs_method: "skipped",
     noise_removed: 0,
     pruned: 0,
+    steps,
+    total_ms: 0,
   };
-  // Recalculate topic usage counts from actual chunk_topics
-  await db.prepare(
-    "UPDATE topics SET usage_count = (SELECT COUNT(*) FROM chunk_topics WHERE topic_id = topics.id)"
-  ).run();
-  result.usage_recalculated = true;
 
-  // Rebuild word_stats (incremental: preserves distinctiveness and in_baseline columns)
-  await db.batch([
-    db.prepare("DELETE FROM word_stats WHERE word NOT IN (SELECT DISTINCT word FROM chunk_words)"),
-    db.prepare(
-      `INSERT INTO word_stats (word, total_count, doc_count, updated_at)
-       SELECT word, SUM(count), COUNT(DISTINCT chunk_id), datetime('now')
-       FROM chunk_words GROUP BY word
-       ON CONFLICT(word) DO UPDATE SET
-         total_count = excluded.total_count,
-         doc_count = excluded.doc_count,
-         updated_at = excluded.updated_at`
-    ),
-  ]);
-  result.word_stats_rebuilt = true;
-
-  // Precompute reach for enriched chunks
-  await db.prepare(
-    `UPDATE chunks SET reach = (
-       SELECT COALESCE(SUM(t.usage_count), 0)
-       FROM chunk_topics ct JOIN topics t ON ct.topic_id = t.id
-       WHERE ct.chunk_id = chunks.id
-     ) WHERE id IN (SELECT chunk_id FROM chunk_topics)`
-  ).run();
-
-  // Auto-merge split concepts based on co-occurrence
-  await mergeCoOccurringTopics(db);
-
-  // Corpus-level n-gram extraction: discover phrase topics
-  // Instead of loading all chunk texts here, dispatch to queue when available
-  if (queue) {
-    await queue.send({ type: "extract-ngrams" });
-    result.ngram_dispatched = true;
-  } else {
-    // Fallback: inline extraction for tests/dev
-    await extractAndStoreNgrams(db);
-    // Note: kind='phrase' is set by extractAndStoreNgrams for PMI-discovered phrases only.
-    // No auto-promote rule — only authoritative sources set kind.
-    result.ngram_dispatched = true;
-  }
-
-  // Deduplicate phrase pairs: merge plurals and possessive variants
-  const phrasePairs = await db.prepare(
-    `SELECT t1.id as keep_id, t1.name as keep_name, t2.id as dupe_id, t2.name as dupe_name
-     FROM topics t1
-     JOIN topics t2 ON (
-       t2.name = t1.name || 's' OR
-       t2.name = t1.name || 'es' OR
-       t1.name = t2.name || 's' OR
-       t1.name = t2.name || 'es' OR
-       t2.name = REPLACE(t1.name, '''s ', ' ') OR
-       t1.name = REPLACE(t2.name, '''s ', ' ')
-     )
-     WHERE t1.id < t2.id AND t1.usage_count >= t2.usage_count AND t1.usage_count > 0`
-  ).all();
-
-  for (const pair of phrasePairs.results as any[]) {
-    // Move chunk_topics from dupe to keep
+  // Step 1: Recalculate topic usage counts from actual chunk_topics
+  await runStep("usage_recount", steps, async () => {
     await db.prepare(
-      "UPDATE OR IGNORE chunk_topics SET topic_id = ? WHERE topic_id = ?"
-    ).bind(pair.keep_id, pair.dupe_id).run();
-    // Delete remaining dupes
-    await db.prepare("DELETE FROM chunk_topics WHERE topic_id = ?").bind(pair.dupe_id).run();
-    await db.prepare("DELETE FROM episode_topics WHERE topic_id = ?").bind(pair.dupe_id).run();
-    await db.prepare("UPDATE topics SET usage_count = 0 WHERE id = ?").bind(pair.dupe_id).run();
-  }
+      "UPDATE topics SET usage_count = (SELECT COUNT(*) FROM chunk_topics WHERE topic_id = topics.id)"
+    ).run();
+    result.usage_recalculated = true;
+  });
 
-  // Precompute distinctiveness from word_stats
-  await db.prepare(
-    `UPDATE topics SET distinctiveness = COALESCE(
-      (SELECT w.distinctiveness FROM word_stats w WHERE w.word = topics.name), 0
-    )`
-  ).run();
+  // Step 2: Rebuild word_stats
+  await runStep("word_stats_rebuild", steps, async () => {
+    await db.batch([
+      db.prepare("DELETE FROM word_stats WHERE word NOT IN (SELECT DISTINCT word FROM chunk_words)"),
+      db.prepare(
+        `INSERT INTO word_stats (word, total_count, doc_count, updated_at)
+         SELECT word, SUM(count), COUNT(DISTINCT chunk_id), datetime('now')
+         FROM chunk_words GROUP BY word
+         ON CONFLICT(word) DO UPDATE SET
+           total_count = excluded.total_count,
+           doc_count = excluded.doc_count,
+           updated_at = excluded.updated_at`
+      ),
+    ]);
+    result.word_stats_rebuilt = true;
+  });
 
-  // Precompute related_slugs — try batch SQL first, fall back to queue or N+1
-  try {
-    await db.prepare(`
-      UPDATE topics SET related_slugs = (
-        SELECT '[' || GROUP_CONCAT('"' || t2.slug || '"') || ']'
-        FROM (
-          SELECT t.slug, COUNT(*) as cnt
-          FROM chunk_topics ct1
-          JOIN chunk_topics ct2 ON ct1.chunk_id = ct2.chunk_id AND ct1.topic_id != ct2.topic_id
-          JOIN topics t ON ct2.topic_id = t.id
-          WHERE ct1.topic_id = topics.id
-          GROUP BY ct2.topic_id
-          ORDER BY cnt DESC
-          LIMIT 5
-        ) t2
-      )
-      WHERE usage_count >= 5
-    `).run();
-    result.related_slugs_method = "batch_sql";
-  } catch {
-    // Batch too heavy -- dispatch to queue or process inline
+  // Step 3: Precompute reach
+  await runStep("reach_precompute", steps, async () => {
+    await db.prepare(
+      `UPDATE chunks SET reach = (
+         SELECT COALESCE(SUM(t.usage_count), 0)
+         FROM chunk_topics ct JOIN topics t ON ct.topic_id = t.id
+         WHERE ct.chunk_id = chunks.id
+       ) WHERE id IN (SELECT chunk_id FROM chunk_topics)`
+    ).run();
+  });
+
+  // Step 4: Auto-merge split concepts
+  await runStep("merge_cooccurring", steps, async () => {
+    await mergeCoOccurringTopics(db);
+  });
+
+  // Step 5: N-gram extraction
+  await runStep("ngram_extraction", steps, async () => {
     if (queue) {
-      const topics = await db.prepare("SELECT id FROM topics WHERE usage_count >= 5").all<{ id: number }>();
-      const messages = topics.results.map(t => ({ body: { type: "compute-related" as const, topicId: t.id } }));
-      for (let i = 0; i < messages.length; i += 25) {
-        await queue.sendBatch(messages.slice(i, i + 25));
-      }
-      result.related_slugs_method = "queue";
+      await queue.send({ type: "extract-ngrams" });
+      result.ngram_dispatched = true;
+      return "dispatched to queue";
     } else {
-      // Inline N+1 fallback for tests/dev
-      const allTopics = await db.prepare(
-        "SELECT id, slug FROM topics WHERE usage_count >= 5"
-      ).all<{ id: number; slug: string }>();
-      for (const topic of allTopics.results) {
-        const related = await db.prepare(
-          `SELECT t.slug FROM chunk_topics ct1
-           JOIN chunk_topics ct2 ON ct1.chunk_id = ct2.chunk_id AND ct1.topic_id != ct2.topic_id
-           JOIN topics t ON ct2.topic_id = t.id
-           WHERE ct1.topic_id = ?
-           GROUP BY ct2.topic_id
-           ORDER BY COUNT(*) DESC
-           LIMIT 5`
-        ).bind(topic.id).all<{ slug: string }>();
+      await extractAndStoreNgrams(db);
+      result.ngram_dispatched = true;
+      return "inline";
+    }
+  });
 
-        const slugs = JSON.stringify(related.results.map(r => r.slug));
-        await db.prepare(
-          "UPDATE topics SET related_slugs = ? WHERE id = ?"
-        ).bind(slugs, topic.id).run();
+  // Step 6: Deduplicate phrase pairs (BATCHED — not individual queries)
+  await runStep("phrase_dedup", steps, async () => {
+    const phrasePairs = await db.prepare(
+      `SELECT t1.id as keep_id, t1.name as keep_name, t2.id as dupe_id, t2.name as dupe_name
+       FROM topics t1
+       JOIN topics t2 ON (
+         t2.name = t1.name || 's' OR
+         t2.name = t1.name || 'es' OR
+         t1.name = t2.name || 's' OR
+         t1.name = t2.name || 'es' OR
+         t2.name = REPLACE(t1.name, '''s ', ' ') OR
+         t1.name = REPLACE(t2.name, '''s ', ' ')
+       )
+       WHERE t1.id < t2.id AND t1.usage_count >= t2.usage_count AND t1.usage_count > 0`
+    ).all();
+
+    if (phrasePairs.results.length > 0) {
+      // Batch the dedup operations instead of individual queries per pair
+      const stmts: D1PreparedStatement[] = [];
+      for (const pair of phrasePairs.results as any[]) {
+        stmts.push(
+          db.prepare("UPDATE OR IGNORE chunk_topics SET topic_id = ? WHERE topic_id = ?")
+            .bind(pair.keep_id, pair.dupe_id),
+          db.prepare("DELETE FROM chunk_topics WHERE topic_id = ?").bind(pair.dupe_id),
+          db.prepare("DELETE FROM episode_topics WHERE topic_id = ?").bind(pair.dupe_id),
+          db.prepare("UPDATE topics SET usage_count = 0 WHERE id = ?").bind(pair.dupe_id),
+        );
       }
-      result.related_slugs_method = "inline";
+      await batchExec(db, stmts);
     }
-  }
+    return `${phrasePairs.results.length} pairs merged`;
+  });
 
-  // === Self-healing cleanup steps ===
-
-  // Issue 1: Validate entity assignments — remove false matches
-  const entities = await db.prepare(
-    "SELECT id, name FROM topics WHERE kind = 'entity' AND usage_count > 0"
-  ).all<{ id: number; name: string }>();
-  for (const entity of entities.results) {
+  // Step 7: Precompute distinctiveness
+  await runStep("distinctiveness", steps, async () => {
     await db.prepare(
-      `DELETE FROM chunk_topics WHERE topic_id = ? AND chunk_id NOT IN (
-        SELECT id FROM chunks WHERE LOWER(content_plain) LIKE ?
+      `UPDATE topics SET distinctiveness = COALESCE(
+        (SELECT w.distinctiveness FROM word_stats w WHERE w.word = topics.name), 0
       )`
-    ).bind(entity.id, `%${entity.name.toLowerCase()}%`).run();
-  }
+    ).run();
+  });
 
-  // Issue 5: Remove chunk_topics for noise-word topics
-  const noiseCandidates = await db.prepare(
-    "SELECT id, name, kind FROM topics WHERE usage_count > 0"
-  ).all<{ id: number; name: string; kind: string }>();
-  const noiseIds = noiseCandidates.results
-    .filter(t => t.kind !== "entity" && isNoiseTopic(t.name))
-    .map(t => t.id);
-  result.noise_removed = noiseIds.length;
-  if (noiseIds.length > 0) {
-    for (const id of noiseIds) {
-      await db.prepare("DELETE FROM chunk_topics WHERE topic_id = ?").bind(id).run();
-      await db.prepare("DELETE FROM episode_topics WHERE topic_id = ?").bind(id).run();
+  // Step 8: Precompute related_slugs
+  await runStep("related_slugs", steps, async () => {
+    try {
+      await db.prepare(`
+        UPDATE topics SET related_slugs = (
+          SELECT '[' || GROUP_CONCAT('"' || t2.slug || '"') || ']'
+          FROM (
+            SELECT t.slug, COUNT(*) as cnt
+            FROM chunk_topics ct1
+            JOIN chunk_topics ct2 ON ct1.chunk_id = ct2.chunk_id AND ct1.topic_id != ct2.topic_id
+            JOIN topics t ON ct2.topic_id = t.id
+            WHERE ct1.topic_id = topics.id
+            GROUP BY ct2.topic_id
+            ORDER BY cnt DESC
+            LIMIT 5
+          ) t2
+        )
+        WHERE usage_count >= 5
+      `).run();
+      result.related_slugs_method = "batch_sql";
+      return "batch_sql";
+    } catch {
+      // Batch too heavy — dispatch to queue or batch inline
+      if (queue) {
+        const topics = await db.prepare("SELECT id FROM topics WHERE usage_count >= 5").all<{ id: number }>();
+        const messages = topics.results.map(t => ({ body: { type: "compute-related" as const, topicId: t.id } }));
+        for (let i = 0; i < messages.length; i += 25) {
+          await queue.sendBatch(messages.slice(i, i + 25));
+        }
+        result.related_slugs_method = "queue";
+        return `queue (${topics.results.length} topics)`;
+      } else {
+        // Inline N+1 fallback — batch the UPDATE writes
+        const allTopics = await db.prepare(
+          "SELECT id, slug FROM topics WHERE usage_count >= 5"
+        ).all<{ id: number; slug: string }>();
+        const updateStmts: D1PreparedStatement[] = [];
+        for (const topic of allTopics.results) {
+          const related = await db.prepare(
+            `SELECT t.slug FROM chunk_topics ct1
+             JOIN chunk_topics ct2 ON ct1.chunk_id = ct2.chunk_id AND ct1.topic_id != ct2.topic_id
+             JOIN topics t ON ct2.topic_id = t.id
+             WHERE ct1.topic_id = ?
+             GROUP BY ct2.topic_id
+             ORDER BY COUNT(*) DESC
+             LIMIT 5`
+          ).bind(topic.id).all<{ slug: string }>();
+
+          const slugs = JSON.stringify(related.results.map(r => r.slug));
+          updateStmts.push(
+            db.prepare("UPDATE topics SET related_slugs = ? WHERE id = ?").bind(slugs, topic.id)
+          );
+        }
+        await batchExec(db, updateStmts);
+        result.related_slugs_method = "inline";
+        return `inline (${allTopics.results.length} topics)`;
+      }
     }
-  }
+  });
 
-  // Recalculate usage counts after cleanup
-  await db.prepare(
-    "UPDATE topics SET usage_count = (SELECT COUNT(*) FROM chunk_topics WHERE topic_id = topics.id)"
-  ).run();
+  // Step 9: Validate entity assignments (BATCHED)
+  await runStep("entity_validation", steps, async () => {
+    const entities = await db.prepare(
+      "SELECT id, name FROM topics WHERE kind = 'entity' AND usage_count > 0"
+    ).all<{ id: number; name: string }>();
 
-  // Prune topics with usage <= 1 (entities exempt)
-  const pruneResult = await db.prepare(
-    "SELECT COUNT(*) as c FROM topics WHERE usage_count <= 1 AND kind != 'entity'"
-  ).first<{ c: number }>();
-  result.pruned = pruneResult?.c || 0;
+    const stmts: D1PreparedStatement[] = [];
+    for (const entity of entities.results) {
+      stmts.push(
+        db.prepare(
+          `DELETE FROM chunk_topics WHERE topic_id = ? AND chunk_id NOT IN (
+            SELECT id FROM chunks WHERE LOWER(content_plain) LIKE ?
+          )`
+        ).bind(entity.id, `%${entity.name.toLowerCase()}%`)
+      );
+    }
+    if (stmts.length > 0) {
+      await batchExec(db, stmts);
+    }
+    return `${entities.results.length} entities validated`;
+  });
 
-  await db.prepare("DELETE FROM chunk_topics WHERE topic_id IN (SELECT id FROM topics WHERE usage_count <= 1 AND kind != 'entity')").run();
-  await db.prepare("DELETE FROM episode_topics WHERE topic_id IN (SELECT id FROM topics WHERE usage_count <= 1 AND kind != 'entity')").run();
-  await db.prepare("UPDATE topics SET usage_count = 0 WHERE usage_count <= 1 AND kind != 'entity'").run();
+  // Step 10: Remove noise-word topics (BATCHED — was O(n) individual DELETEs)
+  await runStep("noise_cleanup", steps, async () => {
+    const noiseCandidates = await db.prepare(
+      "SELECT id, name, kind FROM topics WHERE usage_count > 0"
+    ).all<{ id: number; name: string; kind: string }>();
+    const noiseIds = noiseCandidates.results
+      .filter(t => t.kind !== "entity" && isNoiseTopic(t.name))
+      .map(t => t.id);
+    result.noise_removed = noiseIds.length;
 
+    if (noiseIds.length > 0) {
+      // Batch DELETE using IN clauses (max 90 per batch for SQLite variable limit)
+      const BATCH = 90;
+      for (let i = 0; i < noiseIds.length; i += BATCH) {
+        const batch = noiseIds.slice(i, i + BATCH);
+        const placeholders = batch.map(() => "?").join(",");
+        await db.batch([
+          db.prepare(`DELETE FROM chunk_topics WHERE topic_id IN (${placeholders})`).bind(...batch),
+          db.prepare(`DELETE FROM episode_topics WHERE topic_id IN (${placeholders})`).bind(...batch),
+        ]);
+      }
+    }
+    return `${noiseIds.length} noise topics cleaned`;
+  });
+
+  // Step 11: Recalculate usage counts after cleanup
+  await runStep("usage_recount_final", steps, async () => {
+    await db.prepare(
+      "UPDATE topics SET usage_count = (SELECT COUNT(*) FROM chunk_topics WHERE topic_id = topics.id)"
+    ).run();
+  });
+
+  // Step 12: Prune low-usage topics (entities exempt)
+  await runStep("prune_low_usage", steps, async () => {
+    const pruneCount = await db.prepare(
+      "SELECT COUNT(*) as c FROM topics WHERE usage_count <= 1 AND kind != 'entity'"
+    ).first<{ c: number }>();
+    result.pruned = pruneCount?.c || 0;
+
+    await db.batch([
+      db.prepare("DELETE FROM chunk_topics WHERE topic_id IN (SELECT id FROM topics WHERE usage_count <= 1 AND kind != 'entity')"),
+      db.prepare("DELETE FROM episode_topics WHERE topic_id IN (SELECT id FROM topics WHERE usage_count <= 1 AND kind != 'entity')"),
+      db.prepare("UPDATE topics SET usage_count = 0 WHERE usage_count <= 1 AND kind != 'entity'"),
+    ]);
+    return `${result.pruned} topics pruned`;
+  });
+
+  result.total_ms = Date.now() - totalStart;
   return result;
 }
 

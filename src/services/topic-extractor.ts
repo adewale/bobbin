@@ -109,13 +109,18 @@ export function extractEntities(text: string): TopicResult[] {
     // Start from 0 — we'll use context to distinguish sentence-start caps from entities
     let i = 0;
     while (i < words.length) {
-      const word = words[i].replace(/[^a-zA-Z'-]/g, "");
+      // Strip punctuation, then strip possessive suffixes ('s, 's, 's)
+      const word = words[i]
+        .replace(/[^a-zA-Z'\u2018\u2019-]/g, "")
+        .replace(/['\u2018\u2019]s$/i, "");
       if (word.length >= 2 && word[0] === word[0].toUpperCase() && word[0] !== word[0].toLowerCase()) {
         // Found a capitalized word mid-sentence — collect the full entity
         const entityWords = [word];
         let j = i + 1;
         while (j < words.length) {
-          const next = words[j].replace(/[^a-zA-Z'-]/g, "");
+          const next = words[j]
+            .replace(/[^a-zA-Z'\u2018\u2019-]/g, "")
+            .replace(/['\u2018\u2019]s$/i, "");
           if (next.length >= 2 && next[0] === next[0].toUpperCase() && next[0] !== next[0].toLowerCase()) {
             entityWords.push(next);
             j++;
@@ -230,7 +235,7 @@ export function identifyDistinctiveEntities(
  */
 export function extractTopics(
   text: string,
-  maxTopics: number = 15,
+  maxTopics: number = 10,
   corpusStats?: CorpusStats
 ): TopicResult[] {
   const clean = decodeHtmlEntities(text);
@@ -291,15 +296,16 @@ export function extractTopics(
     result.push(entity);
   }
 
-  // Heuristic entities next
+  // Heuristic entities next — noise filter applies here too
   for (const entity of heuristicEntities) {
     if (result.length >= maxTopics) break;
     if (usedSlugs.has(entity.slug)) continue;
+    if (isNoiseTopic(entity.name)) continue;
     usedSlugs.add(entity.slug);
-    result.push({ ...entity, score: 100 }); // heuristic entities get high score
+    result.push({ ...entity, score: 100 });
   }
 
-  // TF-IDF keywords last — filter noise here (not in the caller)
+  // TF-IDF keywords last
   for (const topic of scored) {
     if (result.length >= maxTopics) break;
     if (usedSlugs.has(topic.slug)) continue;

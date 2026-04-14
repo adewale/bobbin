@@ -21,7 +21,7 @@ describe("TF-IDF scoring", () => {
     "LLMs are transforming software development. LLMs enable new paradigms.",
     "Platform ecosystems evolve through competition. Ecosystem dynamics matter.",
     "Software quality depends on testing. Software engineering is changing.",
-    "Resonant computing challenges the dominant paradigm of extraction.",
+    "Transformer architecture challenges the dominant paradigm of computing.",
     "LLMs and software are discussed everywhere in tech circles today.",
   ];
   const stats = computeCorpusStats(corpus);
@@ -32,24 +32,25 @@ describe("TF-IDF scoring", () => {
     expect(stats.docFreq.get("llms")).toBe(2);
     // "software" appears in chunks 0, 2, 4 = 3 docs
     expect(stats.docFreq.get("software")).toBe(3);
-    // "resonant" appears in chunk 3 only = 1 doc
-    expect(stats.docFreq.get("resonant")).toBe(1);
+    // "transformer" appears in chunk 3 only = 1 doc
+    expect(stats.docFreq.get("transformer")).toBe(1);
   });
 
   it("rare terms score higher than common terms with same TF", () => {
-    // "resonant" (1 doc) should score higher than "software" (3 docs) when TF is equal
-    const topicsRare = extractTopics("resonant computing resonant paradigm", 5, stats);
-    const topicsCommon = extractTopics("software engineering software testing", 5, stats);
+    // "transformer" appears in 1 doc (rare), "llms" appears in 2 docs (common)
+    // With equal TF, the rarer term should score higher due to higher IDF
+    const topicsRare = extractTopics("transformer architecture transformer models", 5, stats);
+    const topicsCommon = extractTopics("llms architecture llms models", 5, stats);
 
-    const rareScore = topicsRare.find((t) => t.name === "resonant")?.score || 0;
-    const commonScore = topicsCommon.find((t) => t.name === "software")?.score || 0;
+    const rareScore = topicsRare.find((t) => t.name === "transformer")?.score || 0;
+    const commonScore = topicsCommon.find((t) => t.name === "llms")?.score || 0;
     expect(rareScore).toBeGreaterThan(commonScore);
   });
 
   it("falls back to pure TF when no corpus stats provided", () => {
-    const topics = extractTopics("ecosystem dynamics ecosystem platform", 5);
+    const topics = extractTopics("swarm dynamics swarm coordination", 5);
     expect(topics.length).toBeGreaterThan(0);
-    expect(topics[0].name).toBe("ecosystem"); // highest TF
+    expect(topics[0].name).toBe("swarm"); // highest TF
   });
 });
 

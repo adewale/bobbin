@@ -101,12 +101,59 @@ describe("isNoiseTopic", () => {
     expect(isNoiseTopic("asked")).toBe(true);
   });
 
-  it("returns false for non-noise word 'resonant'", () => {
-    expect(isNoiseTopic("resonant")).toBe(false);
+  it("returns true for empirically-identified garbage word 'resonant'", () => {
+    // Found by scripts/analyze-topics.ts: "resonant" appeared 24 times
+    // in top 50 but is not navigational
+    expect(isNoiseTopic("resonant")).toBe(true);
+  });
+
+  it("returns true for other empirically-identified garbage", () => {
+    // Top garbage from analyze-topics.ts run on 20 episodes
+    const garbage = [
+      "emergent", "moment", "outcome", "personal", "insight",
+      "realize", "collective", "magnitude", "authentic", "resonance",
+      "shift", "piece", "mind", "talk", "improve", "tend",
+      "ever", "least", "ones", "live", "second", "term",
+      "control", "story", "benefit", "output", "negative",
+      "preference", "aspiration", "nuance", "tendency",
+    ];
+    for (const word of garbage) {
+      expect(isNoiseTopic(word), `"${word}" should be noise`).toBe(true);
+    }
+  });
+
+  it("returns false for domain-relevant words", () => {
+    const good = ["llms", "chatbot", "swarm", "prompt", "agent", "coordination", "embedding"];
+    for (const word of good) {
+      expect(isNoiseTopic(word), `"${word}" should NOT be noise`).toBe(false);
+    }
   });
 
   it("returns false for phrase topics like 'prompt injection'", () => {
     expect(isNoiseTopic("prompt injection")).toBe(false);
+  });
+
+  it("catches -ly adverbs via suffix heuristic", () => {
+    expect(isNoiseTopic("extremely")).toBe(true);
+    expect(isNoiseTopic("quickly")).toBe(true);
+    expect(isNoiseTopic("typically")).toBe(true);
+    expect(isNoiseTopic("deeply")).toBe(true);
+  });
+
+  it("catches short -ize verbs but not domain terms", () => {
+    expect(isNoiseTopic("realize")).toBe(true);
+    expect(isNoiseTopic("optimize")).toBe(true);
+    // Domain terms (>9 chars) are allowed
+    expect(isNoiseTopic("containerize")).toBe(false);
+    expect(isNoiseTopic("vectorize")).toBe(false);
+  });
+
+  it("catches -ment nouns but not long domain terms", () => {
+    expect(isNoiseTopic("moment")).toBe(true);
+    expect(isNoiseTopic("argument")).toBe(true);
+    // Long -ment words (>9 chars) are allowed
+    expect(isNoiseTopic("deployment")).toBe(false);
+    expect(isNoiseTopic("environment")).toBe(true); // in NOISE_WORDS explicitly
   });
 
   it("never crashes on arbitrary input and always returns boolean (PBT)", () => {

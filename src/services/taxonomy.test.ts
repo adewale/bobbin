@@ -60,6 +60,33 @@ describe("extractEntities does NOT classify sentence-start words as entities", (
   });
 });
 
+describe("noise filtering applies to ALL topic sources", () => {
+  it("heuristic entities that are noise words do NOT become topics", () => {
+    // "Platform" mid-sentence gets detected as heuristic entity,
+    // but "platform" is in NOISE_WORDS — it should be filtered out
+    const text = "The company built a Platform for developers. The Platform handles scale.";
+    const topics = extractTopics(text);
+    const names = topics.map(t => t.name.toLowerCase());
+    expect(names).not.toContain("platform");
+  });
+
+  it("heuristic entities that are NOT noise words still become topics", () => {
+    // "Jeremie Miller" is a multi-word entity — not noise
+    const text = "Then Jeremie Miller presented the architecture. Jeremie Miller has published widely.";
+    const topics = extractTopics(text);
+    const hasJeremie = topics.some(t => t.name.includes("jeremie miller"));
+    expect(hasJeremie).toBe(true);
+  });
+
+  it("TF-IDF keywords that are noise words are filtered", () => {
+    // "system" appears frequently but is a noise word
+    const text = "The system processes data through the system pipeline. Each system handles different system tasks. The system architecture is complex.";
+    const topics = extractTopics(text);
+    const names = topics.map(t => t.name.toLowerCase());
+    expect(names).not.toContain("system");
+  });
+});
+
 describe("extractTopics taxonomy", () => {
   it("includes heuristic entities as topics (without kind='entity')", () => {
     const text =

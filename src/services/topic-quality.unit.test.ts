@@ -53,9 +53,16 @@ describe("isNoiseTopic", () => {
   // === Negative cases: words that should NOT be noise ===
 
   it.each([
-    "resonant", "emergent", "llms", "chatbot", "swarm", "ecosystem",
+    "llms", "chatbot", "swarm", "coordination", "embedding", "transformer",
   ])("returns false for legitimate topic: %s", (word) => {
     expect(isNoiseTopic(word)).toBe(false);
+  });
+
+  it.each([
+    "resonant", "emergent", "insight", "moment", "outcome",
+  ])("returns true for empirically-identified noise: %s", (word) => {
+    // These appeared in top 50 topics on 20-episode corpus but are not navigational
+    expect(isNoiseTopic(word)).toBe(true);
   });
 
   it.each([

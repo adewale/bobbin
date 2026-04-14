@@ -216,11 +216,16 @@ api.get("/finalize", async (c) => {
   if (denied) return denied;
 
   try {
-    await finalizeEnrichment(c.env.DB, c.env.ENRICHMENT_QUEUE);
-    return c.json({ status: "ok" });
+    const result = await finalizeEnrichment(c.env.DB, c.env.ENRICHMENT_QUEUE);
+    return c.json({ status: "ok", ...result });
   } catch (e: any) {
     console.error("Finalize error:", e);
-    return c.json({ error: "Finalization failed" }, 500);
+    // Return partial results — the steps array shows which step failed and timing
+    return c.json({
+      error: "Finalization failed",
+      failed_step: e.message?.substring(0, 200),
+      detail: e.stack?.substring(0, 500),
+    }, 500);
   }
 });
 

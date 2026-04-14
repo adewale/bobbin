@@ -39,15 +39,68 @@ const NOISE_WORDS = new Set([
   "described", "explained", "claimed", "suggested", "proposed", "discussed",
   "mentioned", "observed", "noted", "argued", "stated", "reported",
   "revealed", "announced", "published", "presented",
+  // Empirically found by scripts/analyze-topics.ts on 20 episodes (994 chunks).
+  // These all appeared in the top 50 topics but are not navigational.
+  // Adjectives/adverbs that describe but don't name
+  "emergent", "resonant", "authentic", "collective", "personal",
+  "negative", "dangerous", "abstract", "obvious", "concrete",
+  "fragile", "shallow", "narrow", "broad", "subtle", "bold",
+  "novel", "mature", "organic", "native", "open-ended",
+  // Nouns too generic for navigation (even in a tech corpus)
+  "moment", "outcome", "insight", "magnitude", "resonance",
+  "preference", "aspiration", "nuance", "tendency", "tension",
+  "friction", "momentum", "dimension", "threshold", "trajectory",
+  "boundary", "gravity", "entropy", "spectrum", "catalyst",
+  "symptom", "surface", "artifact", "ingredient", "recipe",
+  "niche", "habitat", "taste", "shelf", "identity",
+  "externality", "interaction", "feedback",
+  "output", "intelligence", "research", "story", "benefit",
+  // Common verbs that TF-IDF surfaces
+  "realize", "improve", "shift", "tend", "talk", "control",
+  "live", "connect", "consolidate", "absorb", "expand", "decline",
+  "transform", "replace", "disrupt", "adapt", "evolve", "launch",
+  "acquire", "collapse", "ship", "release",
+  // Short/generic words
+  "ever", "least", "ones", "second", "term", "piece", "mind",
+  "chat", "found",
+  // Round 2: empirical garbage from analyze-topics.ts after first cleanup
+  "alive", "imply", "word", "qualitative", "quantitative", "belief",
+  "task", "entity", "stay", "align", "option", "valuable", "goal",
+  "test", "deep", "desire", "push", "input", "organization",
+  "blossom", "agree", "execute", "either", "effect", "goes",
+  "negative", "positive", "consumer", "attempt", "claim",
+  "danger", "defend", "imagine", "quite", "rare",
 ]);
 
 /**
  * Check if a topic name is a noise word that should never be shown standalone.
+ *
+ * Uses three layers:
+ * 1. Explicit NOISE_WORDS set (manually curated)
+ * 2. Length filter (< 4 chars for single words)
+ * 3. Suffix heuristics (catch common verb/adjective/adverb patterns)
  */
 export function isNoiseTopic(name: string): boolean {
   const lower = name.toLowerCase();
   if (NOISE_WORDS.has(lower)) return true;
   if (!lower.includes(" ") && lower.length < 4) return true;
+
+  // Suffix heuristics for single words only — catch structural patterns
+  // that the explicit list can't cover exhaustively
+  if (!lower.includes(" ")) {
+    // Adverbs ending in -ly (e.g., "extremely", "quickly", "essentially")
+    if (lower.endsWith("ly") && lower.length >= 6) return true;
+    // Common verb endings that produce non-navigational topics
+    // -ize (realize, optimize), -ify (qualify, simplify), -ate (create, operate)
+    // Exclude domain terms: "tokenize", "vectorize", "containerize"
+    if (lower.endsWith("ize") && lower.length <= 8) return true;
+    if (lower.endsWith("ify") && lower.length <= 8) return true;
+    // -ment (moment, alignment, argument) — exclude "deployment", "embedment"
+    if (lower.endsWith("ment") && lower.length <= 9) return true;
+    // Common single-word verbs: goes, stays, makes, takes, gives
+    if (lower.endsWith("oes") || lower.endsWith("ays") || lower.endsWith("akes") || lower.endsWith("ives")) return true;
+  }
+
   return false;
 }
 

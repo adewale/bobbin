@@ -4,11 +4,11 @@ import { extractTopics } from "./topic-extractor";
 describe("extractTopics", () => {
   it("extracts top keywords from text (noise words filtered)", () => {
     const topics = extractTopics(
-      "The ecosystem dynamics of resonant computing are fascinating. Resonant ecosystems evolve through ecosystem swarm intelligence."
+      "The swarm dynamics of transformer computing are fascinating. Transformer architectures evolve through embedding swarm intelligence."
     );
     const names = topics.map((t) => t.name.toLowerCase());
-    expect(names).toContain("ecosystem");
-    expect(names).toContain("resonant");
+    expect(names).toContain("swarm");
+    expect(names).toContain("transformer");
   });
 
   it("returns topics with slugs", () => {
