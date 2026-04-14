@@ -117,9 +117,11 @@ a:hover { text-decoration: underline; }
 
 /* === Related === */
 .related-chunks { padding: 1rem; background: var(--bg-warm); border: 1px solid var(--border); border-radius: 6px; height: fit-content; }
-.related-chunks h3 { font-size: 0.85rem; margin: 0 0 0.5rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-light); }
+.related-chunks h3 { font-family: var(--font-ui); font-size: 0.85rem; font-weight: 600; margin: 0 0 0.5rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-light); }
 .related-chunks ul { list-style: none; }
-.related-chunks li { padding: 0.25rem 0; font-size: 0.85rem; }
+.related-chunks li { padding: 0.25rem 0; font-size: 0.88rem; }
+.related-chunks li a { font-family: var(--font-ui); font-weight: 400; text-decoration: none; color: var(--text); }
+.related-chunks li a:hover { color: var(--accent); }
 
 /* === Small Multiples Grid === */
 .page-intro { font-family: var(--font-ui); font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem; }
@@ -266,7 +268,7 @@ mark { background: color-mix(in srgb, var(--accent-light) 60%, transparent); col
 
 /* === Most Connected === */
 .most-connected { margin: 2rem 0; padding: 1rem; background: var(--bg-warm); border: 1px solid var(--border); border-radius: 6px; }
-.most-connected h2 { font-family: var(--font-ui); font-size: 1rem; font-weight: 700; font-style: normal; margin: 0 0 0.5rem; }
+.most-connected h2 { font-family: var(--font-ui); font-size: 0.85rem; font-weight: 600; font-style: normal; margin: 0 0 0.5rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-light); }
 .section-subtitle { font-size: 0.8rem; font-family: var(--font-ui); color: var(--text-light); margin-bottom: 0.75rem; }
 .most-connected ul { list-style: none; }
 .most-connected li { padding: 0.3rem 0; border-bottom: 1px solid var(--border); }
@@ -276,7 +278,7 @@ mark { background: color-mix(in srgb, var(--accent-light) 60%, transparent); col
 
 /* === More On This Topic (Thread) === */
 .more-on-this { margin: 2rem 0; padding: 1rem; background: var(--bg-warm); border: 1px solid var(--border); border-radius: 6px; }
-.more-on-this h2 { font-family: var(--font-ui); font-size: 1rem; font-weight: 700; font-style: normal; margin: 0 0 0.5rem; }
+.more-on-this h2 { font-family: var(--font-ui); font-size: 0.85rem; font-weight: 600; font-style: normal; margin: 0 0 0.5rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-light); }
 .more-on-this ul { list-style: none; }
 .more-on-this li { padding: 0.3rem 0; border-bottom: 1px solid var(--border); }
 .more-on-this li a { font-family: var(--font-ui); font-size: 0.88rem; font-weight: 400; text-decoration: none; color: var(--text); display: block; }
@@ -426,7 +428,7 @@ mark { background: color-mix(in srgb, var(--accent-light) 60%, transparent); col
 .home-with-margin { display: grid; grid-template-columns: 1fr 13rem; gap: 2rem; margin-top: 1rem; }
 .home-main { min-width: 0; }
 .home-margin { font-family: var(--font-ui); }
-.home-margin h3 { font-size: 0.7rem; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; margin: 0 0 0.5rem; }
+.home-margin h3 { font-size: 0.85rem; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; margin: 0 0 0.5rem; }
 .home-margin section { margin-bottom: 1rem; padding: 1rem; background: var(--bg-warm); border: 1px solid var(--border); border-radius: 6px; }
 .recent-ep-link { display: flex; justify-content: space-between; gap: 0.5rem; font-size: 0.78rem; color: var(--text-muted); text-decoration: none; padding: 0.2rem 0; border-bottom: 1px solid var(--border); }
 .recent-ep-link:hover { color: var(--accent); }
@@ -439,7 +441,7 @@ mark { background: color-mix(in srgb, var(--accent-light) 60%, transparent); col
 
 /* === Latest episode panel === */
 .latest-episode-panel { padding: 1rem; margin-bottom: 1.5rem; background: var(--bg-warm); border: 1px solid var(--border); border-radius: 6px; }
-.latest-episode-panel h2 { font-family: var(--font-ui); font-size: 0.95rem; font-weight: 600; font-style: normal; margin: 0 0 0.5rem; }
+.latest-episode-panel h2 { font-family: var(--font-ui); font-size: 0.85rem; font-weight: 600; font-style: normal; margin: 0 0 0.5rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-light); }
 .latest-episode-panel h2 a { color: var(--text); text-decoration: none; }
 .latest-episode-panel h2 a:hover { color: var(--accent); }
 .latest-chunks { list-style: none; font-size: 0.85rem; color: var(--text-muted); }
