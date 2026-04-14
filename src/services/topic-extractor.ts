@@ -3,6 +3,7 @@ import { slugify } from "../lib/slug";
 import { decodeHtmlEntities } from "../lib/html";
 import { isNoiseTopic } from "./topic-quality";
 import { KNOWN_ENTITIES } from "../data/known-entities";
+import { extractYakeKeywords } from "./yake";
 
 // Words where trailing 's' is part of the word, not a plural
 const NO_STRIP = new Set([
@@ -226,92 +227,66 @@ export function identifyDistinctiveEntities(
 }
 
 /**
- * Extract topics using TF-IDF scoring with entity detection.
- * Merges three sources: known entities (Layer 1), capitalization heuristics, and TF-IDF keywords.
+ * Extract topics using YAKE keyword extraction + entity detection.
+ *
+ * Three layers merged by priority:
+ * 1. Known entities (curated list, always included)
+ * 2. Heuristic entities (multi-word proper nouns from capitalization)
+ * 3. YAKE keyphrases (statistical, within-document features — replaces TF-IDF)
+ *
+ * YAKE produces multi-word keyphrases naturally and uses position, casing,
+ * frequency, and context features instead of corpus-wide IDF.
  *
  * @param text - chunk content
- * @param maxTopics - maximum topics to return (default 15)
- * @param corpusStats - pre-computed IDF stats (optional, falls back to pure TF)
+ * @param maxTopics - maximum topics to return (default 5)
+ * @param corpusStats - unused, kept for API compatibility during migration
  */
 export function extractTopics(
   text: string,
-  maxTopics: number = 10,
+  maxTopics: number = 5,
   corpusStats?: CorpusStats
 ): TopicResult[] {
   const clean = decodeHtmlEntities(text);
 
-  // Layer 1: Known entities (highest priority, bypass TF-IDF)
+  // Layer 1: Known entities (highest priority)
   const knownEntities = extractKnownEntities(clean);
 
-  // Step 1: Extract named entities via capitalization heuristics
+  // Layer 2: Heuristic entities (multi-word proper nouns)
   const heuristicEntities = extractEntities(clean);
-  const entityNames = new Set(
-    heuristicEntities.flatMap((e) => e.name.toLowerCase().split(" "))
-  );
 
-  // Step 2: Tokenize and compute term frequency
-  const words = tokenize(clean);
-  const termFreq = new Map<string, number>();
-  for (const word of words) {
-    // Skip words that are parts of detected entities
-    if (entityNames.has(word)) continue;
-    termFreq.set(word, (termFreq.get(word) || 0) + 1);
-  }
+  // Layer 3: YAKE keyphrases (replaces TF-IDF)
+  const yakeResults = extractYakeKeywords(clean, maxTopics * 2, 3);
 
-  // Note: per-chunk bigrams removed — corpus-level n-gram extraction (in finalizeEnrichment)
-  // discovers phrase topics more reliably across documents.
-
-  // Step 3: Score with TF-IDF
-  const N = corpusStats?.totalChunks || 1;
-  const scored = [...termFreq.entries()]
-    .filter(([word]) => {
-      const normalized = normalizeTerm(word);
-      if (normalized.length < 4) return false;
-      const slug = slugify(normalized);
-      if (!slug || slug.length < 3) return false;
-      if (STOPWORDS.has(word)) return false;
-      return true;
-    })
-    .map(([word, tf]) => {
-      let idf = 1;
-      if (corpusStats) {
-        const df = corpusStats.docFreq.get(word) || 1;
-        idf = Math.log(N / df);
-      }
-      const normalized = normalizeTerm(word);
-      return { name: normalized, slug: slugify(normalized), score: tf * idf };
-    })
-    .sort((a, b) => b.score - a.score);
-
-  // Step 5: Merge known entities + heuristic entities + TF-IDF keywords
-  // Known entities always win (highest priority)
+  // Merge all layers
   const result: TopicResult[] = [];
   const usedSlugs = new Set<string>();
 
-  // Layer 1: Known entities first
+  // Known entities first (always included, don't count against limit)
   for (const entity of knownEntities) {
-    if (result.length >= maxTopics) break;
     if (usedSlugs.has(entity.slug)) continue;
     usedSlugs.add(entity.slug);
     result.push(entity);
   }
 
-  // Heuristic entities next — noise filter applies here too
+  // Heuristic entities next — noise filter applies
   for (const entity of heuristicEntities) {
-    if (result.length >= maxTopics) break;
+    if (result.length >= maxTopics + knownEntities.length) break;
     if (usedSlugs.has(entity.slug)) continue;
     if (isNoiseTopic(entity.name)) continue;
     usedSlugs.add(entity.slug);
     result.push({ ...entity, score: 100 });
   }
 
-  // TF-IDF keywords last
-  for (const topic of scored) {
-    if (result.length >= maxTopics) break;
-    if (usedSlugs.has(topic.slug)) continue;
-    if (isNoiseTopic(topic.name)) continue;
-    usedSlugs.add(topic.slug);
-    result.push(topic);
+  // YAKE keyphrases last
+  for (const kw of yakeResults) {
+    if (result.length >= maxTopics + knownEntities.length) break;
+    const normalized = normalizeTerm(kw.keyword);
+    const slug = slugify(normalized);
+    if (!slug || slug.length < 3) continue;
+    if (usedSlugs.has(slug)) continue;
+    if (isNoiseTopic(normalized)) continue;
+    usedSlugs.add(slug);
+    result.push({ name: normalized, slug, score: kw.score });
   }
 
   return result;

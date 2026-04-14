@@ -70,6 +70,13 @@ const NOISE_WORDS = new Set([
   "blossom", "agree", "execute", "either", "effect", "goes",
   "negative", "positive", "consumer", "attempt", "claim",
   "danger", "defend", "imagine", "quite", "rare",
+  // Round 3: conversational verbs/adjectives YAKE surfaces from newsletter tone
+  "need", "want", "like", "take", "hard", "believe", "feel",
+  "think", "know", "make", "give", "keep", "call", "mean",
+  "look", "seem", "tell", "come", "show", "play", "move",
+  "turn", "start", "stop", "open", "close", "pull", "hold",
+  "real", "true", "clear", "high", "long", "good", "best",
+  "full", "free", "easy", "fast", "huge", "able", "sure",
 ]);
 
 /**

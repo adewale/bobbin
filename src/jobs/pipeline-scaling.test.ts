@@ -78,7 +78,9 @@ describe("Topic count per chunk is bounded", () => {
       platform consolidation across multiple vertical markets simultaneously.
     `;
     const topics = extractTopics(longText, 15);
-    expect(topics.length).toBeLessThanOrEqual(15);
+    // maxTopics limits YAKE + heuristic results; known entities are extra
+    const nonEntities = topics.filter(t => t.kind !== "entity");
+    expect(nonEntities.length).toBeLessThanOrEqual(15);
     // Verify the results are actually topics, not empty
     expect(topics.length).toBeGreaterThan(0);
     for (const t of topics) {

@@ -45,38 +45,56 @@ describe("Entity validation (Issue 1)", () => {
   });
 
   it("preserves non-entity topics (validation only applies to kind=entity)", async () => {
-    // Add a concept topic — it should NOT be validated against text content
-    await env.DB.prepare("INSERT INTO topics (name, slug, kind, usage_count) VALUES ('ecosystem', 'ecosystem', 'concept', 2)").run();
-    await env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 2)").run();
-    await env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (3, 2)").run(); // chunk-3 doesn't say "ecosystem" but that's fine for concepts
+    // Add a concept topic with df≥5 so it survives the quality gate
+    // Entity validation should NOT remove its chunk_topics (only entities are validated)
+    await env.DB.prepare("INSERT INTO topics (name, slug, kind, usage_count) VALUES ('ecosystem', 'ecosystem', 'concept', 5)").run();
+    // Need 5 chunk_topics links for it to survive df≥5 gate
+    await env.DB.prepare(
+      "INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (1, 'chunk-5', 'C5', 'Eco chunk.', 'Eco chunk.', 4)"
+    ).run();
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 2)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (2, 2)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (3, 2)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (4, 2)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (5, 2)"),
+    ]);
 
     await finalizeEnrichment(env.DB);
 
     const conceptRemaining = await env.DB.prepare("SELECT COUNT(*) as c FROM chunk_topics WHERE topic_id = 2").first<{ c: number }>();
-    expect(conceptRemaining!.c).toBe(2); // both preserved — concepts aren't validated
+    expect(conceptRemaining!.c).toBe(5); // all preserved — concepts aren't validated
   });
 });
 
-describe("Usage=1 prune (Issue 3)", () => {
-  it("zeros usage for single-occurrence topics and preserves multi-use topics", async () => {
-    await env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('rare-word', 'rare-word', 1)").run();
+describe("Document frequency quality gate (df≥5)", () => {
+  it("prunes topics with df<5 and preserves topics with df≥5", async () => {
+    await env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('rare-word', 'rare-word', 2)").run();
     await env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('popular', 'popular', 5)").run();
+    // rare-word: df=2 (below threshold)
     await env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 1)").run();
+    await env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (2, 1)").run();
+    // popular: df=5 (at threshold — survives)
     await env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 2)").run();
     await env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (2, 2)").run();
     await env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (3, 2)").run();
+    await env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (4, 2)").run();
+
+    // Need 5th chunk for popular
+    await env.DB.prepare(
+      "INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (1, 'chunk-5', 'C5', 'Popular topic here.', 'Popular topic here.', 4)"
+    ).run();
+    await env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (5, 2)").run();
 
     await finalizeEnrichment(env.DB);
 
-    // rare-word should be pruned (usage zeroed, chunk_topics deleted)
+    // rare-word (df=2) should be pruned
     const rare = await env.DB.prepare("SELECT usage_count FROM topics WHERE slug = 'rare-word'").first<any>();
     expect(rare.usage_count).toBe(0);
-    const rareLinks = await env.DB.prepare("SELECT COUNT(*) as c FROM chunk_topics WHERE topic_id = 1").first<{ c: number }>();
-    expect(rareLinks!.c).toBe(0);
 
-    // popular should survive with correct usage count
+    // popular (df=5) should survive
     const popular = await env.DB.prepare("SELECT usage_count FROM topics WHERE slug = 'popular'").first<any>();
-    expect(popular.usage_count).toBeGreaterThan(0);
+    expect(popular.usage_count).toBeGreaterThanOrEqual(5);
   });
 });
 

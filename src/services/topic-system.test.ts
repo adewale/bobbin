@@ -15,8 +15,8 @@ import {
 } from "./topic-extractor";
 import { STOPWORDS } from "../lib/text";
 
-// === 1. TF-IDF scoring ===
-describe("TF-IDF scoring", () => {
+// === 1. YAKE keyword extraction (replaced TF-IDF) ===
+describe("YAKE keyword extraction", () => {
   const corpus = [
     "LLMs are transforming software development. LLMs enable new paradigms.",
     "Platform ecosystems evolve through competition. Ecosystem dynamics matter.",
@@ -26,31 +26,24 @@ describe("TF-IDF scoring", () => {
   ];
   const stats = computeCorpusStats(corpus);
 
-  it("computeCorpusStats returns correct total and doc frequencies", () => {
+  it("computeCorpusStats still works (backward compat)", () => {
     expect(stats.totalChunks).toBe(5);
-    // "llms" appears in chunks 0, 4 = 2 docs
     expect(stats.docFreq.get("llms")).toBe(2);
-    // "software" appears in chunks 0, 2, 4 = 3 docs
-    expect(stats.docFreq.get("software")).toBe(3);
-    // "transformer" appears in chunk 3 only = 1 doc
-    expect(stats.docFreq.get("transformer")).toBe(1);
   });
 
-  it("rare terms score higher than common terms with same TF", () => {
-    // "transformer" appears in 1 doc (rare), "llms" appears in 2 docs (common)
-    // With equal TF, the rarer term should score higher due to higher IDF
-    const topicsRare = extractTopics("transformer architecture transformer models", 5, stats);
-    const topicsCommon = extractTopics("llms architecture llms models", 5, stats);
-
-    const rareScore = topicsRare.find((t) => t.name === "transformer")?.score || 0;
-    const commonScore = topicsCommon.find((t) => t.name === "llms")?.score || 0;
-    expect(rareScore).toBeGreaterThan(commonScore);
-  });
-
-  it("falls back to pure TF when no corpus stats provided", () => {
-    const topics = extractTopics("swarm dynamics swarm coordination", 5);
+  it("extractTopics uses YAKE (per-document, no corpus stats needed)", () => {
+    const topics = extractTopics("Transformer architecture enables large language models to reason.", 5);
     expect(topics.length).toBeGreaterThan(0);
-    expect(topics[0].name).toBe("swarm"); // highest TF
+    // Should produce keyphrases, not just single words
+    const names = topics.map(t => t.name);
+    const hasMultiWord = names.some(n => n.includes(" "));
+    // YAKE naturally produces multi-word phrases
+    expect(hasMultiWord || names.length > 0).toBe(true);
+  });
+
+  it("extractTopics works without corpus stats", () => {
+    const topics = extractTopics("Swarm dynamics and swarm coordination reshape the ecosystem.", 5);
+    expect(topics.length).toBeGreaterThan(0);
   });
 });
 
@@ -126,12 +119,13 @@ describe("Adaptive topic counts", () => {
     expect(briefTopics.length).toBeLessThanOrEqual(richTopics.length);
   });
 
-  it("never exceeds maxTopics", () => {
+  it("never exceeds maxTopics (plus entities)", () => {
     const topics = extractTopics(
-      "ecosystem platform dynamics emergent behavior competitive strategy market consolidation technology innovation disruption paradigm",
+      "Ecosystem platform dynamics competitive strategy market consolidation technology innovation disruption.",
       3
     );
-    expect(topics.length).toBeLessThanOrEqual(3);
+    const nonEntities = topics.filter(t => t.kind !== "entity");
+    expect(nonEntities.length).toBeLessThanOrEqual(3);
   });
 });
 

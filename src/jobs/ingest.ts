@@ -90,28 +90,12 @@ export async function processChunkBatch(
 ): Promise<void> {
   if (!chunks.length) return;
 
-  // Load corpus-wide IDF from word_stats (one D1 query, no CPU tokenization)
-  let corpusStats: CorpusStats;
-  const wsCount = await db.prepare("SELECT COUNT(*) as c FROM word_stats").first<{ c: number }>();
-  if (wsCount && wsCount.c >= 100) {
-    const idfData = await db.prepare(
-      "SELECT word, doc_count FROM word_stats WHERE doc_count >= 2 LIMIT 10000"
-    ).all<{ word: string; doc_count: number }>();
-    const totalDocs = await db.prepare("SELECT COUNT(*) as c FROM chunks").first<{ c: number }>();
-    corpusStats = {
-      totalChunks: totalDocs?.c || 1,
-      docFreq: new Map(idfData.results.map(r => [r.word, r.doc_count])),
-    };
-  } else {
-    corpusStats = computeCorpusStats(chunks.map(c => c.content_plain));
-  }
-
-  // Extract topics (noise filtered inside extractTopics)
+  // YAKE extracts per-document — no corpus stats needed
   const uniqueTopics = new Map<string, { name: string; kind: string }>();
   const chunkTopicPairs: { chunkId: number; episodeId: number; topicSlug: string }[] = [];
 
   for (const chunk of chunks) {
-    const topics = extractTopics(chunk.content_plain, 10, corpusStats);
+    const topics = extractTopics(chunk.content_plain, 5);
     for (const topic of topics) {
       uniqueTopics.set(topic.slug, { name: topic.name, kind: topic.kind || "concept" });
       chunkTopicPairs.push({ chunkId: chunk.id, episodeId: chunk.episode_id, topicSlug: topic.slug });
@@ -503,10 +487,12 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
     }
   });
 
-  // Step 12: Prune low-usage topics (entities exempt, batched)
-  await runStep("prune_low_usage", steps, async () => {
+  // Step 12: Quality gate — prune topics with df < 5 (entities exempt, batched)
+  // This is the corpus-wide quality gate recommended by Yang & Pedersen (1997).
+  // Single-chunk topics are not navigational — they just add noise.
+  await runStep("df_quality_gate", steps, async () => {
     const toPrune = await db.prepare(
-      "SELECT id FROM topics WHERE usage_count <= 1 AND kind != 'entity'"
+      "SELECT id FROM topics WHERE usage_count < 5 AND kind != 'entity'"
     ).all<{ id: number }>();
     result.pruned = toPrune.results.length;
 
@@ -521,7 +507,93 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
         db.prepare(`UPDATE topics SET usage_count = 0 WHERE id IN (${ph})`).bind(...batch),
       ]);
     }
-    return `${result.pruned} topics pruned in ${Math.ceil(ids.length / BATCH)} batches`;
+    return `${result.pruned} topics pruned (df<5) in ${Math.ceil(ids.length / BATCH)} batches`;
+  });
+
+  // Step 13: Merge stem-equivalent topics (e.g., "chatbot" + "chatbots" → keep higher usage)
+  await runStep("stem_merge", steps, async () => {
+    const { simpleStem } = await import("../services/text-similarity");
+    const activeTopics = await db.prepare(
+      "SELECT id, name, usage_count FROM topics WHERE usage_count > 0 AND kind != 'entity'"
+    ).all<{ id: number; name: string; usage_count: number }>();
+
+    // Group by stem
+    const stemGroups = new Map<string, typeof activeTopics.results>();
+    for (const t of activeTopics.results) {
+      const stem = t.name.includes(" ")
+        ? t.name.split(" ").map(w => simpleStem(w)).join(" ")
+        : simpleStem(t.name);
+      const group = stemGroups.get(stem) || [];
+      group.push(t);
+      stemGroups.set(stem, group);
+    }
+
+    let merged = 0;
+    const stmts: D1PreparedStatement[] = [];
+    for (const [, group] of stemGroups) {
+      if (group.length <= 1) continue;
+      // Keep the one with highest usage
+      group.sort((a, b) => b.usage_count - a.usage_count);
+      const keep = group[0];
+      for (const dupe of group.slice(1)) {
+        stmts.push(
+          db.prepare("UPDATE OR IGNORE chunk_topics SET topic_id = ? WHERE topic_id = ?").bind(keep.id, dupe.id),
+          db.prepare("DELETE FROM chunk_topics WHERE topic_id = ?").bind(dupe.id),
+          db.prepare("DELETE FROM episode_topics WHERE topic_id = ?").bind(dupe.id),
+          db.prepare("UPDATE topics SET usage_count = 0 WHERE id = ?").bind(dupe.id),
+        );
+        merged++;
+      }
+    }
+    if (stmts.length > 0) await batchExec(db, stmts);
+    return `${merged} stem-equivalent topics merged`;
+  });
+
+  // Step 14: Cluster near-duplicate topics by string similarity (Dice coefficient ≥ 0.7)
+  await runStep("similarity_cluster", steps, async () => {
+    const { clusterBySimilarity } = await import("../services/text-similarity");
+    const activeTopics = await db.prepare(
+      "SELECT id, name, usage_count FROM topics WHERE usage_count > 0 AND kind != 'entity'"
+    ).all<{ id: number; name: string; usage_count: number }>();
+
+    if (activeTopics.results.length < 2) return "0 clusters";
+
+    const names = activeTopics.results.map(t => t.name);
+    const clusters = clusterBySimilarity(names, 0.7);
+
+    // Find topics that should merge into a different representative
+    const nameToTopic = new Map(activeTopics.results.map(t => [t.name, t]));
+    let merged = 0;
+    const stmts: D1PreparedStatement[] = [];
+
+    for (const [name, canonical] of clusters) {
+      if (name === canonical) continue; // already the representative
+      const dupe = nameToTopic.get(name);
+      const keep = nameToTopic.get(canonical);
+      if (!dupe || !keep) continue;
+
+      stmts.push(
+        db.prepare("UPDATE OR IGNORE chunk_topics SET topic_id = ? WHERE topic_id = ?").bind(keep.id, dupe.id),
+        db.prepare("DELETE FROM chunk_topics WHERE topic_id = ?").bind(dupe.id),
+        db.prepare("DELETE FROM episode_topics WHERE topic_id = ?").bind(dupe.id),
+        db.prepare("UPDATE topics SET usage_count = 0 WHERE id = ?").bind(dupe.id),
+      );
+      merged++;
+    }
+    if (stmts.length > 0) await batchExec(db, stmts);
+    return `${merged} near-duplicate topics merged`;
+  });
+
+  // Step 15: Final usage recount after all merges
+  await runStep("usage_recount_post_merge", steps, async () => {
+    const topicCount = await db.prepare("SELECT MAX(id) as m FROM topics").first<{ m: number }>();
+    const maxId = topicCount?.m || 0;
+    const BATCH = 1000;
+    for (let start = 0; start <= maxId; start += BATCH) {
+      await db.prepare(
+        "UPDATE topics SET usage_count = (SELECT COUNT(*) FROM chunk_topics WHERE topic_id = topics.id) WHERE id > ? AND id <= ?"
+      ).bind(start, start + BATCH).run();
+    }
   });
 
   result.total_ms = Date.now() - totalStart;
