@@ -74,19 +74,17 @@ export async function ingestEpisodesOnly(
 }
 
 /**
- * Phase 2: Enrich a batch of chunks that don't have topics yet.
- * Adds topics, chunk_topics, episode_topics, chunk_words, and rebuilds word_stats.
- * Call repeatedly until isEnrichmentComplete() returns true.
+ * Shared core: process a batch of chunks — extract topics, insert to DB.
+ * Used by both enrichChunks (API path) and handleEnrichBatch (queue path).
+ * Single source of truth for topic extraction logic.
  */
-export async function enrichChunks(
+export async function processChunkBatch(
   db: D1Database,
-  batchSize: number = 200
-): Promise<{ chunksProcessed: number }> {
-  const chunks = await getUnenrichedChunks(db, batchSize);
-  if (!chunks.length) return { chunksProcessed: 0 };
+  chunks: { id: number; episode_id: number; content_plain: string }[]
+): Promise<void> {
+  if (!chunks.length) return;
 
-  // Load corpus-wide IDF from word_stats (precomputed, O(1) D1 query)
-  // Falls back to per-batch computation on cold start
+  // Load corpus-wide IDF from word_stats (one D1 query, no CPU tokenization)
   let corpusStats: CorpusStats;
   const wsCount = await db.prepare("SELECT COUNT(*) as c FROM word_stats").first<{ c: number }>();
   if (wsCount && wsCount.c >= 100) {
@@ -99,11 +97,10 @@ export async function enrichChunks(
       docFreq: new Map(idfData.results.map(r => [r.word, r.doc_count])),
     };
   } else {
-    // Cold start: word_stats not yet populated, compute from batch
     corpusStats = computeCorpusStats(chunks.map(c => c.content_plain));
   }
 
-  // Collect all topics (noise already filtered inside extractTopics)
+  // Extract topics (noise filtered inside extractTopics)
   const uniqueTopics = new Map<string, { name: string; kind: string }>();
   const chunkTopicPairs: { chunkId: number; episodeId: number; topicSlug: string }[] = [];
 
@@ -115,13 +112,13 @@ export async function enrichChunks(
     }
   }
 
-  // Batch: insert unique topics
+  // Insert topics
   const topicInserts = [...uniqueTopics.entries()].map(([slug, { name }]) =>
     db.prepare("INSERT OR IGNORE INTO topics (name, slug) VALUES (?, ?)").bind(name, slug)
   );
   await batchExec(db, topicInserts);
 
-  // Set kind for entity topics (handles INSERT OR IGNORE conflict where entity exists with kind='concept')
+  // Set kind='entity' ONLY for curated known entities (not heuristic)
   const entitySlugs = [...uniqueTopics.entries()].filter(([, v]) => v.kind === "entity").map(([slug]) => slug);
   if (entitySlugs.length > 0) {
     const entityUpdates = entitySlugs.map(slug =>
@@ -130,7 +127,7 @@ export async function enrichChunks(
     await batchExec(db, entityUpdates);
   }
 
-  // Batch: chunk_topics
+  // Insert chunk_topics
   const ctStmts: D1PreparedStatement[] = [];
   for (const { chunkId, topicSlug } of chunkTopicPairs) {
     ctStmts.push(
@@ -140,7 +137,7 @@ export async function enrichChunks(
   }
   await batchExec(db, ctStmts);
 
-  // Batch: episode_topics
+  // Insert episode_topics
   const episodeIds = [...new Set(chunks.map((c) => c.episode_id))];
   const etStmts = episodeIds.flatMap((epId) =>
     chunks
@@ -153,7 +150,7 @@ export async function enrichChunks(
   );
   await batchExec(db, etStmts);
 
-  // Batch: chunk_words
+  // Insert chunk_words
   const wordStmts: D1PreparedStatement[] = [];
   for (const chunk of chunks) {
     const wordCounts = tokenizeForWordStats(chunk.content_plain);
@@ -166,8 +163,23 @@ export async function enrichChunks(
   }
   await batchExec(db, wordStmts);
 
-  // Mark chunks as enriched (flag column, replaces NOT IN subquery)
+  // Mark enriched
   await markChunksEnriched(db, chunks.map(c => c.id));
+}
+
+/**
+ * Phase 2: Enrich a batch of chunks that don't have topics yet.
+ * Adds topics, chunk_topics, episode_topics, chunk_words, and rebuilds word_stats.
+ * Call repeatedly until isEnrichmentComplete() returns true.
+ */
+export async function enrichChunks(
+  db: D1Database,
+  batchSize: number = 200
+): Promise<{ chunksProcessed: number }> {
+  const chunks = await getUnenrichedChunks(db, batchSize);
+  if (!chunks.length) return { chunksProcessed: 0 };
+
+  await processChunkBatch(db, chunks);
 
   return { chunksProcessed: chunks.length };
 }
@@ -236,7 +248,8 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
   } else {
     // Fallback: inline extraction for tests/dev
     await extractAndStoreNgrams(db);
-    await db.prepare("UPDATE topics SET kind = 'phrase' WHERE name LIKE '% %' AND usage_count >= 5 AND kind = 'concept'").run();
+    // Note: kind='phrase' is set by extractAndStoreNgrams for PMI-discovered phrases only.
+    // No auto-promote rule — only authoritative sources set kind.
     result.ngram_dispatched = true;
   }
 

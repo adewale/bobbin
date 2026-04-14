@@ -11,9 +11,7 @@ import { slugify } from "../lib/slug";
 import { batchExec } from "../lib/db";
 import { extractCorpusNgrams } from "../services/ngram-extractor";
 import { extractPMIPhrases } from "../services/pmi-phrases";
-import { extractTopics, type CorpusStats } from "../services/topic-extractor";
-import { tokenizeForWordStats } from "../services/word-stats";
-import { markChunksEnriched } from "../db/ingestion";
+import { processChunkBatch } from "./ingest";
 import type { Bindings } from "../types";
 
 export interface EnrichmentMessage {
@@ -109,16 +107,14 @@ async function handleExtractNgrams(db: D1Database, queue: Queue) {
     }
   }
 
-  // Set kind='phrase' for multi-word topics
-  await db.prepare(
-    "UPDATE topics SET kind = 'phrase' WHERE name LIKE '% %' AND usage_count >= 5 AND kind = 'concept'"
-  ).run();
+  // Note: kind='phrase' is set by extractAndStoreNgrams/PMI for discovered phrases only.
+  // No auto-promote rule — only authoritative sources set kind.
 }
 
 export async function handleEnrichBatch(db: D1Database, chunkIds: number[]) {
   if (!chunkIds.length) return;
 
-  // Load the specific chunks by ID
+  // Load chunks by ID and process using shared logic
   const placeholders = chunkIds.map(() => "?").join(",");
   const chunks = await db.prepare(
     `SELECT id, episode_id, content_plain FROM chunks WHERE id IN (${placeholders})`
@@ -126,81 +122,8 @@ export async function handleEnrichBatch(db: D1Database, chunkIds: number[]) {
 
   if (!chunks.results.length) return;
 
-  // Load IDF from word_stats
-  const idfData = await db.prepare(
-    "SELECT word, doc_count FROM word_stats WHERE doc_count >= 2 LIMIT 10000"
-  ).all<{ word: string; doc_count: number }>();
-  const totalDocs = await db.prepare("SELECT COUNT(*) as c FROM chunks").first<{ c: number }>();
-  const corpusStats: CorpusStats = {
-    totalChunks: totalDocs?.c || 1,
-    docFreq: new Map(idfData.results.map((r) => [r.word, r.doc_count])),
-  };
-
-  // Extract topics for each chunk (same logic as enrichChunks)
-  const uniqueTopics = new Map<string, { name: string; kind: string }>();
-  const chunkTopicPairs: { chunkId: number; episodeId: number; topicSlug: string }[] = [];
-
-  for (const chunk of chunks.results) {
-    const topics = extractTopics(chunk.content_plain, 15, corpusStats);
-    for (const topic of topics) {
-      uniqueTopics.set(topic.slug, { name: topic.name, kind: topic.kind || "concept" });
-      chunkTopicPairs.push({ chunkId: chunk.id, episodeId: chunk.episode_id, topicSlug: topic.slug });
-    }
-  }
-
-  // Batch: insert unique topics
-  const topicInserts = [...uniqueTopics.entries()].map(([slug, { name }]) =>
-    db.prepare("INSERT OR IGNORE INTO topics (name, slug) VALUES (?, ?)").bind(name, slug)
-  );
-  await batchExec(db, topicInserts);
-
-  // Set kind for entity topics
-  const entitySlugs = [...uniqueTopics.entries()].filter(([, v]) => v.kind === "entity").map(([slug]) => slug);
-  if (entitySlugs.length > 0) {
-    const entityUpdates = entitySlugs.map(slug =>
-      db.prepare("UPDATE topics SET kind = 'entity' WHERE slug = ? AND kind != 'entity'").bind(slug)
-    );
-    await batchExec(db, entityUpdates);
-  }
-
-  // Batch: chunk_topics
-  const ctStmts: D1PreparedStatement[] = [];
-  for (const { chunkId, topicSlug } of chunkTopicPairs) {
-    ctStmts.push(
-      db.prepare("INSERT OR IGNORE INTO chunk_topics (chunk_id, topic_id) SELECT ?, id FROM topics WHERE slug = ?")
-        .bind(chunkId, topicSlug)
-    );
-  }
-  await batchExec(db, ctStmts);
-
-  // Batch: episode_topics
-  const episodeIds = [...new Set(chunks.results.map((c) => c.episode_id))];
-  const etStmts = episodeIds.flatMap((epId) =>
-    chunks.results
-      .filter((c) => c.episode_id === epId)
-      .map((c) =>
-        db.prepare(
-          "INSERT OR IGNORE INTO episode_topics (episode_id, topic_id) SELECT ?, topic_id FROM chunk_topics WHERE chunk_id = ?"
-        ).bind(epId, c.id)
-      )
-  );
-  await batchExec(db, etStmts);
-
-  // Batch: chunk_words
-  const wordStmts: D1PreparedStatement[] = [];
-  for (const chunk of chunks.results) {
-    const wordCounts = tokenizeForWordStats(chunk.content_plain);
-    for (const [word, count] of wordCounts) {
-      wordStmts.push(
-        db.prepare("INSERT OR REPLACE INTO chunk_words (chunk_id, word, count) VALUES (?, ?, ?)")
-          .bind(chunk.id, word, count)
-      );
-    }
-  }
-  await batchExec(db, wordStmts);
-
-  // Mark chunks as enriched
-  await markChunksEnriched(db, chunks.results.map(c => c.id));
+  // Use the shared processChunkBatch — single source of truth
+  await processChunkBatch(db, chunks.results);
 }
 
 export async function handleEnrichmentBatch(
