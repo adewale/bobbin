@@ -80,13 +80,28 @@ export async function ingestEpisodesOnly(
  */
 export async function enrichChunks(
   db: D1Database,
-  batchSize: number = 50
+  batchSize: number = 200
 ): Promise<{ chunksProcessed: number }> {
   const chunks = await getUnenrichedChunks(db, batchSize);
   if (!chunks.length) return { chunksProcessed: 0 };
 
-  // Compute corpus IDF stats for this batch (improves topic quality)
-  const corpusStats = computeCorpusStats(chunks.map(c => c.content_plain));
+  // Load corpus-wide IDF from word_stats (precomputed, O(1) D1 query)
+  // Falls back to per-batch computation on cold start
+  let corpusStats: CorpusStats;
+  const wsCount = await db.prepare("SELECT COUNT(*) as c FROM word_stats").first<{ c: number }>();
+  if (wsCount && wsCount.c >= 100) {
+    const idfData = await db.prepare(
+      "SELECT word, doc_count FROM word_stats WHERE doc_count >= 2 LIMIT 10000"
+    ).all<{ word: string; doc_count: number }>();
+    const totalDocs = await db.prepare("SELECT COUNT(*) as c FROM chunks").first<{ c: number }>();
+    corpusStats = {
+      totalChunks: totalDocs?.c || 1,
+      docFreq: new Map(idfData.results.map(r => [r.word, r.doc_count])),
+    };
+  } else {
+    // Cold start: word_stats not yet populated, compute from batch
+    corpusStats = computeCorpusStats(chunks.map(c => c.content_plain));
+  }
 
   // Collect all topics (noise already filtered inside extractTopics)
   const uniqueTopics = new Map<string, { name: string; kind: string }>();

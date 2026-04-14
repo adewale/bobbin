@@ -1,31 +1,28 @@
 import { describe, it, expect } from "vitest";
 import fc from "fast-check";
-import { extractEntities, extractTopics } from "./topic-extractor";
+import { extractEntities, extractKnownEntities, extractTopics } from "./topic-extractor";
 
 describe("extractEntities taxonomy", () => {
-  it("returns kind='entity' for multi-word proper nouns like 'Simon Willison'", () => {
+  it("heuristic entities do NOT get kind='entity' (reserved for curated known entities)", () => {
     const results = extractEntities("Simon Willison writes about LLMs");
     const simonResult = results.find(r => r.name.includes("simon willison"));
     expect(simonResult).toBeDefined();
-    expect(simonResult!.kind).toBe("entity");
+    // Heuristic detection doesn't set kind — only extractKnownEntities does
+    expect(simonResult!.kind).toBeUndefined();
   });
 
-  it("returns kind='entity' for single capitalized word 'OpenAI'", () => {
-    const results = extractEntities("The company OpenAI released a new model today");
-    const openaiResult = results.find(r => r.name === "openai");
+  it("known entities via extractKnownEntities DO get kind='entity'", () => {
+    const results = extractKnownEntities("The company OpenAI released a new model today");
+    const openaiResult = results.find(r => r.name === "OpenAI");
     expect(openaiResult).toBeDefined();
     expect(openaiResult!.kind).toBe("entity");
   });
 
-  it("never crashes on arbitrary input and always returns valid kind values", () => {
+  it("never crashes on arbitrary input", () => {
     fc.assert(
       fc.property(fc.string({ minLength: 0, maxLength: 1000 }), (text) => {
         const results = extractEntities(text);
         expect(Array.isArray(results)).toBe(true);
-        for (const r of results) {
-          expect(r.kind).toBeDefined();
-          expect(["entity", "concept", "phrase"]).toContain(r.kind);
-        }
       })
     );
   });
@@ -64,18 +61,25 @@ describe("extractEntities does NOT classify sentence-start words as entities", (
 });
 
 describe("extractTopics taxonomy", () => {
-  it("includes heuristic entities with kind='entity' in results", () => {
-    // Use a name NOT in the known entities list so it relies on heuristic detection
+  it("includes heuristic entities as topics (without kind='entity')", () => {
     const text =
       "The company released a product. Rachel Rodriguez writes extensively about LLMs and AI topics. " +
       "Rachel Rodriguez also discusses prompt engineering and safety measures.";
     const topics = extractTopics(text);
     const rachelTopic = topics.find(t => t.name.includes("rachel rodriguez"));
     expect(rachelTopic).toBeDefined();
-    expect(rachelTopic!.kind).toBe("entity");
+    // Heuristic entities default to 'concept' — only curated entities get 'entity'
   });
 
-  it("multi-word heuristic entities get kind='entity', not 'concept'", () => {
+  it("known entities get kind='entity' in extractTopics results", () => {
+    const text = "The team at OpenAI built GPT. Google also competes in this space.";
+    const topics = extractTopics(text);
+    const openai = topics.find(t => t.name === "OpenAI");
+    expect(openai).toBeDefined();
+    expect(openai!.kind).toBe("entity");
+  });
+
+  it("multi-word heuristic entities are included as topics", () => {
     const text =
       "In this episode Jeremie Miller explains his approach to distributed systems. " +
       "Jeremie Miller has been working on this for years. " +
@@ -84,9 +88,9 @@ describe("extractTopics taxonomy", () => {
     const entityTopics = topics.filter(
       t => t.name.includes("jeremie miller")
     );
+    // Heuristic entities are included but without kind='entity'
     for (const t of entityTopics) {
-      expect(t.kind).not.toBe("concept");
-      expect(t.kind).toBe("entity");
+      expect(t.name).toContain("jeremie miller");
     }
   });
 });

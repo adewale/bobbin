@@ -144,7 +144,7 @@ export function extractEntities(text: string): TopicResult[] {
           entities.push({
             name: norm,
             slug: slugify(norm),
-            kind: "entity",
+            // Heuristic entities get no kind — only curated known entities get kind='entity'
           });
         } else if (entityWords.length === 1 && !atSentenceStart && !STOPWORDS.has(normalized) && !ENTITY_SKIP.has(normalized) && normalized.length > 3 && !seen.has(normalized)) {
           // Single capitalized word MID-SENTENCE — likely a product/company name
@@ -154,7 +154,7 @@ export function extractEntities(text: string): TopicResult[] {
           entities.push({
             name: norm,
             slug: slugify(norm),
-            kind: "entity",
+            // Heuristic — no kind, defaults to 'concept' in enrichChunks
           });
         }
 
