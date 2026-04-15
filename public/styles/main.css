@@ -79,7 +79,7 @@ a:hover { text-decoration: underline; }
 
 /* === Cards === */
 .episode-card { padding: 1.25rem 0; border-bottom: 1px solid var(--border); }
-.episode-card h2 { font-size: 1.1rem; font-family: var(--font-ui); font-weight: 600; margin: 0 0 0.2rem; }
+.episode-card h2 { font-size: 1.1rem; font-family: var(--font-body); font-weight: 600; margin: 0 0 0.2rem; }
 .episode-card h2 a { color: var(--text); text-decoration: none; }
 .episode-card h2 a:hover { color: var(--accent); }
 .episode-card time { font-size: 0.8rem; font-family: var(--font-ui); color: var(--text-light); font-variant-numeric: tabular-nums; }
@@ -315,7 +315,7 @@ mark { background: color-mix(in srgb, var(--accent-light) 60%, transparent); col
 .browse-month h3 { font-family: var(--font-ui); font-size: 0.85rem; font-weight: 600; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem; }
 .browse-episodes { list-style: none; }
 .browse-episodes li { padding: 0.5rem 0; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; min-height: 2.75rem; }
-.browse-episodes a { font-family: var(--font-ui); font-size: 0.88rem; color: var(--text); text-decoration: none; }
+.browse-episodes a { font-family: var(--font-body); font-size: 0.88rem; color: var(--text); text-decoration: none; }
 .browse-episodes a:hover { color: var(--accent); }
 .browse-episodes .meta { font-size: 0.72rem; font-family: var(--font-ui); color: var(--text-light); white-space: nowrap; }
 .format-badge { display: inline-block; padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 0.65rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-left: 0.35rem; }
