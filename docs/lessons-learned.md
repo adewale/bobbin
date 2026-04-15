@@ -242,3 +242,40 @@ The `FinalizeResult.steps[]` array with per-step name, duration_ms, status, and 
 18. Test locally with real data before deploying — the feedback loop is 100x faster
 19. Heap's law gives you the expected topic count for your corpus size — use it as a sanity check
 20. Per-step timing is the highest-value telemetry for pipeline debugging
+
+## What we learned about typography and design consistency
+
+The typography work happened after all the pipeline and topic extraction work was done. It revealed that visual inconsistency accumulates the same way technical debt does — one ad-hoc decision at a time, invisible until you audit the whole system.
+
+### Ad-hoc sizes are not a type scale
+
+The CSS had 22 distinct font sizes ranging from 0.55rem to 1.75rem. Many were separated by fractions of a pixel (0.85rem vs 0.88rem = 0.5px difference at 18px base). These create the illusion of hierarchy without the reality — the eye can't distinguish 15.3px from 15.8px. Replacing all 22 with a 7-step modular scale (1.25 ratio, Major Third) made the hierarchy legible: each step is visibly different from its neighbours.
+
+### The font rule should be one sentence
+
+After several rounds of normalisation, the font split simplified to: **Georgia for content (anything from the newsletter), sans-serif for chrome (anything the app generated)**. Panel links, episode cards, and browse links all display newsletter titles — they should use the content font. Labels, dates, counts, badges, and topic chips are app-generated — they should use the UI font. When a rule takes more than one sentence to explain, it has exceptions that will drift.
+
+### Weight 500 is a non-decision
+
+The CSS had three weights: 400, 500, and 600. The difference between 500 (medium) and 600 (semibold) is barely visible, especially at small sizes. Collapsing to two weights (400 for body, 600 for emphasis) made every weight choice intentional. Font-weight 700 appeared on the wordmark and one badge — both were brought to 600 for consistency.
+
+### WCAG AA is a colour problem, not a code problem
+
+The only failing contrast pair was `--text-light: #999` (2.78:1 on the warmest background). The famous `#767676` AA boundary grey also fails on warm off-white backgrounds — you need `#707070` to pass 4.5:1 on `#f7f5f0`. Changing one CSS variable fixed every instance site-wide because the design system used tokens, not hardcoded hex values. This is the strongest argument for design tokens: one fix, everywhere.
+
+### Focus indicators must be visible, not decorative
+
+The search input had `outline: none` replaced with `box-shadow: 0 0 0 2px var(--accent-light)`. The accent-light colour on white has a 1.12:1 contrast ratio — invisible. A focus ring that doesn't meet contrast requirements is functionally the same as no focus ring. The fix: `:focus-visible` with a 2px solid accent outline globally.
+
+### letter-spacing drifts silently
+
+Three different letter-spacing values (0.04em, 0.05em, 0.06em) were used for the same role (uppercase labels). The differences are imperceptible but the inconsistency means every new component has to guess which value to use. Standardising to 0.05em everywhere eliminated the guesswork.
+
+### Updated lesson list
+
+21. A type scale is a decision — 22 ad-hoc sizes is the absence of one. Use a modular ratio.
+22. Font assignment should be one rule: content font for content, UI font for chrome.
+23. Two weights (regular + semibold) cover every need. Weight 500 is a non-decision.
+24. WCAG AA compliance is trivial when you use design tokens — one variable change fixes everything.
+25. Focus indicators must meet contrast, not just exist. `outline: none` without a visible replacement is an accessibility failure.
+26. Audit the CSS the same way you audit the pipeline — systematically, with measurable criteria, not by eyeballing individual pages.
