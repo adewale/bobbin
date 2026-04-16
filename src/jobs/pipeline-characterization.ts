@@ -18,6 +18,7 @@ export interface PipelineCharacterizationMetrics {
   activeEntities: number;
   activePhrases: number;
   suppressedActiveTopics: number;
+  weakVisibleSingletons: number;
   archivedLineageTopics: number;
   candidateRows: number;
   candidatesAccepted: number;
@@ -61,6 +62,7 @@ export async function runPipelineCharacterization(
        (SELECT COUNT(*) FROM topics WHERE usage_count > 0 AND kind = 'entity') AS active_entities,
        (SELECT COUNT(*) FROM topics WHERE usage_count > 0 AND kind = 'phrase') AS active_phrases,
        (SELECT COUNT(*) FROM topics WHERE usage_count > 0 AND display_suppressed = 1) AS suppressed_active_topics,
+       (SELECT COUNT(*) FROM topics WHERE usage_count > 0 AND hidden = 0 AND display_suppressed = 0 AND kind != 'entity' AND name NOT LIKE '% %' AND distinctiveness < 20) AS weak_visible_singletons,
        (SELECT COUNT(*) FROM topic_lineage_archive) AS archived_lineage_topics,
        (SELECT COUNT(*) FROM topic_candidate_audit) AS candidate_rows,
        (SELECT COUNT(*) FROM topic_candidate_audit WHERE decision = 'accepted') AS candidates_accepted,
@@ -80,6 +82,7 @@ export async function runPipelineCharacterization(
     active_entities: number;
     active_phrases: number;
     suppressed_active_topics: number;
+    weak_visible_singletons: number;
     archived_lineage_topics: number;
     candidate_rows: number;
     candidates_accepted: number;
@@ -117,6 +120,7 @@ export async function runPipelineCharacterization(
     activeEntities: summary?.active_entities || 0,
     activePhrases: summary?.active_phrases || 0,
     suppressedActiveTopics: summary?.suppressed_active_topics || 0,
+    weakVisibleSingletons: summary?.weak_visible_singletons || 0,
     archivedLineageTopics: summary?.archived_lineage_topics || 0,
     candidateRows: summary?.candidate_rows || 0,
     candidatesAccepted: summary?.candidates_accepted || 0,

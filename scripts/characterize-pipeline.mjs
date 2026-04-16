@@ -3,11 +3,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 
-const mode = process.argv[2] === "yaket" ? "yaket" : "naive";
-const port = mode === "yaket" ? 8796 : 8795;
+const requestedMode = process.argv[2];
+const mode = requestedMode === "yaket" || requestedMode === "yaket_bobbin" ? requestedMode : "naive";
+const port = mode === "naive" ? 8795 : mode === "yaket" ? 8796 : 8797;
 const adminSecret = "characterize-secret";
 const stateDir = mkdtempSync(join(tmpdir(), `bobbin-characterize-${mode}-`));
-const batchLimit = mode === "yaket" ? 10 : 100;
+const batchLimit = mode === "naive" ? 100 : 10;
 
 const docs = [
   "1IPwKwmEgrL6R2lVe9IaPIu0sPB4O_ZNy8ZA0N0W3yw0",

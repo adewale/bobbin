@@ -1,9 +1,10 @@
 import type { IngestionRunType } from "./ingestion";
+import type { TopicExtractorMode } from "../services/yake-runtime";
 
 export interface PipelineRunSummary {
   sourceId?: number | null;
   runType: IngestionRunType;
-  extractorMode: "naive" | "yaket";
+  extractorMode: TopicExtractorMode;
   status: "completed" | "partial" | "failed";
   totalMs: number;
   chunksProcessed: number;
