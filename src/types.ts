@@ -4,6 +4,7 @@ export type Bindings = {
   AI: Ai;
   ADMIN_SECRET: string;
   ENRICHMENT_QUEUE: Queue;
+  TOPIC_EXTRACTOR_MODE?: "naive" | "yaket";
 };
 
 export type AppEnv = {

@@ -3,6 +3,9 @@ import { parseHtmlDocument } from "../services/html-parser";
 import { ingestEpisodesOnly, enrichAllChunks, finalizeEnrichment, type ProcessChunkBatchResult, type FinalizeResult } from "./ingest";
 import { ensureSource, getSourceByDocId, updateSourceFetchedAt } from "../db/sources";
 import { createIngestionLog, completeIngestionLog, failIngestionLog } from "../db/ingestion";
+import { recordPipelineRun } from "../db/pipeline-metrics";
+import { combinePipelineReports } from "../services/pipeline-report";
+import { normalizeTopicExtractorMode } from "../services/yake-runtime";
 import type { Bindings } from "../types";
 
 const CURRENT_DOC_ID = "1xRiCqpy3LMAgEsHdX-IA23j6nUISdT5nAJmtKbk9wNA";
@@ -47,6 +50,7 @@ function elapsed(start: number): number {
 
 export async function runRefresh(env: Bindings): Promise<RefreshEvent> {
   const runStart = Date.now();
+  const extractorMode = normalizeTopicExtractorMode(env.TOPIC_EXTRACTOR_MODE);
   const event: RefreshEvent = {
     event: "refresh",
     source: CURRENT_DOC_ID.substring(0, 12) + "...",
@@ -103,13 +107,13 @@ export async function runRefresh(env: Bindings): Promise<RefreshEvent> {
     if (result.chunksAdded > 0) {
       const enriched = await enrichAllChunks(env.DB, 200, 120000, (batch) => {
         enrichBatches.push(batch);
-      });
+      }, extractorMode);
       event.enriched_chunks = enriched;
     } else {
       // Check for leftover unenriched chunks from previous runs
       const enriched = await enrichAllChunks(env.DB, 200, 30000, (batch) => {
         enrichBatches.push(batch);
-      });
+      }, extractorMode);
       event.enriched_chunks = enriched;
     }
     event.enrich_ms = elapsed(enrichStart);
@@ -136,6 +140,8 @@ export async function runRefresh(env: Bindings): Promise<RefreshEvent> {
       ...(finalizeResult ? { finalize: finalizeResult } : {}),
     };
     await completeIngestionLog(env.DB, logId, result.episodesAdded, result.chunksAdded, pipelineReport);
+    const runReport = combinePipelineReports("refresh", extractorMode, enrichBatches, finalizeResult, source.id);
+    await recordPipelineRun(env.DB, logId, runReport.summary, runReport.stages);
 
     event.status = "completed";
     event.duration_ms = elapsed(runStart);
@@ -154,6 +160,24 @@ export async function runRefresh(env: Bindings): Promise<RefreshEvent> {
     if (logId) {
       try {
         await failIngestionLog(env.DB, logId, msg, { event });
+        await recordPipelineRun(env.DB, logId, {
+          sourceId: null,
+          runType: "refresh",
+          extractorMode,
+          status: "failed",
+          totalMs: event.duration_ms,
+          chunksProcessed: 0,
+          candidatesGenerated: 0,
+          candidatesRejectedEarly: 0,
+          candidatesInserted: 0,
+          topicsInserted: 0,
+          chunkTopicLinksInserted: 0,
+          chunkWordRowsInserted: 0,
+          pruned: 0,
+          merged: 0,
+          orphanTopicsDeleted: 0,
+          archivedLineageTopics: 0,
+        }, []);
       } catch {
         // Don't mask the original error
       }

@@ -12,6 +12,7 @@
     }
   ],
   "vars": {
-    "ADMIN_SECRET": "local-secret"
+    "ADMIN_SECRET": "local-secret",
+    "TOPIC_EXTRACTOR_MODE": "naive"
   }
 }

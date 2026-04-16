@@ -4,6 +4,9 @@
   "main": "src/index.tsx",
   "compatibility_date": "2026-04-01",
   "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "TOPIC_EXTRACTOR_MODE": "naive"
+  },
   "d1_databases": [
     {
       "binding": "DB",

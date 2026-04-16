@@ -3,7 +3,7 @@ import { slugify } from "../lib/slug";
 import { escapeRegex } from "../lib/html";
 import { isNoiseTopic } from "./topic-quality";
 import { KNOWN_ENTITIES } from "../data/known-entities";
-import { extractYakeKeywords } from "./yake";
+import { extractRuntimeYakeKeywords, type TopicExtractorMode } from "./yake-runtime";
 import {
   type ChunkTextArtifact,
   normalizeChunkText,
@@ -364,9 +364,10 @@ function extractPhraseLexiconCandidates(
 function extractYakeCandidates(
   artifact: ChunkTextArtifact,
   chunkId: number,
-  maxTopics: number
+  maxTopics: number,
+  extractorMode: TopicExtractorMode
 ): TopicCandidate[] {
-  return extractYakeKeywords(artifact.normalizedText, maxTopics * 2, 3)
+  return extractRuntimeYakeKeywords(artifact.normalizedText, maxTopics * 2, 3, extractorMode)
     .map((kw) => {
       const normalizedCandidate = normalizeTerm(kw.keyword);
       return {
@@ -388,13 +389,14 @@ export function extractTopicCandidates(
   artifact: ChunkTextArtifact,
   chunkId: number,
   maxTopics: number = 5,
-  phraseLexicon: PhraseLexiconEntry[] = []
+  phraseLexicon: PhraseLexiconEntry[] = [],
+  extractorMode: TopicExtractorMode = "naive"
 ): TopicCandidate[] {
   return [
     ...extractKnownEntityCandidates(artifact, chunkId),
     ...extractHeuristicEntityCandidates(artifact, chunkId),
     ...extractPhraseLexiconCandidates(artifact, chunkId, phraseLexicon),
-    ...extractYakeCandidates(artifact, chunkId, maxTopics),
+    ...extractYakeCandidates(artifact, chunkId, maxTopics, extractorMode),
   ].map(canonicalizeTopicCandidate);
 }
 
@@ -517,9 +519,10 @@ export function extractCandidateDecisions(
   artifact: ChunkTextArtifact,
   chunkId: number,
   maxTopics: number = 5,
-  phraseLexicon: PhraseLexiconEntry[] = []
+  phraseLexicon: PhraseLexiconEntry[] = [],
+  extractorMode: TopicExtractorMode = "naive"
 ): CandidateDecision[] {
-  const rawCandidates = extractTopicCandidates(artifact, chunkId, maxTopics, phraseLexicon);
+  const rawCandidates = extractTopicCandidates(artifact, chunkId, maxTopics, phraseLexicon, extractorMode);
 
   const initialDecisions: CandidateDecision[] = rawCandidates.map((candidate) => {
     const rejectionReason = rejectTopicCandidate(candidate);
@@ -564,10 +567,11 @@ export function extractCandidateDecisions(
 export function extractTopics(
   text: string,
   maxTopics: number = 5,
-  corpusStats?: CorpusStats
+  corpusStats?: CorpusStats,
+  extractorMode: TopicExtractorMode = "naive"
 ): TopicResult[] {
   void corpusStats;
-  const decisions = extractCandidateDecisions(normalizeChunkText(text), 0, maxTopics);
+  const decisions = extractCandidateDecisions(normalizeChunkText(text), 0, maxTopics, [], extractorMode);
   return decisions
     .filter((candidate) => candidate.decision === "accepted")
     .map(toTopicResult);

@@ -4,6 +4,7 @@ import { fetchGoogleDoc } from "../crawler/fetch";
 import { parseHtmlDocument } from "../services/html-parser";
 import { ingestParsedEpisodes, enrichChunks, finalizeEnrichment, isEnrichmentComplete } from "../jobs/ingest";
 import { createIngestionLog, completeIngestionLog, failIngestionLog } from "../db/ingestion";
+import { recordPipelineRun } from "../db/pipeline-metrics";
 import { ftsSearch } from "../services/search";
 import { parseSearchQuery } from "../lib/query-parser";
 import { keywordSearch } from "../db/search";
@@ -11,6 +12,8 @@ import { safeParseInt, escapeLike } from "../lib/html";
 import { applyTopicBoost } from "../services/search-topics";
 import { expandEntityAliases } from "../lib/entity-aliases";
 import { KNOWN_ENTITIES } from "../data/known-entities";
+import { combinePipelineReports, summarizeEnrichBatches, summarizeFinalizeResult } from "../services/pipeline-report";
+import { normalizeTopicExtractorMode } from "../services/yake-runtime";
 
 const api = new Hono<AppEnv>();
 
@@ -70,6 +73,7 @@ api.get("/ingest", async (c) => {
   const docId = c.req.query("doc") || "";
   let logId: number | null = null;
   let sourceForLog: { id: number; title: string; google_doc_id: string } | null = null;
+  const extractorMode = normalizeTopicExtractorMode(c.env.TOPIC_EXTRACTOR_MODE);
 
   try {
     const sources = await c.env.DB.prepare("SELECT * FROM sources").all();
@@ -116,6 +120,7 @@ api.get("/ingest", async (c) => {
 
     await completeIngestionLog(c.env.DB, logId, result.episodesAdded, result.chunksAdded, {
       endpoint: "/api/ingest",
+      extractor_mode: extractorMode,
       source_id: source.id,
       source_title: source.title,
       fetch_doc_id: source.google_doc_id,
@@ -126,6 +131,15 @@ api.get("/ingest", async (c) => {
       enrich_batch: result.enrichBatch || null,
       finalize: result.finalize || null,
     });
+
+    const runReport = combinePipelineReports(
+      "manual_ingest",
+      extractorMode,
+      result.enrichBatch ? [result.enrichBatch] : [],
+      result.finalize,
+      source.id,
+    );
+    await recordPipelineRun(c.env.DB, logId, runReport.summary, runReport.stages);
 
     return c.json({
       status: "ok",
@@ -140,6 +154,7 @@ api.get("/ingest", async (c) => {
     if (logId) {
       await failIngestionLog(c.env.DB, logId, e instanceof Error ? e.message : String(e), {
         endpoint: "/api/ingest",
+        extractor_mode: extractorMode,
         source_id: sourceForLog?.id || null,
         source_title: sourceForLog?.title || null,
         fetch_doc_id: sourceForLog?.google_doc_id || null,
@@ -189,17 +204,23 @@ api.get("/enrich", async (c) => {
 
   const batchSize = safeParseInt(c.req.query("batch"), 50);
   let logId: number | null = null;
+  const extractorMode = normalizeTopicExtractorMode(c.env.TOPIC_EXTRACTOR_MODE);
 
   try {
     logId = await createIngestionLog(c.env.DB, null, "enrich");
-    const result = await enrichChunks(c.env.DB, batchSize);
+    const result = await enrichChunks(c.env.DB, batchSize, extractorMode);
     const complete = await isEnrichmentComplete(c.env.DB);
     await completeIngestionLog(c.env.DB, logId, 0, result.chunksProcessed, {
       endpoint: "/api/enrich",
+      extractor_mode: extractorMode,
       batch_size: batchSize,
       complete,
       enrich_batch: result.batch || null,
     });
+    if (result.batch) {
+      const runReport = summarizeEnrichBatches("enrich", extractorMode, [result.batch]);
+      await recordPipelineRun(c.env.DB, logId, runReport.summary, runReport.stages);
+    }
     return c.json({
       status: "ok",
       chunksProcessed: result.chunksProcessed,
@@ -210,6 +231,7 @@ api.get("/enrich", async (c) => {
     if (logId) {
       await failIngestionLog(c.env.DB, logId, e instanceof Error ? e.message : String(e), {
         endpoint: "/api/enrich",
+        extractor_mode: extractorMode,
         batch_size: batchSize,
       });
     }
@@ -325,6 +347,7 @@ api.get("/finalize", async (c) => {
   if (denied) return denied;
 
   let logId: number | null = null;
+  const extractorMode = normalizeTopicExtractorMode(c.env.TOPIC_EXTRACTOR_MODE);
 
   try {
     logId = await createIngestionLog(c.env.DB, null, "finalize");
@@ -335,9 +358,11 @@ api.get("/finalize", async (c) => {
       logId,
       0,
       0,
-      { endpoint: "/api/finalize", finalize: result },
+      { endpoint: "/api/finalize", extractor_mode: extractorMode, finalize: result },
       failedSteps.length > 0 ? "partial" : "completed"
     );
+    const runReport = summarizeFinalizeResult("finalize", extractorMode, result);
+    await recordPipelineRun(c.env.DB, logId, runReport.summary, runReport.stages);
     if (failedSteps.length > 0) {
       return c.json({ status: "partial", failed_count: failedSteps.length, ...result });
     }
@@ -347,6 +372,7 @@ api.get("/finalize", async (c) => {
     if (logId) {
       await failIngestionLog(c.env.DB, logId, e instanceof Error ? e.message : String(e), {
         endpoint: "/api/finalize",
+        extractor_mode: extractorMode,
       });
     }
     return c.json({
@@ -355,6 +381,35 @@ api.get("/finalize", async (c) => {
       detail: e.stack?.substring(0, 500),
     }, 500);
   }
+});
+
+api.get("/pipeline-runs", async (c) => {
+  const denied = requireAuth(c);
+  if (denied) return denied;
+
+  const limit = safeParseInt(c.req.query("limit"), 20);
+  const runs = await c.env.DB.prepare(
+    `SELECT pr.*, il.started_at, il.completed_at
+     FROM pipeline_runs pr
+     LEFT JOIN ingestion_log il ON il.id = pr.ingestion_log_id
+     ORDER BY pr.id DESC
+     LIMIT ?`
+  ).bind(limit).all();
+
+  const runIds = (runs.results as any[]).map((run) => run.id);
+  let stages: any[] = [];
+  if (runIds.length > 0) {
+    const placeholders = runIds.map(() => "?").join(",");
+    const stageRows = await c.env.DB.prepare(
+      `SELECT pipeline_run_id, phase, stage_name, stage_order, status, duration_ms, counts_json, detail
+       FROM pipeline_stage_metrics
+       WHERE pipeline_run_id IN (${placeholders})
+       ORDER BY pipeline_run_id DESC, phase ASC, stage_order ASC`
+    ).bind(...runIds).all();
+    stages = stageRows.results as any[];
+  }
+
+  return c.json({ runs: runs.results, stages });
 });
 
 // Admin: view ingestion history

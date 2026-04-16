@@ -7,6 +7,9 @@
   "assets": {
     "directory": "./public"
   },
+  "vars": {
+    "TOPIC_EXTRACTOR_MODE": "naive"
+  },
   "d1_databases": [
     {
       "binding": "DB",

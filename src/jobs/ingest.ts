@@ -19,6 +19,7 @@ import { extractCorpusNgrams } from "../services/ngram-extractor";
 import { extractPMIPhrases } from "../services/pmi-phrases";
 import { computeTopicDisplayDecisions, isNoiseTopic } from "../services/topic-quality";
 import { generateEmbeddings } from "../services/embeddings";
+import { normalizeTopicExtractorMode, type TopicExtractorMode } from "../services/yake-runtime";
 import { getExistingDatesForSource, getSourceTag } from "../db/sources";
 import { getUnenrichedChunks, markChunksEnriched, isEnrichmentDone } from "../db/ingestion";
 import type { Bindings, ParsedEpisode } from "../types";
@@ -53,6 +54,7 @@ export interface PipelineStageResult {
 }
 
 export interface ProcessChunkBatchResult {
+  extractorMode: TopicExtractorMode;
   chunksProcessed: number;
   candidatesGenerated: number;
   candidatesRejectedEarly: number;
@@ -166,10 +168,12 @@ export async function ingestEpisodesOnly(
  */
 export async function processChunkBatch(
   db: D1Database,
-  chunks: { id: number; episode_id: number; content_plain: string }[]
+  chunks: { id: number; episode_id: number; content_plain: string }[],
+  extractorMode: TopicExtractorMode = "naive"
 ): Promise<ProcessChunkBatchResult> {
   if (!chunks.length) {
     return {
+      extractorMode,
       chunksProcessed: 0,
       candidatesGenerated: 0,
       candidatesRejectedEarly: 0,
@@ -282,7 +286,7 @@ export async function processChunkBatch(
 
   await runPipelineStage("candidate_extraction", stageResults, async () => {
     candidateDecisions = analyzedChunks.flatMap((chunk) =>
-      extractCandidateDecisions(chunk.textArtifact, chunk.id, 5, phraseLexicon)
+      extractCandidateDecisions(chunk.textArtifact, chunk.id, 5, phraseLexicon, extractorMode)
     );
 
     const candidateAuditInserts = candidateDecisions.map((candidate) =>
@@ -446,6 +450,7 @@ export async function processChunkBatch(
   });
 
   return {
+    extractorMode,
     chunksProcessed: chunks.length,
     candidatesGenerated: candidateDecisions.length,
     candidatesRejectedEarly: candidateDecisions.filter((row) => row.decision === "rejected").length,
@@ -472,12 +477,13 @@ export async function processChunkBatch(
  */
 export async function enrichChunks(
   db: D1Database,
-  batchSize: number = 200
+  batchSize: number = 200,
+  extractorMode: TopicExtractorMode = "naive"
 ): Promise<{ chunksProcessed: number; batch?: ProcessChunkBatchResult }> {
   const chunks = await getUnenrichedChunks(db, batchSize);
   if (!chunks.length) return { chunksProcessed: 0 };
 
-  const batch = await processChunkBatch(db, chunks);
+  const batch = await processChunkBatch(db, chunks, extractorMode);
 
   return { chunksProcessed: chunks.length, batch };
 }
@@ -505,6 +511,7 @@ export interface FinalizeResult {
   pruned: number;
   merged: number;
   orphan_topics_deleted: number;
+  archived_lineage_topics: number;
   provenance_complete_topics: number;
   steps: FinalizeStep[];
   audit_report: PipelineAuditSample[];
@@ -631,6 +638,85 @@ async function pruneTopicIds(
   return ids.length;
 }
 
+async function archiveZeroUsageLineageTopics(db: D1Database): Promise<number> {
+  const lineageTopics = await db.prepare(
+    `SELECT
+       t.id,
+       t.name,
+       t.slug,
+       t.kind,
+       t.usage_count,
+       t.distinctiveness,
+       t.display_reason,
+       t.provenance_complete,
+       (
+         SELECT m.to_topic_id FROM topic_merge_audit m
+         WHERE m.from_topic_id = t.id
+         ORDER BY m.id DESC LIMIT 1
+       ) AS merged_to_topic_id,
+       (
+         SELECT m.stage FROM topic_merge_audit m
+         WHERE m.from_topic_id = t.id
+         ORDER BY m.id DESC LIMIT 1
+       ) AS merge_stage
+     FROM topics t
+     WHERE t.usage_count = 0
+       AND NOT EXISTS (SELECT 1 FROM chunk_topics ct WHERE ct.topic_id = t.id)
+       AND NOT EXISTS (SELECT 1 FROM episode_topics et WHERE et.topic_id = t.id)
+       AND (
+         EXISTS (SELECT 1 FROM topic_candidate_audit a WHERE a.topic_id = t.id)
+         OR EXISTS (
+           SELECT 1 FROM topic_merge_audit m
+           WHERE m.from_topic_id = t.id OR m.to_topic_id = t.id
+         )
+       )`
+  ).all<{
+    id: number;
+    name: string;
+    slug: string;
+    kind: string;
+    usage_count: number;
+    distinctiveness: number;
+    display_reason: string | null;
+    provenance_complete: number;
+    merged_to_topic_id: number | null;
+    merge_stage: string | null;
+  }>();
+
+  if (lineageTopics.results.length === 0) return 0;
+
+  await batchExec(db, lineageTopics.results.map((topic) =>
+    db.prepare(
+      `INSERT OR REPLACE INTO topic_lineage_archive (
+         original_topic_id, name, slug, kind, usage_count, distinctiveness,
+         display_reason, provenance_complete, archive_reason, merged_to_topic_id, merge_stage
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      topic.id,
+      topic.name,
+      topic.slug,
+      topic.kind,
+      topic.usage_count,
+      topic.distinctiveness,
+      topic.display_reason,
+      topic.provenance_complete,
+      "zero_usage_lineage",
+      topic.merged_to_topic_id,
+      topic.merge_stage,
+    )
+  ));
+
+  const ids = lineageTopics.results.map((topic) => topic.id);
+  const BATCH = 90;
+  for (let i = 0; i < ids.length; i += BATCH) {
+    const batch = ids.slice(i, i + BATCH);
+    const placeholders = batch.map(() => "?").join(",");
+    await db.prepare(`DELETE FROM topics WHERE id IN (${placeholders})`).bind(...batch).run();
+  }
+
+  return ids.length;
+}
+
 export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise<FinalizeResult> {
   const totalStart = Date.now();
   const steps: FinalizeStep[] = [];
@@ -643,6 +729,7 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
     pruned: 0,
     merged: 0,
     orphan_topics_deleted: 0,
+    archived_lineage_topics: 0,
     provenance_complete_topics: 0,
     steps,
     audit_report: [],
@@ -887,6 +974,15 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
     return { detail: `${touched} topics recounted`, counts: { topics_recounted: touched } };
   });
 
+  await runStep("archive_lineage_topics", steps, async () => {
+    const archived = await archiveZeroUsageLineageTopics(db);
+    result.archived_lineage_topics = archived;
+    return {
+      detail: `${archived} zero-usage lineage topics archived`,
+      counts: { archived_lineage_topics: archived },
+    };
+  });
+
   await runStep("entity_validation", steps, async () => {
     const { escapeRegex } = await import("../lib/html");
     const entities = await db.prepare(
@@ -1063,13 +1159,14 @@ export async function enrichAllChunks(
   db: D1Database,
   batchSize = 100,
   maxMs = 25000,
-  onBatch?: (batch: ProcessChunkBatchResult) => void
+  onBatch?: (batch: ProcessChunkBatchResult) => void,
+  extractorMode: TopicExtractorMode = "naive"
 ): Promise<number> {
   let total = 0;
   let lastProcessed = -1;
   const start = Date.now();
   while (Date.now() - start < maxMs) {
-    const result = await enrichChunks(db, batchSize);
+    const result = await enrichChunks(db, batchSize, extractorMode);
     if (result.chunksProcessed === 0) break;
     if (result.batch && onBatch) {
       onBatch(result.batch);
@@ -1099,11 +1196,12 @@ export async function ingestParsedEpisodes(
   episodes: ParsedEpisode[]
 ): Promise<IngestParsedEpisodesResult> {
   const result = await ingestEpisodesOnly(env.DB, sourceId, episodes);
+  const extractorMode = normalizeTopicExtractorMode(env.TOPIC_EXTRACTOR_MODE);
   let enrichBatch: ProcessChunkBatchResult | undefined;
   let finalize: FinalizeResult | undefined;
 
   if (result.chunksAdded > 0) {
-    const enrichResult = await enrichChunks(env.DB, 10000);
+    const enrichResult = await enrichChunks(env.DB, 10000, extractorMode);
     enrichBatch = enrichResult.batch;
     finalize = await finalizeEnrichment(env.DB, env.ENRICHMENT_QUEUE);
     const failedSteps = finalize.steps.filter((step) => step.status === "error");

@@ -1,5 +1,5 @@
 declare module "cloudflare:test" {
-  export const env: Cloudflare.Env;
+  export const env: import("./types").Bindings & Record<string, unknown>;
   export const SELF: Fetcher;
 }
 

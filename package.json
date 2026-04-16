@@ -10,11 +10,14 @@
     "test:real": "vitest run --config vitest.node.config.ts",
     "test:visual": "playwright test e2e/visual.spec.ts --project=desktop --workers=1",
     "test:all": "vitest run && vitest run --config vitest.node.config.ts",
+    "characterize:pipeline:naive": "node scripts/characterize-pipeline.mjs naive",
+    "characterize:pipeline:yaket": "node scripts/characterize-pipeline.mjs yaket",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "types": "wrangler types"
   },
   "dependencies": {
+    "@ade_oshineye/yaket": "^0.3.0",
     "hono": "^4.12.11"
   },
   "devDependencies": {

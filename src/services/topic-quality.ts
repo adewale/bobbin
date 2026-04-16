@@ -150,6 +150,25 @@ export function suppressComponentWords<T extends { name: string }>(topics: T[]):
   return topics.filter(t => t.name.includes(" ") || !componentWords.has(t.name.toLowerCase()));
 }
 
+export function isWeakSingletonTopic(
+  name: string,
+  usageCount: number,
+  distinctiveness: number
+): boolean {
+  const lower = name.toLowerCase();
+  if (lower.includes(" ")) return false;
+  if (isNoiseTopic(lower)) return true;
+
+  const weakSuffix = /(ed|ing|ment|ness|tion|sion|ance|ence)$/i.test(lower);
+  const lowSignal = distinctiveness < 10 && usageCount < 10;
+  const veryLowSignal = distinctiveness < 15 && usageCount < 6;
+
+  if (veryLowSignal) return true;
+  if (weakSuffix && distinctiveness < 20 && usageCount < 20) return true;
+
+  return false;
+}
+
 /**
  * Filter and rank topics for display quality.
  * - Removes noise words
@@ -177,6 +196,8 @@ export function curateTopics(
     // Remove single words < 4 chars (unless high usage)
     if (!name.includes(" ") && name.length < 4 && t.usage_count < 20) return false;
 
+    if (isWeakSingletonTopic(name, t.usage_count, t.distinctiveness)) return false;
+
     // Suppress single words that are subsumed by phrases
     // If "coding" is a component of "vibe coding" and "vibe coding" has >= 40% of "coding"'s usage, suppress it
     if (!name.includes(" ") && phraseComponentWords.has(name)) {
@@ -184,7 +205,7 @@ export function curateTopics(
         p.name.toLowerCase().split(/\s+/).includes(name)
       );
       const phraseUsage = matchingPhrases.reduce((sum, p) => sum + p.usage_count, 0);
-      if (phraseUsage >= t.usage_count * 0.4) return false; // 40% threshold
+      if (phraseUsage >= t.usage_count * 0.25) return false; // 25% threshold
     }
 
     return true;
@@ -242,6 +263,8 @@ export function computeTopicDisplayDecisions(
       const lower = topic.name.toLowerCase();
       const reason = isNoiseTopic(lower)
         ? "noise_or_structural_filter"
+        : isWeakSingletonTopic(lower, topic.usage_count, topic.distinctiveness)
+          ? "weak_singleton_filter"
         : topic.name.includes(" ")
           ? "phrase_quality_filter"
           : "subsumed_by_phrase";

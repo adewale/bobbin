@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { SELF, env } from "cloudflare:test";
 import { applyTestMigrations } from "../test/helpers/migrations";
+import { createIngestionLog } from "./db/ingestion";
+import { recordPipelineRun } from "./db/pipeline-metrics";
 
 beforeEach(async () => {
   await applyTestMigrations(env.DB);
@@ -63,5 +65,54 @@ describe("S5: Generic error messages", () => {
       expect(data.error).not.toContain("SQLITE");
       expect(data.error).not.toContain("/Users/");
     }
+  });
+});
+
+describe("Pipeline reporting tables", () => {
+  it("stores queryable run and stage metrics", async () => {
+    const ingestionLogId = await createIngestionLog(env.DB, 1, "enrich");
+    const pipelineRunId = await recordPipelineRun(env.DB, ingestionLogId, {
+      sourceId: 1,
+      runType: "enrich",
+      extractorMode: "naive",
+      status: "completed",
+      totalMs: 123,
+      chunksProcessed: 10,
+      candidatesGenerated: 20,
+      candidatesRejectedEarly: 8,
+      candidatesInserted: 12,
+      topicsInserted: 6,
+      chunkTopicLinksInserted: 12,
+      chunkWordRowsInserted: 30,
+      pruned: 0,
+      merged: 0,
+      orphanTopicsDeleted: 0,
+      archivedLineageTopics: 0,
+    }, [
+      {
+        phase: "enrich",
+        name: "candidate_extraction",
+        duration_ms: 12,
+        status: "ok",
+        counts: { candidates_generated: 20 },
+        detail: "batched",
+      },
+    ]);
+
+    const run = await env.DB.prepare(
+      "SELECT run_type, extractor_mode, chunks_processed FROM pipeline_runs WHERE id = ?"
+    ).bind(pipelineRunId).first<{ run_type: string; extractor_mode: string; chunks_processed: number }>();
+    const stage = await env.DB.prepare(
+      "SELECT phase, stage_name, counts_json FROM pipeline_stage_metrics WHERE pipeline_run_id = ?"
+    ).bind(pipelineRunId).first<{ phase: string; stage_name: string; counts_json: string }>();
+
+    expect(run).not.toBeNull();
+    expect(run?.run_type).toBe("enrich");
+    expect(run?.extractor_mode).toBe("naive");
+    expect(run?.chunks_processed).toBe(10);
+    expect(stage).not.toBeNull();
+    expect(stage?.phase).toBe("enrich");
+    expect(stage?.stage_name).toBe("candidate_extraction");
+    expect(JSON.parse(stage!.counts_json)).toEqual({ candidates_generated: 20 });
   });
 });

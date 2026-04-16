@@ -177,8 +177,16 @@ describe("Related slugs computation", () => {
 
   it("computes related_slugs for topics with usage >= 5 via batch SQL", async () => {
     // Create two topics that co-occur in multiple chunks
-    await env.DB.prepare("INSERT INTO topics (name, slug, kind, usage_count) VALUES ('alpha', 'alpha', 'concept', 0)").run();
-    await env.DB.prepare("INSERT INTO topics (name, slug, kind, usage_count) VALUES ('beta', 'beta', 'concept', 0)").run();
+    await env.DB.batch([
+      env.DB.prepare("UPDATE chunks SET content_plain = 'platform signal and network signal co-occur here' WHERE id = 1"),
+      env.DB.prepare("UPDATE chunks SET content_plain = 'platform signal and network signal appear together again' WHERE id = 2"),
+      env.DB.prepare("UPDATE chunks SET content_plain = 'platform signal and network signal show up again' WHERE id = 3"),
+      env.DB.prepare("UPDATE chunks SET content_plain = 'platform signal and network signal remain linked' WHERE id = 4"),
+      env.DB.prepare("UPDATE chunks SET content_plain = 'platform signal and network signal in production' WHERE id = 5"),
+      env.DB.prepare("UPDATE chunks SET content_plain = 'platform signal revisited for scale' WHERE id = 6"),
+    ]);
+    await env.DB.prepare("INSERT INTO topics (name, slug, kind, usage_count, distinctiveness) VALUES ('platform signal', 'platform-signal', 'phrase', 0, 30)").run();
+    await env.DB.prepare("INSERT INTO topics (name, slug, kind, usage_count, distinctiveness) VALUES ('network signal', 'network-signal', 'phrase', 0, 30)").run();
 
     // Alpha assigned to 6 chunks, beta assigned to 5 chunks — both will have usage >= 5 after recount
     await env.DB.batch([
@@ -198,24 +206,24 @@ describe("Related slugs computation", () => {
     await finalizeEnrichment(env.DB);
 
     // Alpha (usage 6 after recount) should have beta as related
-    const alpha = await env.DB.prepare("SELECT related_slugs FROM topics WHERE slug = 'alpha'").first<{ related_slugs: string | null }>();
+    const alpha = await env.DB.prepare("SELECT related_slugs FROM topics WHERE slug = 'platform-signal'").first<{ related_slugs: string | null }>();
     expect(alpha).not.toBeNull();
     expect(alpha!.related_slugs).not.toBeNull();
     const alphaParsed = JSON.parse(alpha!.related_slugs!);
-    expect(alphaParsed).toContain("beta");
+    expect(alphaParsed).toContain("network-signal");
 
     // Beta (usage 5 after recount) should have alpha as related
-    const beta = await env.DB.prepare("SELECT related_slugs FROM topics WHERE slug = 'beta'").first<{ related_slugs: string | null }>();
+    const beta = await env.DB.prepare("SELECT related_slugs FROM topics WHERE slug = 'network-signal'").first<{ related_slugs: string | null }>();
     expect(beta).not.toBeNull();
     expect(beta!.related_slugs).not.toBeNull();
     const betaParsed = JSON.parse(beta!.related_slugs!);
-    expect(betaParsed).toContain("alpha");
+    expect(betaParsed).toContain("platform-signal");
   });
 
   it("produces valid JSON array format for related_slugs", async () => {
-    await env.DB.prepare("INSERT INTO topics (name, slug, kind, usage_count) VALUES ('atlas', 'atlas', 'concept', 0)").run();
-    await env.DB.prepare("INSERT INTO topics (name, slug, kind, usage_count) VALUES ('zephyr', 'zephyr', 'concept', 0)").run();
-    await env.DB.prepare("INSERT INTO topics (name, slug, kind, usage_count) VALUES ('quartz', 'quartz', 'concept', 0)").run();
+    await env.DB.prepare("INSERT INTO topics (name, slug, kind, usage_count, distinctiveness) VALUES ('atlas signal', 'atlas-signal', 'phrase', 0, 30)").run();
+    await env.DB.prepare("INSERT INTO topics (name, slug, kind, usage_count, distinctiveness) VALUES ('zephyr signal', 'zephyr-signal', 'phrase', 0, 30)").run();
+    await env.DB.prepare("INSERT INTO topics (name, slug, kind, usage_count, distinctiveness) VALUES ('quartz signal', 'quartz-signal', 'phrase', 0, 30)").run();
 
     // topicA assigned to 6 chunks, topicB to 5, topicC to 5 — all >= 5 after recount
     await env.DB.batch([
@@ -336,5 +344,36 @@ describe("Phrase topics discovered before finalization", () => {
     ).first<{ usage_count: number; provenance_complete: number }>();
     expect(topic?.usage_count).toBeGreaterThan(0);
     expect(topic?.provenance_complete).toBe(1);
+  });
+});
+
+describe("Zero-usage lineage archiving", () => {
+  it("archives zero-usage lineage topics and removes them from live topics", async () => {
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO topics (id, name, slug, kind, usage_count, display_reason, provenance_complete) VALUES (90, 'lineage phrase', 'lineage-phrase', 'phrase', 0, 'canonicalized_duplicate', 1)"
+      ),
+      env.DB.prepare(
+        `INSERT INTO topic_candidate_audit (
+           chunk_id, topic_id, source, stage, raw_candidate, normalized_candidate,
+           topic_name, slug, score, kind, decision, decision_reason, provenance
+         ) VALUES (1, 90, 'phrase_lexicon', 'topic_inserted', 'lineage phrase', 'lineage phrase', 'lineage phrase', 'lineage-phrase', 1.0, 'phrase', 'accepted', 'candidate_survived_filters', '[]')`
+      ),
+    ]);
+
+    const result = await finalizeEnrichment(env.DB);
+
+    expect(result.archived_lineage_topics).toBeGreaterThanOrEqual(1);
+
+    const liveTopic = await env.DB.prepare(
+      "SELECT id FROM topics WHERE id = 90"
+    ).first();
+    expect(liveTopic).toBeNull();
+
+    const archived = await env.DB.prepare(
+      "SELECT original_topic_id, archive_reason FROM topic_lineage_archive WHERE original_topic_id = 90"
+    ).first<{ original_topic_id: number; archive_reason: string }>();
+    expect(archived).not.toBeNull();
+    expect(archived?.archive_reason).toBe("zero_usage_lineage");
   });
 });
