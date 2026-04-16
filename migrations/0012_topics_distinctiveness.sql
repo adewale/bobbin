@@ -1,0 +1,1 @@
+ALTER TABLE topics ADD COLUMN distinctiveness REAL NOT NULL DEFAULT 0;

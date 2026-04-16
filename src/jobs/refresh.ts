@@ -1,6 +1,6 @@
 import { fetchGoogleDoc } from "../crawler/fetch";
 import { parseHtmlDocument } from "../services/html-parser";
-import { ingestEpisodesOnly, enrichAllChunks, finalizeEnrichment } from "./ingest";
+import { ingestEpisodesOnly, enrichAllChunks, finalizeEnrichment, type ProcessChunkBatchResult, type FinalizeResult } from "./ingest";
 import { ensureSource, getSourceByDocId, updateSourceFetchedAt } from "../db/sources";
 import { createIngestionLog, completeIngestionLog, failIngestionLog } from "../db/ingestion";
 import type { Bindings } from "../types";
@@ -33,6 +33,12 @@ interface RefreshEvent {
   // Error info
   failed_step?: string;
   error?: string;
+}
+
+interface RefreshPipelineReport {
+  event: RefreshEvent;
+  enrich_batches: ProcessChunkBatchResult[];
+  finalize?: FinalizeResult;
 }
 
 function elapsed(start: number): number {
@@ -93,12 +99,17 @@ export async function runRefresh(env: Bindings): Promise<RefreshEvent> {
     // --- Enrich (only if new chunks, or unenriched chunks exist) ---
     currentStep = "enrich";
     const enrichStart = Date.now();
+    const enrichBatches: ProcessChunkBatchResult[] = [];
     if (result.chunksAdded > 0) {
-      const enriched = await enrichAllChunks(env.DB, 200, 120000);
+      const enriched = await enrichAllChunks(env.DB, 200, 120000, (batch) => {
+        enrichBatches.push(batch);
+      });
       event.enriched_chunks = enriched;
     } else {
       // Check for leftover unenriched chunks from previous runs
-      const enriched = await enrichAllChunks(env.DB, 200, 30000);
+      const enriched = await enrichAllChunks(env.DB, 200, 30000, (batch) => {
+        enrichBatches.push(batch);
+      });
       event.enriched_chunks = enriched;
     }
     event.enrich_ms = elapsed(enrichStart);
@@ -106,15 +117,25 @@ export async function runRefresh(env: Bindings): Promise<RefreshEvent> {
     // --- Finalize (only if we enriched something, or if new content was added) ---
     currentStep = "finalize";
     const finalizeStart = Date.now();
+    let finalizeResult: FinalizeResult | undefined;
     if ((event.enriched_chunks ?? 0) > 0 || result.chunksAdded > 0) {
-      await finalizeEnrichment(env.DB, env.ENRICHMENT_QUEUE);
+      finalizeResult = await finalizeEnrichment(env.DB, env.ENRICHMENT_QUEUE);
+      const failedSteps = finalizeResult.steps.filter((step) => step.status === "error");
+      if (failedSteps.length > 0) {
+        throw new Error(`Finalization failed in steps: ${failedSteps.map((step) => step.name).join(", ")}`);
+      }
     }
     event.finalize_ms = elapsed(finalizeStart);
 
     // --- Complete ---
     currentStep = "complete";
     await updateSourceFetchedAt(env.DB, source.id);
-    await completeIngestionLog(env.DB, logId, result.episodesAdded, result.chunksAdded);
+    const pipelineReport: RefreshPipelineReport = {
+      event,
+      enrich_batches: enrichBatches,
+      ...(finalizeResult ? { finalize: finalizeResult } : {}),
+    };
+    await completeIngestionLog(env.DB, logId, result.episodesAdded, result.chunksAdded, pipelineReport);
 
     event.status = "completed";
     event.duration_ms = elapsed(runStart);
@@ -132,7 +153,7 @@ export async function runRefresh(env: Bindings): Promise<RefreshEvent> {
 
     if (logId) {
       try {
-        await failIngestionLog(env.DB, logId, msg);
+        await failIngestionLog(env.DB, logId, msg, { event });
       } catch {
         // Don't mask the original error
       }

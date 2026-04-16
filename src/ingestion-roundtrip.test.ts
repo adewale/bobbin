@@ -17,11 +17,14 @@ beforeEach(async () => {
   ).run();
 });
 
+function makeTestEnv() {
+  return { ...env, AI: null as any, VECTORIZE: null as any, ADMIN_SECRET: "" };
+}
+
 describe("Ingestion roundtrip: essays fixture", () => {
   it("every parsed episode ends up in D1 with correct fields", async () => {
     const parsed = parseHtmlDocument(sampleEssays);
-    const testEnv = { ...env, AI: null as any, VECTORIZE: null as any };
-    const result = await ingestParsedEpisodes(testEnv, 1, parsed);
+    const result = await ingestParsedEpisodes(makeTestEnv(), 1, parsed);
 
     expect(result.episodesAdded).toBe(parsed.length);
 
@@ -45,8 +48,7 @@ describe("Ingestion roundtrip: essays fixture", () => {
 
   it("every parsed chunk ends up in D1 with correct fields", async () => {
     const parsed = parseHtmlDocument(sampleEssays);
-    const testEnv = { ...env, AI: null as any, VECTORIZE: null as any };
-    await ingestParsedEpisodes(testEnv, 1, parsed);
+    await ingestParsedEpisodes(makeTestEnv(), 1, parsed);
 
     const totalParsedChunks = parsed.reduce((s, ep) => s + ep.chunks.length, 0);
     const dbChunks = await env.DB.prepare("SELECT * FROM chunks ORDER BY id").all();
@@ -68,8 +70,7 @@ describe("Ingestion roundtrip: essays fixture", () => {
 
   it("format is stored correctly as essays", async () => {
     const parsed = parseHtmlDocument(sampleEssays);
-    const testEnv = { ...env, AI: null as any, VECTORIZE: null as any };
-    await ingestParsedEpisodes(testEnv, 1, parsed);
+    await ingestParsedEpisodes(makeTestEnv(), 1, parsed);
 
     const episodes = await env.DB.prepare("SELECT format FROM episodes").all();
     for (const ep of episodes.results as any[]) {
@@ -81,8 +82,7 @@ describe("Ingestion roundtrip: essays fixture", () => {
 describe("Ingestion roundtrip: notes fixture", () => {
   it("notes format is stored correctly", async () => {
     const parsed = parseHtmlDocument(sampleNotes);
-    const testEnv = { ...env, AI: null as any, VECTORIZE: null as any };
-    await ingestParsedEpisodes(testEnv, 1, parsed);
+    await ingestParsedEpisodes(makeTestEnv(), 1, parsed);
 
     const episodes = await env.DB.prepare("SELECT format, chunk_count FROM episodes").all();
     expect(episodes.results).toHaveLength(1);
@@ -92,8 +92,7 @@ describe("Ingestion roundtrip: notes fixture", () => {
 
   it("all chunks have sequential positions", async () => {
     const parsed = parseHtmlDocument(sampleNotes);
-    const testEnv = { ...env, AI: null as any, VECTORIZE: null as any };
-    await ingestParsedEpisodes(testEnv, 1, parsed);
+    await ingestParsedEpisodes(makeTestEnv(), 1, parsed);
 
     const chunks = await env.DB.prepare(
       "SELECT position FROM chunks ORDER BY position"
@@ -108,10 +107,9 @@ describe("Ingestion roundtrip: no data loss", () => {
   it("ingesting both fixtures produces no duplicate slugs", async () => {
     const essays = parseHtmlDocument(sampleEssays);
     const notes = parseHtmlDocument(sampleNotes);
-    const testEnv = { ...env, AI: null as any, VECTORIZE: null as any };
 
-    await ingestParsedEpisodes(testEnv, 1, essays);
-    await ingestParsedEpisodes(testEnv, 1, notes);
+    await ingestParsedEpisodes(makeTestEnv(), 1, essays);
+    await ingestParsedEpisodes(makeTestEnv(), 1, notes);
 
     const dupEpisodes = await env.DB.prepare(
       "SELECT slug, COUNT(*) as c FROM episodes GROUP BY slug HAVING c > 1"
@@ -126,8 +124,7 @@ describe("Ingestion roundtrip: no data loss", () => {
 
   it("topic counts are positive for all generated topics", async () => {
     const parsed = parseHtmlDocument(sampleEssays);
-    const testEnv = { ...env, AI: null as any, VECTORIZE: null as any };
-    await ingestParsedEpisodes(testEnv, 1, parsed);
+    await ingestParsedEpisodes(makeTestEnv(), 1, parsed);
 
     // With YAKE + df≥5 quality gate + orphan deletion, small fixtures may
     // have zero surviving topics. Verify extraction ran via word_stats.
@@ -142,12 +139,54 @@ describe("Ingestion roundtrip: no data loss", () => {
 
   it("word_stats is populated after ingestion", async () => {
     const parsed = parseHtmlDocument(sampleEssays);
-    const testEnv = { ...env, AI: null as any, VECTORIZE: null as any };
-    await ingestParsedEpisodes(testEnv, 1, parsed);
+    await ingestParsedEpisodes(makeTestEnv(), 1, parsed);
 
     const wordStats = await env.DB.prepare(
       "SELECT COUNT(*) as c FROM word_stats"
     ).first();
     expect((wordStats as any).c).toBeGreaterThan(0);
+  });
+
+  it("reingesting the same fixture does not duplicate episodes or chunks", async () => {
+    const parsed = parseHtmlDocument(sampleEssays);
+
+    const first = await ingestParsedEpisodes(makeTestEnv(), 1, parsed);
+    const before = await env.DB.prepare(
+      `SELECT
+         (SELECT COUNT(*) FROM episodes) AS episodes,
+         (SELECT COUNT(*) FROM chunks) AS chunks,
+         (SELECT COUNT(*) FROM chunk_words) AS chunk_words,
+         (SELECT COUNT(*) FROM topic_candidate_audit) AS audit_rows`
+    ).first<{ episodes: number; chunks: number; chunk_words: number; audit_rows: number }>();
+
+    const second = await ingestParsedEpisodes(makeTestEnv(), 1, parsed);
+    const after = await env.DB.prepare(
+      `SELECT
+         (SELECT COUNT(*) FROM episodes) AS episodes,
+         (SELECT COUNT(*) FROM chunks) AS chunks,
+         (SELECT COUNT(*) FROM chunk_words) AS chunk_words,
+         (SELECT COUNT(*) FROM topic_candidate_audit) AS audit_rows`
+    ).first<{ episodes: number; chunks: number; chunk_words: number; audit_rows: number }>();
+
+    expect(first.episodesAdded).toBe(parsed.length);
+    expect(second.episodesAdded).toBe(0);
+    expect(second.chunksAdded).toBe(0);
+    expect(after).toEqual(before);
+  });
+
+  it("persists normalization artifacts for every ingested chunk", async () => {
+    const parsed = parseHtmlDocument(sampleEssays);
+    await ingestParsedEpisodes(makeTestEnv(), 1, parsed);
+
+    const rows = await env.DB.prepare(
+      "SELECT analysis_text, normalization_version, normalization_warnings FROM chunks ORDER BY id"
+    ).all<{ analysis_text: string | null; normalization_version: number; normalization_warnings: string | null }>();
+
+    expect(rows.results.length).toBeGreaterThan(0);
+    for (const row of rows.results) {
+      expect(row.analysis_text).toBeTruthy();
+      expect(row.normalization_version).toBeGreaterThan(0);
+      expect(row.normalization_warnings).not.toBeNull();
+    }
   });
 });

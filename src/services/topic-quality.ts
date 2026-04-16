@@ -190,3 +190,74 @@ export function curateTopics(
     return true;
   });
 }
+
+export interface TopicDisplayDecision {
+  slug: string;
+  displaySuppressed: boolean;
+  hidden: boolean;
+  reason: string | null;
+}
+
+export function computeTopicDisplayDecisions(
+  topics: { slug: string; name: string; usage_count: number; distinctiveness: number; kind?: string; hidden?: number }[]
+): TopicDisplayDecision[] {
+  const phraseTopics = topics
+    .filter((topic) => topic.name.includes(" ") && (topic.hidden ?? 0) === 0)
+    .map((topic) => ({ name: topic.name, usage_count: topic.usage_count }));
+
+  const curatedVisibleSlugs = new Set(
+    curateTopics(
+      topics
+        .filter((topic) => (topic.hidden ?? 0) === 0)
+        .map((topic) => ({
+          name: topic.name,
+          slug: topic.slug,
+          usage_count: topic.usage_count,
+          distinctiveness: topic.distinctiveness,
+        })),
+      phraseTopics
+    ).map((topic) => topic.slug)
+  );
+
+  return topics.map((topic) => {
+    if ((topic.hidden ?? 0) === 1) {
+      return {
+        slug: topic.slug,
+        displaySuppressed: true,
+        hidden: true,
+        reason: "hidden_topic",
+      };
+    }
+
+    if (topic.kind === "entity") {
+      return {
+        slug: topic.slug,
+        displaySuppressed: false,
+        hidden: false,
+        reason: null,
+      };
+    }
+
+    if (!curatedVisibleSlugs.has(topic.slug)) {
+      const lower = topic.name.toLowerCase();
+      const reason = isNoiseTopic(lower)
+        ? "noise_or_structural_filter"
+        : topic.name.includes(" ")
+          ? "phrase_quality_filter"
+          : "subsumed_by_phrase";
+      return {
+        slug: topic.slug,
+        displaySuppressed: true,
+        hidden: false,
+        reason,
+      };
+    }
+
+    return {
+      slug: topic.slug,
+      displaySuppressed: false,
+      hidden: false,
+      reason: null,
+    };
+  });
+}

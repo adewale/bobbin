@@ -17,7 +17,7 @@ export async function applyTopicBoost(
 
   // Check if the query matches a topic by slug or name
   const topicMatch = await db
-    .prepare("SELECT id FROM topics WHERE slug = ? OR LOWER(name) = ?")
+    .prepare("SELECT id FROM topics WHERE (slug = ? OR LOWER(name) = ?) AND hidden = 0 AND display_suppressed = 0")
     .bind(lowerQuery, lowerQuery)
     .first<{ id: number }>();
 
@@ -55,8 +55,8 @@ export async function applyTopicFilter(
   // Resolve each slug to a topic ID
   const topicIds: number[] = [];
   for (const slug of topicSlugs) {
-    const topic = await db
-      .prepare("SELECT id FROM topics WHERE slug = ?")
+      const topic = await db
+      .prepare("SELECT id FROM topics WHERE slug = ? AND hidden = 0 AND display_suppressed = 0")
       .bind(slug)
       .first<{ id: number }>();
     if (!topic) return []; // If any topic doesn't exist, no results

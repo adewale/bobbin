@@ -59,3 +59,5 @@
 ## Data
 - [ ] **Archive essays not fully surfaced** — 11 essay episodes exist but aren't prominent
 - [ ] **Daily cron** — change from weekly (Monday 6am) to daily for fresher content
+- [ ] **Yaket migration** — replace the current naive YAKE implementation in the pipeline with the Yaket library once Yaket has shipped
+- [ ] **Preserve original links** — update the ingestion pipeline and web UI to preserve and render links from Komoroske's original dataset

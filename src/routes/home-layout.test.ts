@@ -87,6 +87,24 @@ describe("Homepage latest episode panel", () => {
     expect(panelHtml).toContain('href="/topics/agent"');
     expect(panelHtml).toContain('href="/topics/chatgpt"');
   });
+
+  it("does not show display-suppressed topics in the latest panel", async () => {
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO topics (name, slug, usage_count, display_suppressed, display_reason) VALUES ('hidden topic', 'hidden-topic', 99, 1, 'subsumed_by_phrase')"
+      ),
+      env.DB.prepare("INSERT INTO episode_topics (episode_id, topic_id) VALUES (1, 6)"),
+    ]);
+
+    const res = await SELF.fetch("http://localhost/");
+    const html = await res.text();
+    const panelStart = html.indexOf("latest-episode-panel");
+    const panelEnd = html.indexOf("</section>", panelStart);
+    const panelHtml = html.substring(panelStart, panelEnd);
+
+    expect(panelHtml).not.toContain("hidden topic");
+    expect(panelHtml).not.toContain('href="/topics/hidden-topic"');
+  });
 });
 
 describe("Homepage margin layout", () => {

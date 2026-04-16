@@ -48,6 +48,9 @@ export interface ChunkRow {
   position: number;
   word_count: number;
   vector_id: string | null;
+  analysis_text: string | null;
+  normalization_version: number;
+  normalization_warnings: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -60,6 +63,11 @@ export interface TopicRow {
   distinctiveness: number;
   kind: string;
   related_slugs: string | null;
+  display_suppressed: number;
+  display_reason: string | null;
+  hidden: number;
+  entity_verified: number;
+  provenance_complete: number;
 }
 
 export interface WordStatsRow {

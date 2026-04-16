@@ -57,7 +57,7 @@ describe("compute-related handler behavior", () => {
        LIMIT 5`
     ).bind(topicId).all<{ slug: string }>();
 
-    const slugs = JSON.stringify(related.results.map(r => r.slug));
+    const slugs = JSON.stringify(related.results.map((r: { slug: string }) => r.slug));
     await env.DB.prepare(
       "UPDATE topics SET related_slugs = ? WHERE id = ?"
     ).bind(slugs, topicId).run();
@@ -92,7 +92,7 @@ describe("compute-related handler behavior", () => {
        LIMIT 5`
     ).bind(topicId).all<{ slug: string }>();
 
-    const slugs = JSON.stringify(related.results.map(r => r.slug));
+    const slugs = JSON.stringify(related.results.map((r: { slug: string }) => r.slug));
     await env.DB.prepare(
       "UPDATE topics SET related_slugs = ? WHERE id = ?"
     ).bind(slugs, topicId).run();

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import fc from "fast-check";
-import { extractTopics } from "./topic-extractor";
+import { extractCandidateDecisions, extractTopics, normalizeChunkText } from "./topic-extractor";
 import { STOPWORDS } from "../lib/text";
 
 describe("extractTopics properties", () => {
@@ -79,6 +79,24 @@ describe("extractTopics properties", () => {
           expect(topic.name.length).toBeGreaterThan(3);
         }
       })
+    );
+  });
+
+  it("accepted candidate decisions never contain duplicate slugs", () => {
+    fc.assert(
+      fc.property(
+        fc.string({ minLength: 20, maxLength: 500 }),
+        fc.integer({ min: 1, max: 8 }),
+        (text, maxTopics) => {
+          const decisions = extractCandidateDecisions(normalizeChunkText(text), 1, maxTopics);
+          const accepted = decisions.filter((candidate) => candidate.decision === "accepted");
+          const acceptedSlugs = accepted.map((candidate) => candidate.slug);
+          expect(new Set(acceptedSlugs).size).toBe(acceptedSlugs.length);
+
+          const acceptedNonEntities = accepted.filter((candidate) => candidate.kind !== "entity");
+          expect(acceptedNonEntities.length).toBeLessThanOrEqual(maxTopics);
+        }
+      )
     );
   });
 });

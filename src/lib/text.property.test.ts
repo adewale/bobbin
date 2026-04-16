@@ -61,4 +61,18 @@ describe("countWords properties", () => {
       )
     );
   });
+
+  it("adding a non-empty word never decreases the count", () => {
+    fc.assert(
+      fc.property(
+        fc.string({ minLength: 0, maxLength: 200 }),
+        fc.string({ minLength: 1, maxLength: 10 }).filter((s) => s.trim().length > 0 && !s.includes(" ")),
+        (input, word) => {
+          const base = countWords(input);
+          const extended = countWords(`${input} ${word}`.trim());
+          expect(extended).toBeGreaterThanOrEqual(base);
+        }
+      )
+    );
+  });
 });

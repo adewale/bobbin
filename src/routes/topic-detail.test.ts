@@ -99,4 +99,16 @@ describe("Topic detail page — word_stats integration", () => {
     expect(html).not.toContain("mentions");
     expect(html).not.toContain("distinctiveness");
   });
+
+  it("returns 404 for display-suppressed topics", async () => {
+    await env.DB.prepare(
+      "INSERT INTO topics (name, slug, usage_count, display_suppressed, display_reason) VALUES ('hidden concept', 'hidden-concept', 12, 1, 'subsumed_by_phrase')"
+    ).run();
+
+    const res = await SELF.fetch("http://localhost/topics/hidden-concept");
+
+    expect(res.status).toBe(404);
+    const html = await res.text();
+    expect(html).not.toContain("hidden concept");
+  });
 });

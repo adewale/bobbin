@@ -75,7 +75,7 @@ describe("enrichChunks does not create false entity topics", () => {
       "SELECT name, slug FROM topics WHERE kind = 'entity'"
     ).all<{ name: string; slug: string }>();
 
-    const entityNames = entities.results.map(e => e.name.toLowerCase());
+    const entityNames = entities.results.map((e: { name: string }) => e.name.toLowerCase());
 
     // Only curated known entities should have kind='entity'
     // "fascinating", "sweeping", "previously" must NOT be entities
@@ -85,7 +85,7 @@ describe("enrichChunks does not create false entity topics", () => {
 
     // Curated entities SHOULD be present
     // (OpenAI, Google, Anthropic are in the known-entities list)
-    expect(entityNames.some(n => n === "openai" || n === "OpenAI")).toBe(true);
+    expect(entityNames.some((n: string) => n === "openai" || n === "OpenAI")).toBe(true);
   });
 });
 
@@ -123,8 +123,8 @@ describe("processChunkBatch is the single source of truth", () => {
     ).bind(chunk!.id).all<{ name: string }>();
 
     // Both paths should produce the same topics
-    const enrichNames = enrichResult.results.map(r => r.name);
-    const processNames = processResult.results.map(r => r.name);
+    const enrichNames = enrichResult.results.map((r: { name: string }) => r.name);
+    const processNames = processResult.results.map((r: { name: string }) => r.name);
     expect(enrichNames).toEqual(processNames);
   });
 });

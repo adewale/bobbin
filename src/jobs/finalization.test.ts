@@ -213,9 +213,9 @@ describe("Related slugs computation", () => {
   });
 
   it("produces valid JSON array format for related_slugs", async () => {
-    await env.DB.prepare("INSERT INTO topics (name, slug, kind, usage_count) VALUES ('topicA', 'topic-a', 'concept', 0)").run();
-    await env.DB.prepare("INSERT INTO topics (name, slug, kind, usage_count) VALUES ('topicB', 'topic-b', 'concept', 0)").run();
-    await env.DB.prepare("INSERT INTO topics (name, slug, kind, usage_count) VALUES ('topicC', 'topic-c', 'concept', 0)").run();
+    await env.DB.prepare("INSERT INTO topics (name, slug, kind, usage_count) VALUES ('atlas', 'atlas', 'concept', 0)").run();
+    await env.DB.prepare("INSERT INTO topics (name, slug, kind, usage_count) VALUES ('zephyr', 'zephyr', 'concept', 0)").run();
+    await env.DB.prepare("INSERT INTO topics (name, slug, kind, usage_count) VALUES ('quartz', 'quartz', 'concept', 0)").run();
 
     // topicA assigned to 6 chunks, topicB to 5, topicC to 5 — all >= 5 after recount
     await env.DB.batch([
@@ -239,7 +239,7 @@ describe("Related slugs computation", () => {
 
     await finalizeEnrichment(env.DB);
 
-    const topicA = await env.DB.prepare("SELECT related_slugs FROM topics WHERE slug = 'topic-a'").first<{ related_slugs: string | null }>();
+    const topicA = await env.DB.prepare("SELECT related_slugs FROM topics WHERE id = 1").first<{ related_slugs: string | null }>();
     expect(topicA).not.toBeNull();
     expect(topicA!.related_slugs).not.toBeNull();
 
@@ -254,11 +254,11 @@ describe("Related slugs computation", () => {
   });
 });
 
-describe("N-gram phrase topics (inline without queue)", () => {
-  it("creates phrase topics from n-gram extraction when enough data exists", async () => {
+describe("Phrase topics discovered before finalization", () => {
+  it("creates phrase topics during enrichment and preserves them through finalization", async () => {
     // Need at least 10 chunks with repeated phrases for n-gram extraction to work
     // Insert many chunks with a common phrase appearing in multiple docs
-    const phrase = "machine learning";
+    const phrase = "vibe coding";
     const stmts: D1PreparedStatement[] = [];
     for (let i = 0; i < 15; i++) {
       stmts.push(
@@ -277,16 +277,64 @@ describe("N-gram phrase topics (inline without queue)", () => {
       await env.DB.batch(stmts.slice(i, i + 50));
     }
 
-    // Run finalization without queue — n-grams should be processed inline
+    // Phrase discovery now happens during enrichment, before finalization.
+    await enrichChunks(env.DB, 1000);
     await finalizeEnrichment(env.DB);
 
-    // Check that a phrase topic was created (any topic with kind='phrase')
+    // Check that the discovered phrase topic was created and survived finalization.
     const phrases = await env.DB.prepare(
-      "SELECT name, slug, kind FROM topics WHERE kind = 'phrase'"
+      "SELECT name, slug, kind FROM topics WHERE usage_count > 0"
     ).all<{ name: string; slug: string; kind: string }>();
 
     // The "machine learning" phrase should appear frequently enough to be extracted
-    const hasPhraseTopic = phrases.results.some(t => t.name.includes("machine") && t.name.includes("learning"));
+    const hasPhraseTopic = phrases.results.some((t: { name: string }) => t.name.includes("vibe") && t.name.includes("coding"));
     expect(hasPhraseTopic).toBe(true);
+  });
+
+  it("backfills provenance for phrase links created during finalization", async () => {
+    await env.DB.batch([
+      env.DB.prepare(
+        `UPDATE chunks SET analysis_text = 'vibe coding changes how teams ship', normalization_version = 1 WHERE id = 1`
+      ),
+      env.DB.prepare(
+        `UPDATE chunks SET analysis_text = 'teams adopt vibe coding rapidly', normalization_version = 1 WHERE id = 2`
+      ),
+      env.DB.prepare(
+        `UPDATE chunks SET analysis_text = 'vibe coding creates new workflow tradeoffs', normalization_version = 1 WHERE id = 3`
+      ),
+      env.DB.prepare(
+        `UPDATE chunks SET analysis_text = 'good teams explore vibe coding carefully', normalization_version = 1 WHERE id = 4`
+      ),
+      env.DB.prepare(
+        `INSERT INTO chunks (episode_id, slug, title, content, content_plain, analysis_text, normalization_version, position)
+         VALUES (1, 'chunk-5', 'Chunk 5', 'Another vibe coding note.', 'Another vibe coding note.', 'another vibe coding note', 1, 4)`
+      ),
+      env.DB.prepare(
+        `INSERT INTO phrase_lexicon (phrase, slug, support_count, doc_count, quality_score, provenance)
+         VALUES ('vibe coding', 'vibe-coding', 8, 5, 12.5, 'adjacent_pmi_bigram')`
+      ),
+      env.DB.prepare(
+        `INSERT INTO topics (name, slug, kind, usage_count, provenance_complete)
+         VALUES ('vibe coding', 'vibe-coding', 'phrase', 0, 0)`
+      ),
+    ]);
+
+    await finalizeEnrichment(env.DB);
+
+    const audit = await env.DB.prepare(
+      `SELECT stage, decision, source
+       FROM topic_candidate_audit
+       WHERE slug = 'vibe-coding' AND chunk_id = 1`
+    ).first<{ stage: string; decision: string; source: string }>();
+    expect(audit).not.toBeNull();
+    expect(audit?.stage).toBe("phrase_backfill");
+    expect(audit?.decision).toBe("accepted");
+    expect(audit?.source).toBe("phrase_lexicon");
+
+    const topic = await env.DB.prepare(
+      "SELECT usage_count, provenance_complete FROM topics WHERE slug = 'vibe-coding'"
+    ).first<{ usage_count: number; provenance_complete: number }>();
+    expect(topic?.usage_count).toBeGreaterThan(0);
+    expect(topic?.provenance_complete).toBe(1);
   });
 });

@@ -1,5 +1,4 @@
 import type { EpisodeRow, ChunkRow, TopicRow } from "../types";
-import { isNoiseTopic, suppressComponentWords } from "../services/topic-quality";
 
 export async function getRecentEpisodes(db: D1Database, limit: number): Promise<EpisodeRow[]> {
   const result = await db.prepare(
@@ -40,7 +39,7 @@ export async function getEpisodeTopicsBlended(
      FROM chunk_topics ct
      JOIN chunks c ON ct.chunk_id = c.id
      JOIN topics t ON ct.topic_id = t.id
-     WHERE c.episode_id = ?
+     WHERE c.episode_id = ? AND t.hidden = 0 AND t.display_suppressed = 0
      GROUP BY t.id
      ORDER BY ep_count DESC
      LIMIT 100`
@@ -50,8 +49,7 @@ export async function getEpisodeTopicsBlended(
   const totalEps = await db.prepare("SELECT COUNT(*) as c FROM episodes").first<{ c: number }>();
   const N = totalEps?.c || 1;
 
-  const filtered = (epTopics.results as any[]).filter(t => !isNoiseTopic(t.name));
-  const topics = suppressComponentWords(filtered);
+  const topics = epTopics.results as any[];
 
   // Main: top topics by raw chunk count (what this episode covers)
   const main = topics.slice(0, mainLimit) as TopicRow[];

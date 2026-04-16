@@ -82,6 +82,18 @@ describe("Topics index - small multiples grid", () => {
     expect(html).not.toContain("rare-topic");
   });
 
+  it("does not show display-suppressed topics even when they have high usage", async () => {
+    await env.DB.prepare(
+      "INSERT INTO topics (name, slug, usage_count, display_suppressed, display_reason) VALUES ('suppressed topic', 'suppressed-topic', 99, 1, 'subsumed_by_phrase')"
+    ).run();
+
+    const res = await SELF.fetch("http://localhost/topics");
+    const html = await res.text();
+
+    expect(html).not.toContain("suppressed topic");
+    expect(html).not.toContain('href="/topics/suppressed-topic"');
+  });
+
   it("shows usage_count in the HTML for each topic cell", async () => {
     const res = await SELF.fetch("http://localhost/topics");
     const html = await res.text();

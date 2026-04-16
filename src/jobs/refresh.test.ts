@@ -31,7 +31,12 @@ describe("runRefresh", () => {
     // runRefresh makes a real HTTP call that may fail/timeout in tests
     await runRefresh({ ...env, ADMIN_SECRET: "" } as any).catch(() => {});
 
-    const logs = await env.DB.prepare("SELECT * FROM ingestion_log").all();
+    const logs = await env.DB.prepare("SELECT run_type, pipeline_report FROM ingestion_log").all<{
+      run_type: string;
+      pipeline_report: string | null;
+    }>();
     expect(logs.results.length).toBe(1);
+    expect(logs.results[0].run_type).toBe("refresh");
+    expect(logs.results[0].pipeline_report).not.toBeNull();
   }, 20000);
 });

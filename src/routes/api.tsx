@@ -3,6 +3,7 @@ import type { AppEnv } from "../types";
 import { fetchGoogleDoc } from "../crawler/fetch";
 import { parseHtmlDocument } from "../services/html-parser";
 import { ingestParsedEpisodes, enrichChunks, finalizeEnrichment, isEnrichmentComplete } from "../jobs/ingest";
+import { createIngestionLog, completeIngestionLog, failIngestionLog } from "../db/ingestion";
 import { ftsSearch } from "../services/search";
 import { parseSearchQuery } from "../lib/query-parser";
 import { keywordSearch } from "../db/search";
@@ -67,6 +68,8 @@ api.get("/ingest", async (c) => {
 
   const limit = safeParseInt(c.req.query("limit"), 3);
   const docId = c.req.query("doc") || "";
+  let logId: number | null = null;
+  let sourceForLog: { id: number; title: string; google_doc_id: string } | null = null;
 
   try {
     const sources = await c.env.DB.prepare("SELECT * FROM sources").all();
@@ -89,6 +92,8 @@ api.get("/ingest", async (c) => {
 
     if (!source) return c.json({ error: "No source found" }, 404);
 
+    sourceForLog = source as { id: number; title: string; google_doc_id: string };
+    logId = await createIngestionLog(c.env.DB, source.id, "manual_ingest");
     const fetched = await fetchGoogleDoc(source.google_doc_id);
     const allEpisodes = parseHtmlDocument(fetched.html);
 
@@ -109,6 +114,19 @@ api.get("/ingest", async (c) => {
       "UPDATE sources SET last_fetched_at = datetime('now') WHERE id = ?"
     ).bind(source.id).run();
 
+    await completeIngestionLog(c.env.DB, logId, result.episodesAdded, result.chunksAdded, {
+      endpoint: "/api/ingest",
+      source_id: source.id,
+      source_title: source.title,
+      fetch_doc_id: source.google_doc_id,
+      total_in_doc: allEpisodes.length,
+      new_episodes_found: newEpisodes.length,
+      batch_requested: limit,
+      batch_size: batch.length,
+      enrich_batch: result.enrichBatch || null,
+      finalize: result.finalize || null,
+    });
+
     return c.json({
       status: "ok",
       source: source.title,
@@ -119,6 +137,15 @@ api.get("/ingest", async (c) => {
     });
   } catch (e: any) {
     console.error("Ingest error:", e); // B2: log the error
+    if (logId) {
+      await failIngestionLog(c.env.DB, logId, e instanceof Error ? e.message : String(e), {
+        endpoint: "/api/ingest",
+        source_id: sourceForLog?.id || null,
+        source_title: sourceForLog?.title || null,
+        fetch_doc_id: sourceForLog?.google_doc_id || null,
+        batch_requested: limit,
+      });
+    }
     return c.json({ error: "Ingestion failed" }, 500); // S5: generic message
   }
 });
@@ -161,10 +188,18 @@ api.get("/enrich", async (c) => {
   if (denied) return denied;
 
   const batchSize = safeParseInt(c.req.query("batch"), 50);
+  let logId: number | null = null;
 
   try {
+    logId = await createIngestionLog(c.env.DB, null, "enrich");
     const result = await enrichChunks(c.env.DB, batchSize);
     const complete = await isEnrichmentComplete(c.env.DB);
+    await completeIngestionLog(c.env.DB, logId, 0, result.chunksProcessed, {
+      endpoint: "/api/enrich",
+      batch_size: batchSize,
+      complete,
+      enrich_batch: result.batch || null,
+    });
     return c.json({
       status: "ok",
       chunksProcessed: result.chunksProcessed,
@@ -172,6 +207,12 @@ api.get("/enrich", async (c) => {
     });
   } catch (e: any) {
     console.error("Enrich error:", e);
+    if (logId) {
+      await failIngestionLog(c.env.DB, logId, e instanceof Error ? e.message : String(e), {
+        endpoint: "/api/enrich",
+        batch_size: batchSize,
+      });
+    }
     return c.json({ error: "Enrichment failed" }, 500);
   }
 });
@@ -283,15 +324,31 @@ api.get("/finalize", async (c) => {
   const denied = requireAuth(c);
   if (denied) return denied;
 
+  let logId: number | null = null;
+
   try {
+    logId = await createIngestionLog(c.env.DB, null, "finalize");
     const result = await finalizeEnrichment(c.env.DB, c.env.ENRICHMENT_QUEUE);
     const failedSteps = result.steps.filter(s => s.status === "error");
+    await completeIngestionLog(
+      c.env.DB,
+      logId,
+      0,
+      0,
+      { endpoint: "/api/finalize", finalize: result },
+      failedSteps.length > 0 ? "partial" : "completed"
+    );
     if (failedSteps.length > 0) {
       return c.json({ status: "partial", failed_count: failedSteps.length, ...result });
     }
     return c.json({ status: "ok", ...result });
   } catch (e: any) {
     console.error("Finalize error:", e);
+    if (logId) {
+      await failIngestionLog(c.env.DB, logId, e instanceof Error ? e.message : String(e), {
+        endpoint: "/api/finalize",
+      });
+    }
     return c.json({
       error: "Finalization failed",
       failed_step: e.message?.substring(0, 200),

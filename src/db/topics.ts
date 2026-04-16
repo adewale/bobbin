@@ -1,5 +1,4 @@
 import type { TopicRow, WordStatsRow } from "../types";
-import { curateTopics, isNoiseTopic } from "../services/topic-quality";
 
 export interface TrendingTopic {
   name: string;
@@ -14,7 +13,7 @@ export async function getTrendingTopicsForEpisode(db: D1Database, episodeId: num
      FROM chunk_topics ct
      JOIN chunks c ON ct.chunk_id = c.id
      JOIN topics t ON ct.topic_id = t.id
-     WHERE c.episode_id = ? AND t.usage_count >= 5
+     WHERE c.episode_id = ? AND t.usage_count >= 5 AND t.hidden = 0 AND t.display_suppressed = 0
      GROUP BY t.id`
   ).bind(episodeId).all();
 
@@ -37,29 +36,19 @@ export async function getTrendingTopicsForEpisode(db: D1Database, episodeId: num
 }
 
 export async function getTopTopics(db: D1Database, limit: number): Promise<TopicRow[]> {
-  const phrases = await db.prepare(
-    "SELECT name, usage_count FROM topics WHERE name LIKE '% %' AND usage_count >= 5"
-  ).all<{ name: string; usage_count: number }>();
-
   const result = await db.prepare(
-    `SELECT * FROM topics WHERE usage_count >= 3
+    `SELECT * FROM topics WHERE usage_count >= 3 AND hidden = 0 AND display_suppressed = 0
      ORDER BY usage_count * CASE
-       WHEN distinctiveness > 0 THEN distinctiveness
-       WHEN name LIKE '% %' THEN 20
-       ELSE 1
-     END DESC LIMIT ?`
+        WHEN distinctiveness > 0 THEN distinctiveness
+        WHEN name LIKE '% %' THEN 20
+        ELSE 1
+      END DESC LIMIT ?`
   ).bind(limit * 3).all<TopicRow>();
-
-  const curated = curateTopics(
-    result.results.map(t => ({ name: t.name, slug: t.slug, usage_count: t.usage_count, distinctiveness: t.distinctiveness ?? 0 })),
-    phrases.results
-  );
-  const curatedSlugs = new Set(curated.map(t => t.slug));
-  return result.results.filter(t => curatedSlugs.has(t.slug)).slice(0, limit);
+  return result.results.slice(0, limit);
 }
 
 export async function getTopicBySlug(db: D1Database, slug: string): Promise<TopicRow | null> {
-  return await db.prepare("SELECT * FROM topics WHERE slug = ?")
+  return await db.prepare("SELECT * FROM topics WHERE slug = ? AND hidden = 0 AND display_suppressed = 0")
     .bind(slug).first<TopicRow>();
 }
 
@@ -125,13 +114,13 @@ export async function getTopicEpisodes(db: D1Database, topicId: number) {
 export async function getRelatedTopics(db: D1Database, topicId: number, limit = 6) {
   const result = await db.prepare(
     `SELECT t.name, t.slug, COUNT(*) as co_count
-     FROM chunk_topics ct1
-     JOIN chunk_topics ct2 ON ct1.chunk_id = ct2.chunk_id AND ct1.topic_id != ct2.topic_id
-     JOIN topics t ON ct2.topic_id = t.id
-     WHERE ct1.topic_id = ?
-     GROUP BY ct2.topic_id
-     ORDER BY co_count DESC
-     LIMIT ?`
+      FROM chunk_topics ct1
+      JOIN chunk_topics ct2 ON ct1.chunk_id = ct2.chunk_id AND ct1.topic_id != ct2.topic_id
+      JOIN topics t ON ct2.topic_id = t.id
+      WHERE ct1.topic_id = ? AND t.hidden = 0 AND t.display_suppressed = 0
+      GROUP BY ct2.topic_id
+      ORDER BY co_count DESC
+      LIMIT ?`
   ).bind(topicId, limit).all();
   return result.results as { name: string; slug: string; co_count: number }[];
 }
@@ -180,18 +169,13 @@ export async function getTopicRanksByYear(db: D1Database) {
 }
 
 export async function getTopTopicsWithSparklines(db: D1Database, limit = 20) {
-  // Get phrase topics for subsumption check
-  const phrases = await db.prepare(
-    "SELECT name, usage_count FROM topics WHERE name LIKE '% %' AND usage_count >= 5"
-  ).all<{ name: string; usage_count: number }>();
-
   // Fetch a wide pool of candidates — we'll rank by temporal interest after computing sparklines
   const candidates = await db.prepare(
     `SELECT id, name, slug, usage_count, distinctiveness FROM topics
-     WHERE usage_count >= 5
+     WHERE usage_count >= 5 AND hidden = 0 AND display_suppressed = 0
      ORDER BY usage_count * CASE
-         WHEN distinctiveness > 0 THEN distinctiveness
-         WHEN name LIKE '% %' THEN 20
+          WHEN distinctiveness > 0 THEN distinctiveness
+          WHEN name LIKE '% %' THEN 20
          ELSE 1
        END DESC
      LIMIT ?`
@@ -199,19 +183,7 @@ export async function getTopTopicsWithSparklines(db: D1Database, limit = 20) {
 
   if (!candidates.results.length) return [];
 
-  // Apply quality curation
-  const curated = curateTopics(
-    candidates.results.map(t => ({
-      name: t.name,
-      slug: t.slug,
-      usage_count: t.usage_count,
-      distinctiveness: t.distinctiveness ?? 0,
-    })),
-    phrases.results
-  );
-
-  const curatedSlugs = new Set(curated.map(t => t.slug));
-  const pool = candidates.results.filter(t => curatedSlugs.has(t.slug));
+  const pool = candidates.results;
 
   if (!pool.length) return [];
 

@@ -12,12 +12,15 @@ beforeEach(async () => {
   ).run();
 });
 
+function makeTestEnv() {
+  return { ...env, AI: null as any, VECTORIZE: null as any, ADMIN_SECRET: "" };
+}
+
 // === End-to-end: parse → ingest → query → render ===
 describe("End-to-end ingestion pipeline", () => {
   it("parse HTML → ingest → episodes and chunks in DB", async () => {
     const episodes = parseHtmlDocument(sampleHtml);
-    const testEnv = { ...env, AI: null as any, VECTORIZE: null as any };
-    const result = await ingestParsedEpisodes(testEnv, 1, episodes);
+    const result = await ingestParsedEpisodes(makeTestEnv(), 1, episodes);
 
     expect(result.episodesAdded).toBe(3);
     expect(result.chunksAdded).toBeGreaterThan(0);
@@ -39,8 +42,7 @@ describe("End-to-end ingestion pipeline", () => {
 
   it("ingested data is searchable via FTS", async () => {
     const episodes = parseHtmlDocument(sampleHtml);
-    const testEnv = { ...env, AI: null as any, VECTORIZE: null as any };
-    await ingestParsedEpisodes(testEnv, 1, episodes);
+    await ingestParsedEpisodes(makeTestEnv(), 1, episodes);
 
     // Create FTS table and populate
     await env.DB.exec(
@@ -54,6 +56,36 @@ describe("End-to-end ingestion pipeline", () => {
     expect(searchRes.status).toBe(200);
     const searchHtml = await searchRes.text();
     expect(searchHtml).toContain("result");
+    expect(searchHtml).toContain("software provider");
+    expect(searchHtml).not.toContain("No results");
+  });
+
+  it("reingesting the same parsed episodes is idempotent", async () => {
+    const episodes = parseHtmlDocument(sampleHtml);
+
+    const first = await ingestParsedEpisodes(makeTestEnv(), 1, episodes);
+    const before = await env.DB.prepare(
+      `SELECT
+         (SELECT COUNT(*) FROM episodes) AS episodes,
+         (SELECT COUNT(*) FROM chunks) AS chunks,
+         (SELECT COUNT(*) FROM chunk_words) AS chunk_words,
+         (SELECT COUNT(*) FROM topic_candidate_audit) AS audit_rows`
+    ).first<{ episodes: number; chunks: number; chunk_words: number; audit_rows: number }>();
+
+    const second = await ingestParsedEpisodes(makeTestEnv(), 1, episodes);
+    const after = await env.DB.prepare(
+      `SELECT
+         (SELECT COUNT(*) FROM episodes) AS episodes,
+         (SELECT COUNT(*) FROM chunks) AS chunks,
+         (SELECT COUNT(*) FROM chunk_words) AS chunk_words,
+         (SELECT COUNT(*) FROM topic_candidate_audit) AS audit_rows`
+    ).first<{ episodes: number; chunks: number; chunk_words: number; audit_rows: number }>();
+
+    expect(first.episodesAdded).toBeGreaterThan(0);
+    expect(first.chunksAdded).toBeGreaterThan(0);
+    expect(second.episodesAdded).toBe(0);
+    expect(second.chunksAdded).toBe(0);
+    expect(after).toEqual(before);
   });
 });
 
@@ -61,8 +93,7 @@ describe("End-to-end ingestion pipeline", () => {
 describe("Data consistency after ingestion", () => {
   beforeEach(async () => {
     const episodes = parseHtmlDocument(sampleHtml);
-    const testEnv = { ...env, AI: null as any, VECTORIZE: null as any };
-    await ingestParsedEpisodes(testEnv, 1, episodes);
+    await ingestParsedEpisodes(makeTestEnv(), 1, episodes);
   });
 
   it("every chunk belongs to a valid episode", async () => {
@@ -128,6 +159,19 @@ describe("Data consistency after ingestion", () => {
 
       expect((chunkWords as any).total).toBe(row.total_count);
       expect((chunkWords as any).docs).toBe(row.doc_count);
+    }
+  });
+
+  it("every chunk has persisted normalized analysis text artifacts", async () => {
+    const artifactRows = await env.DB.prepare(
+      "SELECT analysis_text, normalization_version, normalization_warnings FROM chunks ORDER BY id"
+    ).all<{ analysis_text: string | null; normalization_version: number; normalization_warnings: string | null }>();
+
+    expect(artifactRows.results.length).toBeGreaterThan(0);
+    for (const row of artifactRows.results) {
+      expect(row.analysis_text).toBeTruthy();
+      expect(row.normalization_version).toBeGreaterThan(0);
+      expect(row.normalization_warnings).not.toBeNull();
     }
   });
 

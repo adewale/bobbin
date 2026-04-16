@@ -48,6 +48,23 @@ describe("GET /episodes (unified browse)", () => {
     const html = await res.text();
     expect(html).toContain("essay");
   });
+
+  it("orders years, months, and episodes in reverse chronological order", async () => {
+    const res = await SELF.fetch("http://localhost/episodes");
+    const html = await res.text();
+
+    const year2025 = html.indexOf(">2025<");
+    const year2024 = html.indexOf(">2024<");
+    expect(year2025).toBeGreaterThan(-1);
+    expect(year2024).toBeGreaterThan(-1);
+    expect(year2025).toBeLessThan(year2024);
+
+    const jan2025 = html.indexOf("Bits and Bobs 1/15/25");
+    const apr2024 = html.indexOf("Bits and Bobs 4/8/24");
+    const mar2024 = html.indexOf("Bits and Bobs 3/25/24");
+    expect(jan2025).toBeLessThan(apr2024);
+    expect(apr2024).toBeLessThan(mar2024);
+  });
 });
 
 // Notes episode: chunk rendering

@@ -19,7 +19,7 @@ beforeEach(async () => {
 
 describe("ingestParsedEpisodes", () => {
   it("inserts episodes and chunks into D1", async () => {
-    const testEnv = { ...env, AI: null as any, VECTORIZE: null as any };
+    const testEnv = { ...env, AI: null as any, VECTORIZE: null as any, ADMIN_SECRET: "" };
     const result = await ingestParsedEpisodes(testEnv, 1, parsedEpisodes);
 
     expect(result.episodesAdded).toBe(3);
@@ -35,7 +35,7 @@ describe("ingestParsedEpisodes", () => {
   });
 
   it("inserts chunks with correct content", async () => {
-    const testEnv = { ...env, AI: null as any, VECTORIZE: null as any };
+    const testEnv = { ...env, AI: null as any, VECTORIZE: null as any, ADMIN_SECRET: "" };
     await ingestParsedEpisodes(testEnv, 1, parsedEpisodes);
 
     const chunks = await env.DB.prepare("SELECT * FROM chunks ORDER BY id").all();
@@ -45,7 +45,7 @@ describe("ingestParsedEpisodes", () => {
   });
 
   it("generates topics for chunks (extraction works, quality gates may prune with small data)", async () => {
-    const testEnv = { ...env, AI: null as any, VECTORIZE: null as any };
+    const testEnv = { ...env, AI: null as any, VECTORIZE: null as any, ADMIN_SECRET: "" };
     await ingestParsedEpisodes(testEnv, 1, parsedEpisodes);
 
     // chunk_words proves extraction ran (word stats are always created)
@@ -54,7 +54,7 @@ describe("ingestParsedEpisodes", () => {
   });
 
   it("is idempotent — re-ingesting same episodes adds no duplicates", async () => {
-    const testEnv = { ...env, AI: null as any, VECTORIZE: null as any };
+    const testEnv = { ...env, AI: null as any, VECTORIZE: null as any, ADMIN_SECRET: "" };
 
     const first = await ingestParsedEpisodes(testEnv, 1, parsedEpisodes);
     expect(first.episodesAdded).toBe(3);
@@ -65,7 +65,7 @@ describe("ingestParsedEpisodes", () => {
   });
 
   it("updates word_stats after ingestion", async () => {
-    const testEnv = { ...env, AI: null as any, VECTORIZE: null as any };
+    const testEnv = { ...env, AI: null as any, VECTORIZE: null as any, ADMIN_SECRET: "" };
     await ingestParsedEpisodes(testEnv, 1, parsedEpisodes);
 
     const wordStats = await env.DB.prepare(

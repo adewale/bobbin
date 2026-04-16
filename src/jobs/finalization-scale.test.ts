@@ -122,7 +122,7 @@ beforeEach(async () => {
 
   // Get all topic IDs
   const allTopics = await env.DB.prepare("SELECT id FROM topics").all<{ id: number }>();
-  const topicIds = allTopics.results.map(t => t.id);
+  const topicIds = allTopics.results.map((t: { id: number }) => t.id);
 
   // Assign entity topics only to chunks that mention the entity
   const entityTopics = await env.DB.prepare(
@@ -145,7 +145,7 @@ beforeEach(async () => {
   }
 
   // Assign non-entity topics randomly to chunks
-  const nonEntityIds = topicIds.filter(id => !entityTopics.results.some(et => et.id === id));
+  const nonEntityIds = topicIds.filter((id: number) => !entityTopics.results.some((et: { id: number }) => et.id === id));
   const ctStmts: D1PreparedStatement[] = [];
   for (let chunkId = 1; chunkId <= NUM_CHUNKS; chunkId++) {
     const shuffled = [...nonEntityIds].sort(() => Math.random() - 0.5);
@@ -254,7 +254,7 @@ describe("finalizeEnrichment at scale", () => {
       "SELECT id, name, kind FROM topics WHERE usage_count > 0"
     ).all<{ id: number; name: string; kind: string }>();
     const noiseCount = allTopics.results.filter(
-      t => t.kind !== "entity" && isNoiseTopic(t.name)
+      (t: { kind: string; name: string }) => t.kind !== "entity" && isNoiseTopic(t.name)
     ).length;
     expect(noiseCount).toBeGreaterThan(10);
 

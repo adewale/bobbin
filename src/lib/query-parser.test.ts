@@ -50,6 +50,13 @@ describe("parseSearchQuery", () => {
     expect(q.phrases).toContain("prompt injection");
   });
 
+  it("keeps phrase order and removes them from residual text", () => {
+    const q = parseSearchQuery('before:2025-01-01 "claude code" ecosystem "prompt injection"');
+    expect(q.before).toBe("2025-01-01");
+    expect(q.phrases).toEqual(["claude code", "prompt injection"]);
+    expect(q.text).toBe("ecosystem");
+  });
+
   it("trims whitespace from remaining text", () => {
     const q = parseSearchQuery("  llms  year:2025  ");
     expect(q.text).toBe("llms");
@@ -154,6 +161,22 @@ describe("PBT: parseSearchQuery invariants", () => {
           const q = parseSearchQuery(`hello topic:${slug} world`);
           expect(q.text).not.toContain("topic:");
           expect(q.topics).toEqual([slug]);
+        }
+      )
+    );
+  });
+
+  it("quoted phrases are never duplicated inside residual text", () => {
+    fc.assert(
+      fc.property(
+        fc.string({ minLength: 1, maxLength: 12 }).filter((s) => !/["\s:]/.test(s)),
+        fc.string({ minLength: 1, maxLength: 12 }).filter((s) => !/["\s:]/.test(s)),
+        (a, b) => {
+          const phrase = `${a} ${b}`;
+          const q = parseSearchQuery(`prefix "${phrase}" suffix`);
+          expect(q.phrases).toEqual([phrase]);
+          expect(q.text).toBe("prefix suffix");
+          expect(q.text).not.toContain('"');
         }
       )
     );

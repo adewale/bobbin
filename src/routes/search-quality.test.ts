@@ -92,12 +92,19 @@ describe("Exact phrase search precision", () => {
     expect(html).toContain("1 result");
   });
 
-  it("unquoted multi-word search is broader than quoted", async () => {
-    // "tyler cowen" without quotes should match via individual words
+  it("unquoted multi-word search still preserves exact-match precision", async () => {
+    // "tyler cowen" without quotes should still prefer the exact multi-word match
     const res = await SELF.fetch("http://localhost/search?q=tyler+cowen");
     const html = await res.text();
     expect(html).toContain("Tyler Cowen");
-    // May also match Tyler Alterman via "tyler" word match
+    expect(html).toContain("1 result");
+    expect(html).not.toContain("Tyler Alterman");
+
+    // The exact multi-word match should remain the visible result.
+    const cowenIndex = html.indexOf("Tyler Cowen");
+    const altermanIndex = html.indexOf("Tyler Alterman");
+    expect(cowenIndex).toBeGreaterThan(-1);
+    expect(altermanIndex).toBe(-1);
   });
 });
 

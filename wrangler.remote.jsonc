@@ -1,0 +1,38 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "bobbin",
+  "main": "src/index.tsx",
+  "account_id": "8837d43caf5a2ab3df5143eb3e2f1b96",
+  "compatibility_date": "2026-04-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./public"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "bobbin-db",
+      "database_id": "b1e1d8be-b82b-4e10-a97a-37bd8d48c6f1"
+    }
+  ],
+  "vectorize": [
+    {
+      "binding": "VECTORIZE",
+      "index_name": "bobbin-chunks"
+    }
+  ],
+  "ai": {
+    "binding": "AI"
+  },
+  "triggers": {
+    "crons": ["0 6 * * 1"]
+  },
+  "queues": {
+    "producers": [
+      { "binding": "ENRICHMENT_QUEUE", "queue": "bobbin-enrichment" }
+    ],
+    "consumers": [
+      { "queue": "bobbin-enrichment", "max_batch_size": 50, "max_concurrency": 20, "max_retries": 3 }
+    ]
+  }
+}

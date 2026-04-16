@@ -1,4 +1,7 @@
 const DROPS = [
+  "DROP TABLE IF EXISTS topic_merge_audit",
+  "DROP TABLE IF EXISTS topic_candidate_audit",
+  "DROP TABLE IF EXISTS phrase_lexicon",
   "DROP TABLE IF EXISTS chunk_words",
   "DROP TABLE IF EXISTS word_stats",
   "DROP TABLE IF EXISTS episode_topics",
@@ -47,6 +50,9 @@ const CREATES = [
     word_count INTEGER NOT NULL DEFAULT 0,
     vector_id TEXT,
     reach INTEGER NOT NULL DEFAULT 0,
+    analysis_text TEXT,
+    normalization_version INTEGER NOT NULL DEFAULT 0,
+    normalization_warnings TEXT,
     enriched INTEGER NOT NULL DEFAULT 0,
     enrichment_version INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -59,7 +65,12 @@ const CREATES = [
     usage_count INTEGER NOT NULL DEFAULT 0,
     kind TEXT NOT NULL DEFAULT 'concept',
     distinctiveness REAL NOT NULL DEFAULT 0,
-    related_slugs TEXT
+    related_slugs TEXT,
+    display_suppressed INTEGER NOT NULL DEFAULT 0,
+    display_reason TEXT,
+    hidden INTEGER NOT NULL DEFAULT 0,
+    entity_verified INTEGER NOT NULL DEFAULT 0,
+    provenance_complete INTEGER NOT NULL DEFAULT 0
   )`,
   `CREATE TABLE chunk_topics (
     chunk_id INTEGER NOT NULL REFERENCES chunks(id) ON DELETE CASCADE,
@@ -86,27 +97,71 @@ const CREATES = [
     count INTEGER NOT NULL DEFAULT 1,
     PRIMARY KEY (chunk_id, word)
   )`,
+  `CREATE TABLE phrase_lexicon (
+    phrase TEXT NOT NULL,
+    slug TEXT NOT NULL UNIQUE,
+    support_count INTEGER NOT NULL DEFAULT 0,
+    doc_count INTEGER NOT NULL DEFAULT 0,
+    quality_score REAL NOT NULL DEFAULT 0,
+    provenance TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  )`,
+  `CREATE TABLE topic_candidate_audit (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chunk_id INTEGER NOT NULL REFERENCES chunks(id) ON DELETE CASCADE,
+    topic_id INTEGER REFERENCES topics(id) ON DELETE SET NULL,
+    source TEXT NOT NULL,
+    stage TEXT NOT NULL DEFAULT 'candidate_processing',
+    raw_candidate TEXT NOT NULL,
+    normalized_candidate TEXT NOT NULL,
+    topic_name TEXT NOT NULL,
+    slug TEXT NOT NULL,
+    score REAL NOT NULL DEFAULT 0,
+    kind TEXT NOT NULL DEFAULT 'concept',
+    decision TEXT NOT NULL,
+    decision_reason TEXT NOT NULL,
+    provenance TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  )`,
+  `CREATE TABLE topic_merge_audit (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    from_topic_id INTEGER NOT NULL,
+    to_topic_id INTEGER NOT NULL,
+    from_slug TEXT NOT NULL,
+    to_slug TEXT NOT NULL,
+    stage TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  )`,
   `CREATE TABLE ingestion_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     source_id INTEGER REFERENCES sources(id),
     started_at TEXT NOT NULL DEFAULT (datetime('now')),
     completed_at TEXT,
     status TEXT NOT NULL DEFAULT 'running',
+    run_type TEXT NOT NULL DEFAULT 'refresh',
     episodes_added INTEGER NOT NULL DEFAULT 0,
     chunks_added INTEGER NOT NULL DEFAULT 0,
-    error_message TEXT
+    error_message TEXT,
+    pipeline_report TEXT
   )`,
   "CREATE INDEX IF NOT EXISTS idx_episodes_published ON episodes(published_date DESC)",
   "CREATE INDEX IF NOT EXISTS idx_episodes_year_month ON episodes(year, month)",
   "CREATE INDEX IF NOT EXISTS idx_chunks_episode ON chunks(episode_id)",
   "CREATE INDEX IF NOT EXISTS idx_chunks_vector ON chunks(vector_id)",
   "CREATE INDEX IF NOT EXISTS idx_topics_usage ON topics(usage_count DESC)",
+  "CREATE INDEX IF NOT EXISTS idx_topics_visible ON topics(hidden, display_suppressed, usage_count DESC)",
   "CREATE INDEX IF NOT EXISTS idx_chunk_topics_topic ON chunk_topics(topic_id)",
   "CREATE INDEX IF NOT EXISTS idx_episode_topics_topic ON episode_topics(topic_id)",
   "CREATE INDEX IF NOT EXISTS idx_word_stats_count ON word_stats(total_count DESC)",
   "CREATE INDEX IF NOT EXISTS idx_chunk_words_word ON chunk_words(word)",
   "CREATE INDEX IF NOT EXISTS idx_chunks_reach ON chunks(reach DESC)",
   "CREATE INDEX IF NOT EXISTS idx_word_stats_distinctiveness ON word_stats(distinctiveness DESC)",
+  "CREATE INDEX IF NOT EXISTS idx_chunks_normalization_version ON chunks(normalization_version)",
+  "CREATE INDEX IF NOT EXISTS idx_phrase_lexicon_doc_count ON phrase_lexicon(doc_count DESC)",
+  "CREATE INDEX IF NOT EXISTS idx_topic_candidate_audit_chunk ON topic_candidate_audit(chunk_id)",
+  "CREATE INDEX IF NOT EXISTS idx_topic_candidate_audit_topic ON topic_candidate_audit(topic_id)",
+  "CREATE INDEX IF NOT EXISTS idx_topic_merge_audit_to_topic ON topic_merge_audit(to_topic_id)",
 ];
 
 export async function applyTestMigrations(db: D1Database): Promise<void> {

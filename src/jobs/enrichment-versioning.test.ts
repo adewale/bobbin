@@ -88,4 +88,27 @@ describe("Enrichment versioning", () => {
     const unenriched = await getUnenrichedChunks(env.DB, 100);
     expect(unenriched.length).toBe(3);
   });
+
+  it("returns outdated chunks newest-first for deterministic batch processing", async () => {
+    await env.DB.prepare(
+      "UPDATE chunks SET enriched = 1, enrichment_version = 0 WHERE id IN (1, 2, 3)"
+    ).run();
+
+    const unenriched = await getUnenrichedChunks(env.DB, 100);
+    expect(unenriched.map((chunk: { id: number }) => chunk.id)).toEqual([3, 2, 1]);
+  });
+
+  it("markChunksEnriched sets both enriched flag and current version", async () => {
+    await markChunksEnriched(env.DB, [1, 3]);
+
+    const chunks = await env.DB.prepare(
+      "SELECT id, enriched, enrichment_version FROM chunks WHERE id IN (1, 2, 3) ORDER BY id"
+    ).all<{ id: number; enriched: number; enrichment_version: number }>();
+
+    expect(chunks.results).toEqual([
+      { id: 1, enriched: 1, enrichment_version: CURRENT_ENRICHMENT_VERSION },
+      { id: 2, enriched: 0, enrichment_version: 0 },
+      { id: 3, enriched: 1, enrichment_version: CURRENT_ENRICHMENT_VERSION },
+    ]);
+  });
 });

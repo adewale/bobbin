@@ -5,7 +5,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, existsSync } from "node:fs";
 import fc from "fast-check";
-import { parseHtmlDocument } from "./html-parser";
+import { extractDocLinksFromHtml, parseHtmlDocument } from "./html-parser";
 import type { ParsedEpisode } from "../types";
 
 // Skip entire file if local data isn't available (CI environment)
@@ -208,6 +208,26 @@ describe.skipIf(!hasData)("Real data: notes content structure", () => {
     const avgLines = totalLines / totalChunks;
     expect(avgLines).toBeGreaterThanOrEqual(1);
     expect(avgLines).toBeLessThanOrEqual(5);
+  });
+});
+
+describe.skipIf(!hasData)("Real data: document link extraction", () => {
+  it("all extracted doc links are canonical, deduped Google Doc IDs", () => {
+    for (const doc of DOCS) {
+      const html = readFileSync(`${DATA_DIR}/${doc.file}`, "utf-8");
+      const links = extractDocLinksFromHtml(html);
+      expect(new Set(links).size).toBe(links.length);
+      for (const link of links) {
+        expect(link).toMatch(/^[A-Za-z0-9_-]{20,}$/);
+      }
+    }
+  });
+
+  it("the archive essays doc still contains the known cross-doc reference", () => {
+    const html = readFileSync(`${DATA_DIR}/${DOCS[0].file}`, "utf-8");
+    const links = extractDocLinksFromHtml(html);
+    expect(links).toHaveLength(1);
+    expect(links[0]).toMatch(/^[A-Za-z0-9_-]{20,}$/);
   });
 });
 

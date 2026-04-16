@@ -9,11 +9,11 @@
     "forceConsistentCasingInFileNames": true,
     "jsx": "react-jsx",
     "jsxImportSource": "hono/jsx",
-    "types": ["@cloudflare/workers-types/2023-07-01", "@cloudflare/vitest-pool-workers"],
-    "lib": ["ESNext"],
+    "types": ["node", "@cloudflare/vitest-pool-workers"],
+    "lib": ["ESNext", "DOM"],
     "outDir": "dist",
-    "rootDir": "src"
+    "rootDir": "."
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "test/**/*.ts"],
+  "include": ["src/**/*.ts", "src/**/*.tsx", "test/**/*.ts", "**/*.d.ts"],
   "exclude": ["node_modules", "dist"]
 }

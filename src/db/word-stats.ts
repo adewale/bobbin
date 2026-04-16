@@ -26,6 +26,7 @@ export async function getMostConnected(db: D1Database, limit = 8) {
      JOIN chunk_topics ct ON c.id = ct.chunk_id
      JOIN topics t ON ct.topic_id = t.id
      JOIN episodes e ON c.episode_id = e.id
+     WHERE t.hidden = 0 AND t.display_suppressed = 0
      GROUP BY c.id
      ORDER BY reach DESC
      LIMIT ?`
