@@ -146,3 +146,8 @@ or /api/finalize. The queue processes messages in parallel (10 concurrent).
 Note: the queue is NOT available in wrangler dev --remote mode. Testing
 queue behavior requires deploying and triggering via the live endpoint
 or cron.
+
+## Extractor tuning
+
+Bobbin's runtime-switchable Yaket integration and Bobbin-specific tuning profile
+are documented in [yaket-bobbin-tuning.md](./yaket-bobbin-tuning.md).

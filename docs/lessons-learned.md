@@ -279,3 +279,122 @@ Three different letter-spacing values (0.04em, 0.05em, 0.06em) were used for the
 24. WCAG AA compliance is trivial when you use design tokens — one variable change fixes everything.
 25. Focus indicators must meet contrast, not just exist. `outline: none` without a visible replacement is an accessibility failure.
 26. Audit the CSS the same way you audit the pipeline — systematically, with measurable criteria, not by eyeballing individual pages.
+
+## What we learned in the staged pipeline refactor and Yaket evaluation
+
+The next phase of work was less about features and more about making the ingestion system explainable, rerunnable, and measurable. That work exposed a different class of failures: not bad UX or bad algorithms in isolation, but production-only schema drift, hidden provenance gaps, and the danger of evaluating extractors without a stable characterization harness.
+
+### Test schemas can hide production schema drift
+
+Two serious failures only appeared when we ran the full Komoroske corpus through a real Wrangler/D1 environment:
+
+- `word_stats.word` was unique in test helpers but not in the real migration chain, so `ON CONFLICT(word)` worked in tests and failed in production-like runs.
+- `topics.distinctiveness` existed in test helpers but was missing from the real migration chain, so finalization silently degraded until we inspected the live schema.
+
+The lesson is not just "run migrations". The lesson is: **test helpers that reconstruct schema by hand will drift from production unless you treat them as a compatibility surface**. Full-corpus local runs against real Wrangler D1 state are the only trustworthy test for migration reality.
+
+### JSON logs are not enough; pipeline telemetry must be queryable
+
+We already had structured JSON in `ingestion_log`, but that still forced us to grep blobs and mentally reconstruct what happened. The big improvement was adding first-class tables:
+
+- `pipeline_runs`
+- `pipeline_stage_metrics`
+
+Once stage metrics became queryable, the right questions became cheap:
+
+- How many candidates were generated vs rejected early?
+- Which phase is slowest?
+- Which extractor mode was used?
+- Did pruning or merging spike after a change?
+
+If the metrics are not queryable, they are not really operational data.
+
+### Provenance breaks whenever a late stage bypasses the main pipeline
+
+The phrase-lexicon backfill step originally created valid live topics without creating matching audit rows. That meant final topics could exist with `provenance_complete = 0`, even though the system claimed end-to-end traceability.
+
+The real lesson is broader: **every late insertion path is effectively a second ingestion pipeline**. If it does not emit the same audit/provenance artifacts as the main path, it is a correctness bug, not just an observability gap.
+
+### Lineage should not live forever in the hot table
+
+Keeping zero-usage merge lineage rows in `topics` made production state look dirtier than it really was. They were no longer live topics, but they still lived in the main working set. Archiving them to `topic_lineage_archive` preserved auditability without inflating the live topic table.
+
+This is the same pattern as log compaction: **keep the history, but move it out of the hot path**.
+
+### A "better extractor" is not automatically better for the product
+
+Raw Yaket is clearly a stronger YAKE implementation than Bobbin's naive extractor, but the first direct comparison showed the wrong kind of win:
+
+- cleaner structurally
+- slower and chattier operationally
+- still surfacing bad visible concepts like `agentic` and `saruman`
+
+That is because Bobbin does not need "good keywords" in the abstract. It needs **durable corpus-navigation topics**. A single-document extractor optimized for local salience still needs to be tuned for a downstream system that cares about cross-chunk navigational quality.
+
+### Runtime switches make algorithm comparisons honest
+
+Adding `TOPIC_EXTRACTOR_MODE` was more important than adding Yaket itself. Without a runtime switch, every comparison would have required code edits and redeploys, and every result would have been contaminated by unrelated diffs.
+
+The switch gave us three stable comparison modes:
+
+- `naive`
+- `yaket`
+- `yaket_bobbin`
+
+That turned extractor evaluation from opinion into experiment.
+
+### Characterization tests are the right tool for pipeline evaluation
+
+The most valuable new tests were not classic unit tests. They were characterization runs that captured full-corpus metrics for a named extractor mode and made them comparable over time.
+
+For Bobbin, the useful characterization metrics were not just precision-like ideas. They were also structural and cost signals:
+
+- visible topic count
+- weak visible singleton count
+- active entities / active phrases
+- candidate rows / accepted / rejected
+- merge rows
+- archived lineage topics
+- pipeline wall time
+
+That is what makes future Yaket upgrades safe: not just "tests are green", but "the corpus shape stayed sane".
+
+### Full-corpus comparison harnesses need their own operational design
+
+The characterization harness taught us a small but important operational lesson: **evaluation tools themselves need batching, isolation, and failure reporting**.
+
+We had to make the harness:
+
+- use isolated Wrangler state
+- batch large-doc ingest differently from small-doc ingest
+- surface the latest `ingestion_log` failure instead of only returning `500`
+- avoid loading giant fixtures eagerly in the default worker test lane
+
+That sounds like harness plumbing, but it matters. If the comparison tool is flaky, you stop trusting the comparison.
+
+### Repo-wide typechecking is a quality gate, not cleanup
+
+Getting `tsc --noEmit` passing across the whole repo uncovered real issues:
+
+- test env objects that did not actually satisfy `Bindings`
+- route type mismatches that Vitest did not care about
+- missing ambient declarations for `cloudflare:test` and `?raw` imports
+
+The lesson is the same as with pipeline metrics: if a signal is optional, people stop believing it. A passing repo-wide `tsc` run makes the test suite more predictive because type-invalid fixtures and helper code can no longer hide in the gaps.
+
+### Production secrets used for operational shortcuts become debt immediately
+
+To finish live ingestion and deployment work, we temporarily deployed with a known admin secret. That was the pragmatic move to unblock the pipeline, but it also created an immediate follow-up task: rotate it. Operational shortcuts are sometimes necessary, but they should always create explicit cleanup work the moment they are used.
+
+### Updated lesson list
+
+27. Hand-maintained test schemas drift from production. Full-corpus runs against real Wrangler/D1 state are mandatory.
+28. Structured JSON logs are helpful, but queryable stage-metrics tables are what make a pipeline operationally understandable.
+29. Any late-stage write path that bypasses provenance/audit emission is a correctness bug.
+30. Keep lineage history, but move it out of the hot table. Archive audit state instead of inflating live state.
+31. A stronger keyword extractor is not automatically better for a corpus-navigation product; downstream quality criteria matter more than local keyword quality.
+32. Runtime switches turn extractor debates into experiments.
+33. Characterization tests are the right safety net for pipeline and extractor changes that affect corpus shape, cost, and visible quality.
+34. Evaluation harnesses need batching, isolation, and good failure reporting just like production pipelines do.
+35. Repo-wide `tsc --noEmit` is a product-quality gate because it catches invalid fixtures, helpers, and route contracts that example tests ignore.
+36. Temporary operational secrets solve immediate problems but create immediate rotation debt.

@@ -18,7 +18,7 @@
     "types": "wrangler types"
   },
   "dependencies": {
-    "@ade_oshineye/yaket": "^0.3.0",
+    "@ade_oshineye/yaket": "^0.4.0",
     "hono": "^4.12.11"
   },
   "devDependencies": {

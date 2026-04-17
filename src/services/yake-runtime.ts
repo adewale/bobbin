@@ -1,12 +1,14 @@
 import {
   KeywordExtractor,
-  defaultStopwordProvider,
+  createStaticStopwordProvider,
+  createStopwordSet,
   type CandidateFilterInput,
   type CandidateNormalizer,
   type KeywordExtractorOptions,
   type KeywordResult,
   type KeywordScorer,
-  type StopwordProvider,
+  type MultiWordScorer,
+  type SingleWordScorer,
   type TextProcessor,
   extractYakeKeywords as extractYaketKeywords,
 } from "@ade_oshineye/yaket/worker";
@@ -44,15 +46,11 @@ const NO_STRIP = new Set([
   "virus", "versus", "chaos", "canvas", "bias",
 ]);
 
-const bobbinStopwordProvider: StopwordProvider = {
-  load(language: string) {
-    const base = defaultStopwordProvider.load(language);
-    const merged = new Set(base);
-    for (const stopword of STOPWORDS) merged.add(stopword.toLowerCase());
-    for (const stopword of BOBBIN_STOPWORD_ADDITIONS) merged.add(stopword.toLowerCase());
-    return merged;
-  },
-};
+const bobbinStopwordProvider = createStaticStopwordProvider({
+  en: createStopwordSet("en", {
+    add: [...STOPWORDS, ...BOBBIN_STOPWORD_ADDITIONS],
+  }),
+});
 
 const bobbinTextProcessor: TextProcessor = {
   splitSentences(text: string) {
@@ -111,6 +109,40 @@ const bobbinKeywordScorer: KeywordScorer = {
   },
 };
 
+const bobbinSingleWordScorer: SingleWordScorer = {
+  score(term, context) {
+    term.updateH(context, context.features);
+    let score = term.h;
+    const normalized = term.uniqueTerm;
+    const occurrences = term.tf;
+    const sentenceSpread = term.occurs.size;
+
+    if (isWeakSingletonTopic(normalized, occurrences, 0)) score *= 1.8;
+    if (occurrences === 1) score *= 1.35;
+    if (sentenceSpread === 1) score *= 1.25;
+    if (/(ed|ing|ment|ness|tion|sion|ance|ence)$/i.test(normalized)) score *= 1.2;
+    if (normalized.length >= 8 && occurrences >= 2 && sentenceSpread >= 2) score *= 0.9;
+
+    return score;
+  },
+};
+
+const bobbinMultiWordScorer: MultiWordScorer = {
+  score(candidate, context) {
+    candidate.updateH(context.features);
+    let score = candidate.h;
+
+    if (candidate.size >= 2) score *= 0.8;
+    if (candidate.size === 2) score *= 0.9;
+    if (candidate.size >= 4) score *= 1.1;
+    if (candidate.tf >= 2) score *= 0.85;
+    if (candidate.tf >= 3) score *= 0.9;
+    if (candidate.uniqueKw.split(/\s+/).some((word) => BOBBIN_STOPWORD_ADDITIONS.has(word))) score *= 1.5;
+
+    return score;
+  },
+};
+
 function normalizeToken(word: string): string {
   if (!word) return "";
   if (word.endsWith("'s") || word.endsWith("\u2019s")) word = word.slice(0, -2);
@@ -154,13 +186,15 @@ const extractorCache = new Map<TopicExtractorMode, KeywordExtractor>();
 
 function createBobbinYaketExtractor(): KeywordExtractor {
   const options: KeywordExtractorOptions = {
-    lan: "en",
+    language: "en",
     dedupFunc: "jaro",
     dedupLim: 0.82,
     windowSize: 2,
     stopwordProvider: bobbinStopwordProvider,
     textProcessor: bobbinTextProcessor,
     candidateNormalizer: bobbinCandidateNormalizer,
+    singleWordScorer: bobbinSingleWordScorer,
+    multiWordScorer: bobbinMultiWordScorer,
     keywordScorer: bobbinKeywordScorer,
     candidateFilter: bobbinCandidateFilter,
   };

@@ -48,6 +48,10 @@ Google Docs → fetch → parse → D1 + Vectorize
 
 See [docs/architecture.md](docs/architecture.md) for the full system design.
 
+Extractor tuning and characterization notes:
+
+- [docs/yaket-bobbin-tuning.md](docs/yaket-bobbin-tuning.md)
+
 ## Testing
 
 ```bash
