@@ -81,16 +81,16 @@ describe("Phase 2: enrichChunks", () => {
     await ingestEpisodesOnly(env.DB, 1, episodes);
   });
 
-  it("creates topics for a batch of unenriched chunks", async () => {
+  it("creates candidate audit rows and enrichment artifacts for a batch of unenriched chunks", async () => {
     const result = await enrichChunks(env.DB, 10);
 
     expect(result.chunksProcessed).toBeGreaterThan(0);
 
-    const topics = await env.DB.prepare("SELECT COUNT(*) as c FROM topics").first();
-    expect((topics as any).c).toBeGreaterThan(0);
+    const auditRows = await env.DB.prepare("SELECT COUNT(*) as c FROM topic_candidate_audit").first();
+    expect((auditRows as any).c).toBeGreaterThan(0);
 
-    const chunkTopics = await env.DB.prepare("SELECT COUNT(*) as c FROM chunk_topics").first();
-    expect((chunkTopics as any).c).toBeGreaterThan(0);
+    const chunkWords = await env.DB.prepare("SELECT COUNT(*) as c FROM chunk_words").first();
+    expect((chunkWords as any).c).toBeGreaterThan(0);
   });
 
   it("creates chunk_words for word stats", async () => {

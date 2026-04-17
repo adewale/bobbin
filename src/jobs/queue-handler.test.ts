@@ -262,15 +262,15 @@ describe("enrich-batch handler", () => {
     // Process only chunks 1 and 2
     await handleEnrichBatch(env.DB, [1, 2]);
 
-    // Verify: topics were created
+    // Verify: audit rows were created for processed chunks
     const topics = await env.DB.prepare(
-      "SELECT COUNT(*) as c FROM topics"
+      "SELECT COUNT(*) as c FROM topic_candidate_audit WHERE chunk_id IN (1, 2)"
     ).first<{ c: number }>();
     expect(topics!.c).toBeGreaterThan(0);
 
-    // Verify: chunk_topics were created for the specified chunks
+    // Verify: chunk_topics may or may not be promoted immediately, but chunk words are built for the processed chunks
     const ct = await env.DB.prepare(
-      "SELECT COUNT(*) as c FROM chunk_topics WHERE chunk_id IN (1, 2)"
+      "SELECT COUNT(*) as c FROM chunk_words WHERE chunk_id IN (1, 2)"
     ).first<{ c: number }>();
     expect(ct!.c).toBeGreaterThan(0);
 

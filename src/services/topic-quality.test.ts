@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import fc from "fast-check";
-import { curateTopics, isNoiseTopic } from "./topic-quality";
+import { computeTopicDisplayDecisions, curateTopics, isNoiseTopic } from "./topic-quality";
 
 function makeTopic(name: string, usage_count: number, distinctiveness = 1) {
   return {
@@ -163,5 +163,25 @@ describe("isNoiseTopic", () => {
         expect(typeof result).toBe("boolean");
       })
     );
+  });
+});
+
+describe("computeTopicDisplayDecisions", () => {
+  it("suppresses low-episode-spread non-entity topics", () => {
+    const decisions = computeTopicDisplayDecisions([
+      { slug: "narrow-topic", name: "narrow topic", usage_count: 8, distinctiveness: 30, kind: "phrase", hidden: 0, episode_support: 1 },
+      { slug: "claude", name: "Claude", usage_count: 50, distinctiveness: 30, kind: "entity", hidden: 0, episode_support: 1 },
+    ]);
+
+    const phraseDecision = decisions.find((decision) => decision.slug === "narrow-topic");
+    expect(phraseDecision).toEqual({
+      slug: "narrow-topic",
+      displaySuppressed: true,
+      hidden: false,
+      reason: "low_episode_spread",
+    });
+
+    const entityDecision = decisions.find((decision) => decision.slug === "claude");
+    expect(entityDecision?.displaySuppressed).toBe(false);
   });
 });

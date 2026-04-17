@@ -18,6 +18,7 @@ import { rebuildWordStatsAggregates } from "../services/word-stats";
 import { extractCorpusNgrams } from "../services/ngram-extractor";
 import { extractPMIPhrases } from "../services/pmi-phrases";
 import { computeTopicDisplayDecisions, isNoiseTopic } from "../services/topic-quality";
+import { getCandidatePromotionReason, getCorpusPriorRejectionReason, getPhrasePromotionReason } from "../services/pipeline-tuning";
 import { generateEmbeddings } from "../services/embeddings";
 import { normalizeTopicExtractorMode, type TopicExtractorMode } from "../services/yake-runtime";
 import { getExistingDatesForSource, getSourceTag } from "../db/sources";
@@ -101,6 +102,110 @@ async function runPipelineStage(
     });
     throw error;
   }
+}
+
+function matchesEntityBoundary(text: string, form: string): boolean {
+  const escaped = form.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(^|[^a-z0-9])${escaped}(?=$|[^a-z0-9])`, "i").test(text.toLowerCase());
+}
+
+function validateEntityCandidateInChunk(candidate: CandidateDecision, analysisText: string): boolean {
+  const forms = new Set([
+    candidate.rawCandidate,
+    candidate.normalizedCandidate,
+    candidate.name,
+  ].map((value) => value.toLowerCase()).filter(Boolean));
+  for (const form of forms) {
+    if (matchesEntityBoundary(analysisText, form)) return true;
+  }
+  return false;
+}
+
+async function loadCandidatePromotionStats(
+  db: D1Database,
+  candidates: CandidateDecision[]
+): Promise<Map<string, { chunkSupport: number; episodeSupport: number; existingUsageCount: number; wordDistinctiveness: number }>> {
+  const accepted = candidates.filter((candidate) => candidate.decision === "accepted");
+  if (accepted.length === 0) return new Map();
+
+  const slugs = [...new Set(accepted.map((candidate) => candidate.slug))];
+  const BATCH = 40;
+  const supportRows: Array<{ slug: string; chunk_id: number; episode_id: number }> = [];
+  const topicRows: Array<{ slug: string; usage_count: number }> = [];
+  for (let i = 0; i < slugs.length; i += BATCH) {
+    const batch = slugs.slice(i, i + BATCH);
+    const placeholders = batch.map(() => "?").join(",");
+    const supportBatch = await db.prepare(
+      `SELECT a.slug, a.chunk_id, c.episode_id
+       FROM topic_candidate_audit a
+       JOIN chunks c ON c.id = a.chunk_id
+       WHERE a.decision = 'accepted' AND a.slug IN (${placeholders})`
+    ).bind(...batch).all<{ slug: string; chunk_id: number; episode_id: number }>();
+    supportRows.push(...supportBatch.results);
+
+    const topicBatch = await db.prepare(
+      `SELECT slug, usage_count FROM topics WHERE slug IN (${placeholders})`
+    ).bind(...batch).all<{ slug: string; usage_count: number }>();
+    topicRows.push(...topicBatch.results);
+  }
+
+  const singletonWords = [...new Set(
+    accepted
+      .filter((candidate) => candidate.kind !== "entity" && !candidate.normalizedCandidate.includes(" "))
+      .map((candidate) => candidate.normalizedCandidate)
+  )];
+  const distinctivenessRows: Array<{ word: string; distinctiveness: number }> = [];
+  for (let i = 0; i < singletonWords.length; i += BATCH) {
+    const batch = singletonWords.slice(i, i + BATCH);
+    const rowBatch = await db.prepare(
+      `SELECT word, distinctiveness FROM word_stats WHERE word IN (${batch.map(() => "?").join(",")})`
+    ).bind(...batch).all<{ word: string; distinctiveness: number }>();
+    distinctivenessRows.push(...rowBatch.results);
+  }
+
+  const supportBySlug = new Map<string, { chunkIds: Set<number>; episodeIds: Set<number> }>();
+  for (const row of supportRows) {
+    const current = supportBySlug.get(row.slug) || { chunkIds: new Set<number>(), episodeIds: new Set<number>() };
+    current.chunkIds.add(row.chunk_id);
+    current.episodeIds.add(row.episode_id);
+    supportBySlug.set(row.slug, current);
+  }
+  const usageBySlug = new Map(topicRows.map((row) => [row.slug, row.usage_count]));
+  const distinctivenessByWord = new Map(distinctivenessRows.map((row) => [row.word, row.distinctiveness]));
+
+  const acceptedChunkIds = [...new Set(accepted.map((candidate) => candidate.chunkId))];
+  const chunkRows: Array<{ id: number; episode_id: number }> = [];
+  for (let i = 0; i < acceptedChunkIds.length; i += BATCH) {
+    const batch = acceptedChunkIds.slice(i, i + BATCH);
+    const rowBatch = await db.prepare(
+      `SELECT id, episode_id FROM chunks WHERE id IN (${batch.map(() => "?").join(",")})`
+    ).bind(...batch).all<{ id: number; episode_id: number }>();
+    chunkRows.push(...rowBatch.results);
+  }
+  const episodeByChunkId = new Map(chunkRows.map((row) => [row.id, row.episode_id]));
+
+  const currentSupportBySlug = new Map<string, { chunkIds: Set<number>; episodeIds: Set<number> }>();
+  for (const candidate of accepted) {
+    const current = currentSupportBySlug.get(candidate.slug) || { chunkIds: new Set<number>(), episodeIds: new Set<number>() };
+    current.chunkIds.add(candidate.chunkId);
+    const episodeId = episodeByChunkId.get(candidate.chunkId);
+    if (episodeId) current.episodeIds.add(episodeId);
+    currentSupportBySlug.set(candidate.slug, current);
+  }
+
+  return new Map(slugs.map((slug) => {
+    const candidate = accepted.find((item) => item.slug === slug)!;
+    const support = supportBySlug.get(slug) || { chunkIds: new Set<number>(), episodeIds: new Set<number>() };
+    const current = currentSupportBySlug.get(slug) || { chunkIds: new Set<number>(), episodeIds: new Set<number>() };
+    const allChunkIds = new Set([...support.chunkIds, ...current.chunkIds]);
+    const allEpisodeIds = new Set([...support.episodeIds, ...current.episodeIds]);
+    return [slug, {
+      chunkSupport: allChunkIds.size,
+      episodeSupport: allEpisodeIds.size,
+      existingUsageCount: usageBySlug.get(slug) || 0,
+      wordDistinctiveness: distinctivenessByWord.get(candidate.normalizedCandidate) || 0,
+    }];
+  }));
 }
 
 /**
@@ -200,6 +305,7 @@ export async function processChunkBatch(
   }> = [];
   let phraseLexicon = [] as ReturnType<typeof buildPhraseLexicon>;
   let candidateDecisions: CandidateDecision[] = [];
+  let promotableCandidates: CandidateDecision[] = [];
   let uniqueTopics = new Map<string, { name: string; kind: string }>();
   let chunkTopicPairs: { chunkId: number; episodeId: number; topicSlug: string }[] = [];
   let wordRowCount = 0;
@@ -289,44 +395,122 @@ export async function processChunkBatch(
       extractCandidateDecisions(chunk.textArtifact, chunk.id, 5, phraseLexicon, extractorMode)
     );
 
-    const candidateAuditInserts = candidateDecisions.map((candidate) =>
-      db.prepare(
-        `INSERT INTO topic_candidate_audit (
-           chunk_id, source, stage, raw_candidate, normalized_candidate,
-           topic_name, slug, score, kind, decision, decision_reason, provenance
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      ).bind(
-        candidate.chunkId,
-        candidate.source,
-        candidate.decision === "accepted" ? "candidate_extraction" : "candidate_rejection",
-        candidate.rawCandidate,
-        candidate.normalizedCandidate,
-        candidate.name,
-        candidate.slug,
-        candidate.score,
-        candidate.kind,
-        candidate.decision,
-        candidate.decisionReason,
-        JSON.stringify(candidate.provenance)
-      )
-    );
-    await batchExec(db, candidateAuditInserts);
+    return {
+      counts: {
+        candidates_generated: candidateDecisions.length,
+        candidates_initially_rejected: candidateDecisions.filter((row) => row.decision === "rejected").length,
+      },
+    };
+  });
 
-    const acceptedCandidates = candidateDecisions.filter((row) => row.decision === "accepted");
+  await runPipelineStage("early_entity_validation", stageResults, async () => {
+    let rejected = 0;
+    const artifactByChunkId = new Map(analyzedChunks.map((chunk) => [chunk.id, chunk.textArtifact.normalizedText]));
+    for (const candidate of candidateDecisions) {
+      if (candidate.decision !== "accepted" || candidate.kind !== "entity") continue;
+      const analysisText = artifactByChunkId.get(candidate.chunkId) || "";
+      if (validateEntityCandidateInChunk(candidate, analysisText)) continue;
+      candidate.decision = "rejected";
+      candidate.decisionReason = "entity_boundary_mismatch";
+      rejected++;
+    }
+
+    return { counts: { entity_candidates_rejected: rejected } };
+  });
+
+  await runPipelineStage("corpus_prior_rejection", stageResults, async () => {
+    const promotionStats = await loadCandidatePromotionStats(db, candidateDecisions);
+    let rejected = 0;
+    for (const candidate of candidateDecisions) {
+      if (candidate.decision !== "accepted") continue;
+      const stats = promotionStats.get(candidate.slug);
+      if (!stats) continue;
+      const rejectionReason = getCorpusPriorRejectionReason(candidate, stats);
+      if (!rejectionReason) continue;
+      candidate.decision = "rejected";
+      candidate.decisionReason = rejectionReason;
+      rejected++;
+    }
+
+    return { counts: { corpus_prior_rejected: rejected } };
+  });
+
+  const candidateAuditInserts = candidateDecisions.map((candidate) =>
+    db.prepare(
+      `INSERT INTO topic_candidate_audit (
+         chunk_id, source, stage, raw_candidate, normalized_candidate,
+         topic_name, slug, score, kind, decision, decision_reason, provenance
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      candidate.chunkId,
+      candidate.source,
+      candidate.decision === "accepted" ? "candidate_extraction" : "candidate_rejection",
+      candidate.rawCandidate,
+      candidate.normalizedCandidate,
+      candidate.name,
+      candidate.slug,
+      candidate.score,
+      candidate.kind,
+      candidate.decision,
+      candidate.decisionReason,
+      JSON.stringify(candidate.provenance)
+    )
+  );
+  await batchExec(db, candidateAuditInserts);
+
+  await runPipelineStage("promotion_gating", stageResults, async () => {
+    const promotionStats = await loadCandidatePromotionStats(db, candidateDecisions);
+    promotableCandidates = candidateDecisions.filter((candidate) => {
+      if (candidate.decision !== "accepted") return false;
+      const stats = promotionStats.get(candidate.slug);
+      if (!stats) return false;
+      const reason = getCandidatePromotionReason(candidate, stats);
+      if (!reason) return true;
+      candidate.decisionReason = reason;
+      return false;
+    });
+
+    const promotableSlugs = new Set(promotableCandidates.map((candidate) => candidate.slug));
+    const currentChunkIds = [...new Set(candidateDecisions.map((candidate) => candidate.chunkId))];
+    if (currentChunkIds.length > 0) {
+      const BATCH = 40;
+      for (let i = 0; i < currentChunkIds.length; i += BATCH) {
+        const chunkBatch = currentChunkIds.slice(i, i + BATCH);
+        const chunkPlaceholders = chunkBatch.map(() => "?").join(",");
+        await db.prepare(
+          `UPDATE topic_candidate_audit
+           SET stage = 'promotion_deferred'
+           WHERE decision = 'accepted' AND chunk_id IN (${chunkPlaceholders})`
+        ).bind(...chunkBatch).run();
+      }
+
+      const promotableSlugList = [...promotableSlugs];
+      for (let i = 0; i < currentChunkIds.length; i += BATCH) {
+        const chunkBatch = currentChunkIds.slice(i, i + BATCH);
+        const chunkPlaceholders = chunkBatch.map(() => "?").join(",");
+        for (let j = 0; j < promotableSlugList.length; j += BATCH) {
+          const slugBatch = promotableSlugList.slice(j, j + BATCH);
+          const placeholders = slugBatch.map(() => "?").join(",");
+          await db.prepare(
+            `UPDATE topic_candidate_audit
+             SET stage = 'promotion_ready'
+             WHERE decision = 'accepted' AND chunk_id IN (${chunkPlaceholders}) AND slug IN (${placeholders})`
+          ).bind(...chunkBatch, ...slugBatch).run();
+        }
+      }
+    }
+
     uniqueTopics = new Map<string, { name: string; kind: string }>();
-    chunkTopicPairs = [];
-    for (const candidate of acceptedCandidates) {
+    for (const candidate of promotableCandidates) {
       uniqueTopics.set(candidate.slug, { name: candidate.name, kind: candidate.kind });
-      const chunk = chunkById.get(candidate.chunkId);
-      if (!chunk) continue;
-      chunkTopicPairs.push({ chunkId: chunk.id, episodeId: chunk.episode_id, topicSlug: candidate.slug });
     }
 
     return {
       counts: {
         candidates_generated: candidateDecisions.length,
         candidates_rejected_early: candidateDecisions.filter((row) => row.decision === "rejected").length,
-        candidates_insertable: acceptedCandidates.length,
+        candidates_insertable: promotableCandidates.length,
+        candidates_deferred: candidateDecisions.filter((row) => row.decision === "accepted").length - promotableCandidates.length,
         rows_written: candidateAuditInserts.length,
       },
     };
@@ -361,14 +545,13 @@ export async function processChunkBatch(
       };
     }
 
-    const provenanceUpdates = candidateDecisions
-      .filter((candidate) => candidate.decision === "accepted")
+    const provenanceUpdates = promotableCandidates
       .map((candidate) =>
         db.prepare(
           `UPDATE topic_candidate_audit
-           SET topic_id = (SELECT id FROM topics WHERE slug = ?), stage = 'topic_inserted'
-           WHERE chunk_id = ? AND slug = ? AND raw_candidate = ? AND decision = 'accepted'`
-        ).bind(candidate.slug, candidate.chunkId, candidate.slug, candidate.rawCandidate)
+           SET topic_id = (SELECT id FROM topics WHERE slug = ?), stage = 'topic_promoted'
+           WHERE slug = ? AND decision = 'accepted'`
+        ).bind(candidate.slug, candidate.slug)
       );
     await batchExec(db, provenanceUpdates);
 
@@ -390,7 +573,36 @@ export async function processChunkBatch(
   });
 
   await runPipelineStage("chunk_topic_insertion", stageResults, async () => {
-    const episodeIds = [...new Set(chunks.map((chunk) => chunk.episode_id))];
+    let episodeIds = [...new Set(chunks.map((chunk) => chunk.episode_id))];
+    let filteredInvalidEntityLinks = 0;
+
+    if (uniqueTopics.size > 0) {
+      const slugs = [...uniqueTopics.keys()];
+      const placeholders = slugs.map(() => "?").join(",");
+      const promotedRows: Array<{ chunk_id: number; episode_id: number; slug: string; kind: string; name: string; analysis_text: string }> = [];
+      const BATCH = 40;
+      for (let i = 0; i < slugs.length; i += BATCH) {
+        const slugBatch = slugs.slice(i, i + BATCH);
+        const placeholders = slugBatch.map(() => "?").join(",");
+        const rowBatch = await db.prepare(
+          `SELECT DISTINCT a.chunk_id, c.episode_id, a.slug, t.kind, t.name, COALESCE(c.analysis_text, c.content_plain) AS analysis_text
+           FROM topic_candidate_audit a
+           JOIN chunks c ON c.id = a.chunk_id
+           JOIN topics t ON t.slug = a.slug
+           WHERE a.decision = 'accepted' AND a.slug IN (${placeholders})`
+        ).bind(...slugBatch).all<{ chunk_id: number; episode_id: number; slug: string; kind: string; name: string; analysis_text: string }>();
+        promotedRows.push(...rowBatch.results);
+      }
+
+      filteredInvalidEntityLinks = promotedRows.filter((row) => row.kind === "entity" && !matchesEntityBoundary(row.analysis_text, row.name)).length;
+      chunkTopicPairs = promotedRows
+        .filter((row) => row.kind !== "entity" || matchesEntityBoundary(row.analysis_text, row.name))
+        .map((row) => ({ chunkId: row.chunk_id, episodeId: row.episode_id, topicSlug: row.slug }));
+    } else {
+      chunkTopicPairs = [];
+    }
+
+    episodeIds = [...new Set(chunkTopicPairs.map((pair) => pair.episodeId).concat(episodeIds))];
     for (const epId of episodeIds) {
       await db.prepare("DELETE FROM episode_topics WHERE episode_id = ?").bind(epId).run();
     }
@@ -419,7 +631,9 @@ export async function processChunkBatch(
       counts: {
         chunk_topic_links_inserted: ctStmts.length,
         episode_topic_links_inserted: etStmts.length,
+        invalid_entity_links_filtered: filteredInvalidEntityLinks,
       },
+      detail: `prepared ${chunkTopicPairs.length} promotable chunk-topic links`,
     };
   });
 
@@ -454,7 +668,7 @@ export async function processChunkBatch(
     chunksProcessed: chunks.length,
     candidatesGenerated: candidateDecisions.length,
     candidatesRejectedEarly: candidateDecisions.filter((row) => row.decision === "rejected").length,
-    candidatesInserted: candidateDecisions.filter((row) => row.decision === "accepted").length,
+    candidatesInserted: promotableCandidates.length,
     topicsInserted: uniqueTopics.size,
     chunkTopicLinksInserted: chunkTopicPairs.length,
     chunkWordRowsInserted: wordRowCount,
@@ -685,12 +899,49 @@ async function archiveZeroUsageLineageTopics(db: D1Database): Promise<number> {
 
   if (lineageTopics.results.length === 0) return 0;
 
-  await batchExec(db, lineageTopics.results.map((topic) =>
-    db.prepare(
-      `INSERT OR REPLACE INTO topic_lineage_archive (
+  for (const topic of lineageTopics.results) {
+    const existing = await db.prepare(
+      `SELECT id, archive_count
+       FROM topic_lineage_archive
+       WHERE slug = ?
+         AND archive_reason = 'zero_usage_lineage'
+         AND COALESCE(merge_stage, '') = COALESCE(?, '')
+         AND COALESCE(merged_to_topic_id, -1) = COALESCE(?, -1)
+       LIMIT 1`
+    ).bind(topic.slug, topic.merge_stage, topic.merged_to_topic_id).first<{ id: number; archive_count: number }>();
+
+    if (existing) {
+      await db.prepare(
+        `UPDATE topic_lineage_archive
+         SET archive_count = archive_count + 1,
+             last_original_topic_id = ?,
+             last_archived_at = datetime('now'),
+             name = ?,
+             kind = ?,
+             usage_count = ?,
+             distinctiveness = ?,
+             display_reason = ?,
+             provenance_complete = ?
+         WHERE id = ?`
+      ).bind(
+        topic.id,
+        topic.name,
+        topic.kind,
+        topic.usage_count,
+        topic.distinctiveness,
+        topic.display_reason,
+        topic.provenance_complete,
+        existing.id,
+      ).run();
+      continue;
+    }
+
+    await db.prepare(
+      `INSERT INTO topic_lineage_archive (
          original_topic_id, name, slug, kind, usage_count, distinctiveness,
-         display_reason, provenance_complete, archive_reason, merged_to_topic_id, merge_stage
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         display_reason, provenance_complete, archive_reason, merged_to_topic_id, merge_stage,
+         archive_count, last_original_topic_id, last_archived_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, datetime('now'))`
     ).bind(
       topic.id,
       topic.name,
@@ -703,8 +954,9 @@ async function archiveZeroUsageLineageTopics(db: D1Database): Promise<number> {
       "zero_usage_lineage",
       topic.merged_to_topic_id,
       topic.merge_stage,
-    )
-  ));
+      topic.id,
+    ).run();
+  }
 
   const ids = lineageTopics.results.map((topic) => topic.id);
   const BATCH = 90;
@@ -738,11 +990,22 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
 
   await runStep("phrase_lexicon_backfill", steps, async () => {
     const phrases = await db.prepare(
-      "SELECT phrase, slug FROM phrase_lexicon ORDER BY quality_score DESC, doc_count DESC"
-    ).all<{ phrase: string; slug: string }>();
+      "SELECT phrase, slug, support_count, doc_count, quality_score FROM phrase_lexicon ORDER BY quality_score DESC, doc_count DESC"
+    ).all<{ phrase: string; slug: string; support_count: number; doc_count: number; quality_score: number }>();
     let chunkLinksInserted = 0;
     let auditRowsInserted = 0;
+    let phrasesSkipped = 0;
     for (const phrase of phrases.results) {
+      const rejectionReason = getPhrasePromotionReason({
+        docCount: phrase.doc_count,
+        supportCount: phrase.support_count,
+        qualityScore: phrase.quality_score,
+        normalizedName: phrase.phrase,
+      });
+      if (rejectionReason) {
+        phrasesSkipped++;
+        continue;
+      }
       await db.prepare(
         "INSERT OR IGNORE INTO topics (name, slug, kind) VALUES (?, ?, 'phrase')"
       ).bind(phrase.phrase, phrase.slug).run();
@@ -801,6 +1064,7 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
       detail: `${phrases.results.length} phrases backfilled`,
       counts: {
         phrase_topics_considered: phrases.results.length,
+        phrase_topics_skipped: phrasesSkipped,
         chunk_topic_links_inserted: chunkLinksInserted,
         audit_rows_inserted: auditRowsInserted,
       },
@@ -864,6 +1128,22 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
       .map((topic) => topic.id);
     result.noise_removed = await pruneTopicIds(db, noiseIds, "noise_cleanup");
     return { detail: `${result.noise_removed} noise topics cleaned`, counts: { topics_pruned: result.noise_removed } };
+  });
+
+  await runStep("episode_spread_gate", steps, async () => {
+    const toPrune = await db.prepare(
+      `SELECT t.id
+       FROM topics t
+       WHERE t.kind != 'entity' AND t.usage_count > 0
+         AND (
+           SELECT COUNT(DISTINCT c.episode_id)
+           FROM chunk_topics ct
+           JOIN chunks c ON c.id = ct.chunk_id
+           WHERE ct.topic_id = t.id
+         ) < 2`
+    ).all<{ id: number }>();
+    const pruned = await pruneTopicIds(db, toPrune.results.map((topic) => topic.id), "low_episode_spread");
+    return { detail: `${pruned} low-episode-spread topics pruned`, counts: { topics_pruned: pruned } };
   });
 
   await runStep("df_quality_gate", steps, async () => {
@@ -1036,10 +1316,16 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
 
   await runStep("display_curation", steps, async () => {
     const activeTopics = await db.prepare(
-      `SELECT id, slug, name, usage_count, distinctiveness, kind, hidden
+      `SELECT id, slug, name, usage_count, distinctiveness, kind, hidden,
+              (
+                SELECT COUNT(DISTINCT c.episode_id)
+                FROM chunk_topics ct
+                JOIN chunks c ON c.id = ct.chunk_id
+                WHERE ct.topic_id = topics.id
+              ) AS episode_support
        FROM topics
        WHERE usage_count > 0`
-    ).all<{ id: number; slug: string; name: string; usage_count: number; distinctiveness: number; kind: string; hidden: number }>();
+    ).all<{ id: number; slug: string; name: string; usage_count: number; distinctiveness: number; kind: string; hidden: number; episode_support: number }>();
     const decisions = computeTopicDisplayDecisions(activeTopics.results);
     const updates = decisions.map((decision) =>
       db.prepare(

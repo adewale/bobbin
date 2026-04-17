@@ -10,6 +10,9 @@ beforeEach(async () => {
     env.DB.prepare(
       "INSERT INTO episodes (source_id, slug, title, published_date, year, month, day, chunk_count) VALUES (1, '2025-01-06', 'Ep 1', '2025-01-06', 2025, 1, 6, 2)"
     ),
+    env.DB.prepare(
+      "INSERT INTO episodes (source_id, slug, title, published_date, year, month, day, chunk_count) VALUES (1, '2025-01-13', 'Ep 2', '2025-01-13', 2025, 1, 13, 2)"
+    ),
   ]);
 });
 
@@ -22,7 +25,15 @@ describe("chunk-local pipeline artifacts", () => {
       ),
       env.DB.prepare(
         `INSERT INTO chunks (episode_id, slug, title, content, content_plain, position)
-         VALUES (1, 'chunk-2', 'Chunk 2', 'Vibe coding changes how teams ship software.', 'Vibe coding changes how teams ship software.', 1)`
+         VALUES (2, 'chunk-2', 'Chunk 2', 'Vibe coding changes how teams ship software.', 'Vibe coding changes how teams ship software.', 0)`
+      ),
+      env.DB.prepare(
+        `INSERT INTO chunks (episode_id, slug, title, content, content_plain, position)
+         VALUES (1, 'chunk-3', 'Chunk 3', 'Vibe coding keeps changing team habits.', 'Vibe coding keeps changing team habits.', 1)`
+      ),
+      env.DB.prepare(
+        `INSERT INTO chunks (episode_id, slug, title, content, content_plain, position)
+         VALUES (2, 'chunk-4', 'Chunk 4', 'Teams revisit vibe coding in production.', 'Teams revisit vibe coding in production.', 1)`
       ),
     ]);
 
@@ -58,19 +69,19 @@ describe("chunk-local pipeline artifacts", () => {
 
   it("backfills phrase topics across earlier batches once corpus support appears", async () => {
     const chunks = [
-      ["phrase-early-1", "Phrase Early 1", "Vibe coding changes how teams ship."],
-      ["phrase-early-2", "Phrase Early 2", "Teams are adopting vibe coding in product work."],
-      ["phrase-mid", "Phrase Mid", "A filler chunk without the key phrase."],
-      ["phrase-late-1", "Phrase Late 1", "Vibe coding keeps accelerating software teams."],
-      ["phrase-late-2", "Phrase Late 2", "Writers keep returning to vibe coding in practice."],
-      ["phrase-late-3", "Phrase Late 3", "Another note about vibe coding and design."],
+      [1, "phrase-early-1", "Phrase Early 1", "Vibe coding changes how teams ship."],
+      [1, "phrase-early-2", "Phrase Early 2", "Teams are adopting vibe coding in product work."],
+      [1, "phrase-mid", "Phrase Mid", "A filler chunk without the key phrase."],
+      [2, "phrase-late-1", "Phrase Late 1", "Vibe coding keeps accelerating software teams."],
+      [2, "phrase-late-2", "Phrase Late 2", "Writers keep returning to vibe coding in practice."],
+      [2, "phrase-late-3", "Phrase Late 3", "Another note about vibe coding and design."],
     ] as const;
 
-    await env.DB.batch(chunks.map(([slug, title, text], position) =>
+    await env.DB.batch(chunks.map(([episodeId, slug, title, text], position) =>
       env.DB.prepare(
         `INSERT INTO chunks (episode_id, slug, title, content, content_plain, position)
-         VALUES (1, ?, ?, ?, ?, ?)`
-      ).bind(slug, title, text, text, position)
+         VALUES (?, ?, ?, ?, ?, ?)`
+      ).bind(episodeId, slug, title, text, text, position)
     ));
 
     await enrichChunks(env.DB, 2);
@@ -100,5 +111,52 @@ describe("chunk-local pipeline artifacts", () => {
       "SELECT provenance_complete FROM topics WHERE slug = 'vibe-coding'"
     ).first<{ provenance_complete: number }>();
     expect(phraseTopic?.provenance_complete).toBe(1);
+  });
+
+  it("defers promotion until a topic spans multiple episodes, then backfills prior accepted candidates", async () => {
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO chunks (episode_id, slug, title, content, content_plain, analysis_text, normalization_version, enriched, enrichment_version, position)
+         VALUES (1, 'ep1-1', 'Ep1-1', 'Disconfirming evidence matters.', 'Disconfirming evidence matters.', 'disconfirming evidence matters', 1, 1, 5, 0)`
+      ),
+      env.DB.prepare(
+        `INSERT INTO chunks (episode_id, slug, title, content, content_plain, analysis_text, normalization_version, enriched, enrichment_version, position)
+         VALUES (1, 'ep1-2', 'Ep1-2', 'More disconfirming evidence arrives.', 'More disconfirming evidence arrives.', 'more disconfirming evidence arrives', 1, 1, 5, 1)`
+      ),
+      env.DB.prepare(
+        `INSERT INTO chunks (episode_id, slug, title, content, content_plain, position)
+         VALUES (2, 'ep2-1', 'Ep2-1', 'Disconfirming evidence changes beliefs.', 'Disconfirming evidence changes beliefs.', 0)`
+      ),
+      env.DB.prepare(
+        `INSERT INTO chunks (episode_id, slug, title, content, content_plain, position)
+         VALUES (2, 'ep2-2', 'Ep2-2', 'Teams collect disconfirming evidence carefully.', 'Teams collect disconfirming evidence carefully.', 1)`
+      ),
+      env.DB.prepare(
+        `INSERT INTO topic_candidate_audit (
+           chunk_id, source, stage, raw_candidate, normalized_candidate, topic_name, slug,
+           score, kind, decision, decision_reason, provenance
+         ) VALUES
+         (1, 'phrase_lexicon', 'promotion_deferred', 'disconfirming evidence', 'disconfirming evidence', 'disconfirming evidence', 'disconfirming-evidence', 4, 'phrase', 'accepted', 'insufficient_episode_support', '[]'),
+         (2, 'phrase_lexicon', 'promotion_deferred', 'disconfirming evidence', 'disconfirming evidence', 'disconfirming evidence', 'disconfirming-evidence', 4, 'phrase', 'accepted', 'insufficient_episode_support', '[]')`
+      ),
+    ]);
+
+    await enrichChunks(env.DB, 2, "yaket_bobbin");
+
+    const topic = await env.DB.prepare(
+      "SELECT id, kind FROM topics WHERE slug = 'disconfirming-evidence'"
+    ).first<{ id: number; kind: string }>();
+    expect(topic).not.toBeNull();
+    expect(topic?.kind).toBe("phrase");
+
+    const links = await env.DB.prepare(
+      `SELECT c.slug
+       FROM chunk_topics ct
+       JOIN chunks c ON c.id = ct.chunk_id
+       JOIN topics t ON t.id = ct.topic_id
+       WHERE t.slug = 'disconfirming-evidence'
+       ORDER BY c.slug`
+    ).all<{ slug: string }>();
+    expect(links.results.map((row) => row.slug)).toEqual(["ep1-1", "ep1-2", "ep2-1", "ep2-2"]);
   });
 });

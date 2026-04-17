@@ -16,6 +16,9 @@ beforeEach(async () => {
     env.DB.prepare(
       "INSERT INTO episodes (source_id, slug, title, published_date, year, month, day, chunk_count) VALUES (1, '2025-01-06', 'Ep 1', '2025-01-06', 2025, 1, 6, 3)"
     ),
+    env.DB.prepare(
+      "INSERT INTO episodes (source_id, slug, title, published_date, year, month, day, chunk_count) VALUES (1, '2025-01-13', 'Ep 2', '2025-01-13', 2025, 1, 13, 3)"
+    ),
   ]);
 });
 
@@ -64,18 +67,44 @@ describe("Entity kind is set correctly during enrichment", () => {
   });
 
   it("non-entity topics get kind='concept' by default", async () => {
-    await env.DB.prepare(
-      `INSERT INTO chunks (episode_id, slug, title, content, content_plain, position)
-       VALUES (1, 'concept-test', 'Concept Test',
-         'The ecosystem dynamics of platform markets are fascinating and often counterintuitive.',
-         'The ecosystem dynamics of platform markets are fascinating and often counterintuitive.', 0)`
-    ).run();
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO chunks (episode_id, slug, title, content, content_plain, position)
+         VALUES (1, 'concept-test-1', 'Concept Test 1',
+           'The ecosystem dynamics of platform markets are fascinating and often counterintuitive.',
+           'The ecosystem dynamics of platform markets are fascinating and often counterintuitive.', 0)`
+      ),
+      env.DB.prepare(
+        `INSERT INTO chunks (episode_id, slug, title, content, content_plain, position)
+         VALUES (1, 'concept-test-2', 'Concept Test 2',
+           'Platform ecosystems create durable network effects in software markets.',
+           'Platform ecosystems create durable network effects in software markets.', 1)`
+      ),
+      env.DB.prepare(
+        `INSERT INTO chunks (episode_id, slug, title, content, content_plain, position)
+         VALUES (2, 'concept-test-3', 'Concept Test 3',
+           'The ecosystem dynamics of platform markets stay fascinating in practice.',
+           'The ecosystem dynamics of platform markets stay fascinating in practice.', 0)`
+      ),
+      env.DB.prepare(
+        `INSERT INTO chunks (episode_id, slug, title, content, content_plain, position)
+         VALUES (2, 'concept-test-4', 'Concept Test 4',
+           'Platform ecosystems keep reinforcing market structure over time.',
+           'Platform ecosystems keep reinforcing market structure over time.', 1)`
+      ),
+      env.DB.prepare(
+        `INSERT INTO chunks (episode_id, slug, title, content, content_plain, position)
+         VALUES (2, 'concept-test-5', 'Concept Test 5',
+           'The ecosystem and platform dynamics keep shaping real software markets.',
+           'The ecosystem and platform dynamics keep shaping real software markets.', 2)`
+      ),
+    ]);
 
     await enrichChunks(env.DB, 100);
 
-    // Get topics that are concepts (not entities)
+    // Get accepted concept candidates (some may still be deferred from live promotion)
     const concepts = await env.DB.prepare(
-      "SELECT name, kind FROM topics WHERE kind = 'concept'"
+      "SELECT topic_name as name, kind FROM topic_candidate_audit WHERE decision = 'accepted' AND kind = 'concept'"
     ).all();
 
     // Should have at least some concept topics
@@ -139,30 +168,49 @@ describe("Noise topics filtered at INSERT time", () => {
   });
 
   it("legitimate topics from the same chunk survive noise filtering", async () => {
-    await env.DB.prepare(
-      `INSERT INTO chunks (episode_id, slug, title, content, content_plain, position)
-       VALUES (1, 'test-mixed', 'Mixed Test',
-         'The system software drives the ecosystem dynamics and platform architecture evolution.',
-         'The system software drives the ecosystem dynamics and platform architecture evolution.', 11)`
-    ).run();
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO chunks (episode_id, slug, title, content, content_plain, position)
+         VALUES (1, 'test-mixed-1', 'Mixed Test 1',
+           'The system software drives the ecosystem dynamics and platform architecture evolution.',
+           'The system software drives the ecosystem dynamics and platform architecture evolution.', 11)`
+      ),
+      env.DB.prepare(
+        `INSERT INTO chunks (episode_id, slug, title, content, content_plain, position)
+         VALUES (1, 'test-mixed-2', 'Mixed Test 2',
+           'Platform architecture and ecosystem dynamics keep evolving in software systems.',
+           'Platform architecture and ecosystem dynamics keep evolving in software systems.', 12)`
+      ),
+      env.DB.prepare(
+        `INSERT INTO chunks (episode_id, slug, title, content, content_plain, position)
+         VALUES (2, 'test-mixed-3', 'Mixed Test 3',
+           'The ecosystem dynamics and platform architecture matter in production.',
+           'The ecosystem dynamics and platform architecture matter in production.', 11)`
+      ),
+      env.DB.prepare(
+        `INSERT INTO chunks (episode_id, slug, title, content, content_plain, position)
+         VALUES (2, 'test-mixed-4', 'Mixed Test 4',
+           'Platform architecture guides the ecosystem in deployed software.',
+           'Platform architecture guides the ecosystem in deployed software.', 12)`
+      ),
+      env.DB.prepare(
+        `INSERT INTO chunks (episode_id, slug, title, content, content_plain, position)
+         VALUES (2, 'test-mixed-5', 'Mixed Test 5',
+           'The ecosystem dynamics and platform architecture continue shaping production systems.',
+           'The ecosystem dynamics and platform architecture continue shaping production systems.', 13)`
+      ),
+    ]);
 
     await enrichChunks(env.DB, 100);
 
-    const chunkId = await env.DB.prepare(
-      "SELECT id FROM chunks WHERE slug = 'test-mixed'"
-    ).first<{ id: number }>();
-
-    // Check that at least one non-noise topic was assigned
     const goodTopics = await env.DB.prepare(
-      `SELECT t.name FROM chunk_topics ct
-       JOIN topics t ON ct.topic_id = t.id
-       WHERE ct.chunk_id = ?`,
-    ).bind(chunkId!.id).all();
+      `SELECT DISTINCT t.name FROM topic_candidate_audit a
+       JOIN topics t ON a.topic_id = t.id
+       WHERE a.decision = 'accepted' AND (t.kind = 'phrase' OR t.kind = 'concept')`
+    ).all();
 
-    // Should have at least one topic assigned (e.g., "ecosystem", "platform", "architecture")
     expect(goodTopics.results.length).toBeGreaterThan(0);
 
-    // None of the assigned topics should be noise words
     const noiseWords = new Set(["system", "software", "model", "data", "code", "product", "tool"]);
     for (const t of goodTopics.results as any[]) {
       expect(noiseWords.has(t.name)).toBe(false);

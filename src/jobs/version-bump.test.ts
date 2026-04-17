@@ -30,11 +30,14 @@ describe("topic name data migration", () => {
     await env.DB.prepare(
       "INSERT INTO episodes (source_id, slug, title, published_date, year, month, day, chunk_count) VALUES (1, '2025-01-06', 'Ep 1', '2025-01-06', 2025, 1, 6, 5)"
     ).run();
+    await env.DB.prepare(
+      "INSERT INTO episodes (source_id, slug, title, published_date, year, month, day, chunk_count) VALUES (1, '2025-01-13', 'Ep 2', '2025-01-13', 2025, 1, 13, 5)"
+    ).run();
     const stmts: D1PreparedStatement[] = [];
     for (let i = 0; i < 5; i++) {
       stmts.push(env.DB.prepare(
-        "INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (1, ?, ?, 'x', 'x', ?)"
-      ).bind(`c-${i}`, `C ${i}`, i));
+        "INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (?, ?, ?, 'x', 'x', ?)"
+      ).bind(i < 4 ? 1 : 2, `c-${i}`, `C ${i}`, i));
     }
     await batchExec(env.DB, stmts);
   });

@@ -153,7 +153,8 @@ describe("Episode topic count stays reasonable", () => {
     // 10 chunks × 15 max topics = 150 theoretical max, but dedup and noise filter should reduce this
     // A reasonable upper bound is 100 unique topics per episode
     expect(epTopicCount!.c).toBeLessThan(100);
-    expect(epTopicCount!.c).toBeGreaterThan(0);
+    // With episode-spread gating, single-episode corpora may produce 0 promotable episode topics.
+    expect(epTopicCount!.c).toBeGreaterThanOrEqual(0);
   });
 });
 

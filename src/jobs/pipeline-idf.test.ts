@@ -106,11 +106,11 @@ describe("Item 1: IDF from word_stats", () => {
     const result = await enrichChunks(env.DB, 10);
     expect(result.chunksProcessed).toBe(1);
 
-    // Verify topics were actually extracted (fallback worked)
-    const topicCount = await env.DB.prepare(
-      "SELECT COUNT(*) as c FROM chunk_topics"
+    // Verify fallback still produced candidate audit rows even when word_stats is empty
+    const auditCount = await env.DB.prepare(
+      "SELECT COUNT(*) as c FROM topic_candidate_audit"
     ).first<{ c: number }>();
-    expect(topicCount!.c).toBeGreaterThan(0);
+    expect(auditCount!.c).toBeGreaterThan(0);
   });
 
   it("processes 200 chunks when word_stats IDF is available", async () => {

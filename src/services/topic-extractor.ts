@@ -10,6 +10,7 @@ import {
   tokenizeNormalizedText,
 } from "./analysis-text";
 import { extractCorpusNgrams } from "./ngram-extractor";
+import { getPhrasePromotionReason } from "./pipeline-tuning";
 
 export { normalizeChunkText } from "./analysis-text";
 
@@ -491,6 +492,12 @@ export function buildPhraseLexicon(
   }
 
   return [...merged.values()]
+    .filter((entry) => getPhrasePromotionReason({
+      docCount: entry.docCount,
+      supportCount: entry.supportCount,
+      qualityScore: entry.qualityScore,
+      normalizedName: entry.normalizedName,
+    }) === null)
     .sort((a, b) => b.qualityScore - a.qualityScore || b.docCount - a.docCount)
     .slice(0, 200);
 }

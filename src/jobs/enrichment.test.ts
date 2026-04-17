@@ -11,6 +11,9 @@ beforeEach(async () => {
   await env.DB.prepare(
     "INSERT INTO sources (google_doc_id, title) VALUES ('test-doc', 'Test')"
   ).run();
+  await env.DB.prepare(
+    "INSERT INTO episodes (source_id, slug, title, published_date, year, month, day, chunk_count) VALUES (1, '2025-01-06', 'Ep 1', '2025-01-06', 2025, 1, 6, 2)"
+  ).run();
 });
 
 describe("Phase 8: Enrichment pipeline improvements", () => {
@@ -111,17 +114,22 @@ describe("Phase 8: Enrichment pipeline improvements", () => {
 
   describe("Precompute distinctiveness", () => {
     it("topics with matching word_stats entries have non-zero distinctiveness", async () => {
-      const episodes = parseHtmlDocument(sampleHtml);
-      await ingestEpisodesOnly(env.DB, 1, episodes);
-      await enrichChunks(env.DB, 1000);
+      await env.DB.prepare(
+        "INSERT INTO episodes (source_id, slug, title, published_date, year, month, day, chunk_count) VALUES (1, '2025-01-13', 'Ep 2', '2025-01-13', 2025, 1, 13, 2)"
+      ).run();
+      await env.DB.prepare("INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (1, 'e1', 'E1', 'ecosystem', 'ecosystem', 0)").run();
+      await env.DB.prepare("INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (1, 'e2', 'E2', 'ecosystem', 'ecosystem', 1)").run();
+      await env.DB.prepare("INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (2, 'e3', 'E3', 'ecosystem', 'ecosystem', 0)").run();
+      await env.DB.prepare("INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (2, 'e4', 'E4', 'ecosystem', 'ecosystem', 1)").run();
+      await env.DB.prepare("INSERT INTO topics (name, slug, kind, usage_count) VALUES ('ecosystem', 'ecosystem', 'concept', 4)").run();
+      await env.DB.batch([
+        env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 1)"),
+        env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (2, 1)"),
+        env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (3, 1)"),
+        env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (4, 1)"),
+      ]);
 
-      // Seed word_stats for topics that YAKE actually extracted
-      const extractedTopics = await env.DB.prepare(
-        "SELECT DISTINCT t.name FROM topics t JOIN chunk_topics ct ON t.id = ct.topic_id LIMIT 5"
-      ).all<{ name: string }>();
-      expect(extractedTopics.results.length).toBeGreaterThan(0);
-
-      const seedName = extractedTopics.results[0].name;
+      const seedName = "ecosystem";
       await env.DB.prepare(
         "INSERT OR IGNORE INTO word_stats (word, total_count, doc_count, distinctiveness) VALUES (?, 100, 10, 25.5)"
       ).bind(seedName).run();

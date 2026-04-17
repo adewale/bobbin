@@ -17,13 +17,16 @@ beforeEach(async () => {
   await env.DB.prepare(
     "INSERT INTO episodes (source_id, slug, title, published_date, year, month, day, chunk_count) VALUES (1, '2025-01-06', 'Ep 1', '2025-01-06', 2025, 1, 6, 10)"
   ).run();
+  await env.DB.prepare(
+    "INSERT INTO episodes (source_id, slug, title, published_date, year, month, day, chunk_count) VALUES (1, '2025-01-13', 'Ep 2', '2025-01-13', 2025, 1, 13, 10)"
+  ).run();
 
   // Insert 10 chunks
   const stmts: D1PreparedStatement[] = [];
   for (let i = 0; i < 10; i++) {
     stmts.push(env.DB.prepare(
-      "INSERT INTO chunks (episode_id, slug, title, content, content_plain, position, enriched, enrichment_version) VALUES (1, ?, ?, 'x', 'x', ?, 1, 4)"
-    ).bind(`chunk-${i}`, `Chunk ${i}`, i));
+      "INSERT INTO chunks (episode_id, slug, title, content, content_plain, position, enriched, enrichment_version) VALUES (?, ?, ?, 'x', 'x', ?, 1, 4)"
+    ).bind(i < 5 ? 1 : 2, `chunk-${i}`, `Chunk ${i}`, i));
   }
   await batchExec(env.DB, stmts);
 });

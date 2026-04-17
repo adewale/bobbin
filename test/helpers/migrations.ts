@@ -149,6 +149,9 @@ const CREATES = [
     archive_reason TEXT NOT NULL,
     merged_to_topic_id INTEGER,
     merge_stage TEXT,
+    archive_count INTEGER NOT NULL DEFAULT 1,
+    last_original_topic_id INTEGER,
+    last_archived_at TEXT,
     archived_at TEXT NOT NULL DEFAULT (datetime('now'))
   )`,
   `CREATE TABLE ingestion_log (
@@ -214,6 +217,7 @@ const CREATES = [
   "CREATE INDEX IF NOT EXISTS idx_topic_candidate_audit_topic ON topic_candidate_audit(topic_id)",
   "CREATE INDEX IF NOT EXISTS idx_topic_merge_audit_to_topic ON topic_merge_audit(to_topic_id)",
   "CREATE INDEX IF NOT EXISTS idx_topic_lineage_archive_original ON topic_lineage_archive(original_topic_id)",
+  "CREATE INDEX IF NOT EXISTS idx_topic_lineage_archive_compact_key ON topic_lineage_archive(slug, archive_reason, merge_stage, merged_to_topic_id)",
   "CREATE INDEX IF NOT EXISTS idx_pipeline_runs_created_at ON pipeline_runs(created_at DESC)",
   "CREATE INDEX IF NOT EXISTS idx_pipeline_runs_run_type ON pipeline_runs(run_type, created_at DESC)",
   "CREATE INDEX IF NOT EXISTS idx_pipeline_stage_metrics_run ON pipeline_stage_metrics(pipeline_run_id, phase, stage_order)",
