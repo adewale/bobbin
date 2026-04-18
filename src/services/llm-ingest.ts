@@ -92,7 +92,7 @@ export function buildEpisodeLlmMessages(input: EpisodeLlmInput) {
   const chunkLines = input.chunks.map((chunk) => ({
     slug: chunk.slug,
     title: chunk.title,
-    text: normalizeChunkText(chunk.contentPlain).normalizedText,
+    excerpt: normalizeChunkText(chunk.contentPlain).normalizedText.slice(0, 320),
   }));
 
   return [
