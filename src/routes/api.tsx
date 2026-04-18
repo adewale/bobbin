@@ -6,7 +6,7 @@ import { backfillExistingEpisodes, ingestParsedEpisodes, enrichChunks, finalizeE
 import { createIngestionLog, completeIngestionLog, failIngestionLog } from "../db/ingestion";
 import { recordPipelineRun } from "../db/pipeline-metrics";
 import { ftsSearch } from "../services/search";
-import { enrichEpisodesWithLlm } from "../services/llm-ingest";
+import { enrichEpisodeIdsWithLlm, enrichEpisodesWithLlm } from "../services/llm-ingest";
 import { persistSourceHtmlChunks } from "../db/artifacts";
 import { parseSearchQuery } from "../lib/query-parser";
 import { keywordSearch } from "../db/search";
@@ -213,6 +213,52 @@ api.get("/backfill-source", async (c) => {
   } catch (e) {
     console.error("Backfill source error:", e);
     return c.json({ error: "Backfill failed", detail: e instanceof Error ? e.message : String(e) }, 500);
+  }
+});
+
+api.get("/backfill-llm", async (c) => {
+  const denied = requireAuth(c);
+  if (denied) return denied;
+
+  const docId = c.req.query("doc") || "";
+  const limit = safeParseInt(c.req.query("limit"), 10);
+
+  try {
+    let sourceFilter = "";
+    const binds: (string | number)[] = [];
+    if (docId) {
+      sourceFilter = "AND s.google_doc_id = ?";
+      binds.push(docId);
+    }
+
+    const pending = await c.env.DB.prepare(
+      `SELECT e.id, e.slug, s.id as source_id, s.title as source_title
+       FROM episodes e
+       JOIN sources s ON s.id = e.source_id
+       WHERE NOT EXISTS (SELECT 1 FROM llm_enrichment_runs r WHERE r.episode_id = e.id)
+       ${sourceFilter}
+       ORDER BY e.published_date ASC
+       LIMIT ?`
+    ).bind(...binds, limit).all<{ id: number; slug: string; source_id: number; source_title: string }>();
+
+    if (pending.results.length === 0) {
+      return c.json({ status: "ok", dispatched: 0, mode: "noop" });
+    }
+
+    if (c.env.ENRICHMENT_QUEUE) {
+      const messages = pending.results.map((row) => ({ body: { type: "llm-episode-enrich" as const, episodeId: row.id } }));
+      for (let i = 0; i < messages.length; i += 25) {
+        await c.env.ENRICHMENT_QUEUE.sendBatch(messages.slice(i, i + 25));
+      }
+      return c.json({ status: "ok", dispatched: pending.results.length, mode: "queue" });
+    }
+
+    const episodeIds = pending.results.map((row) => row.id);
+    const processed = await enrichEpisodeIdsWithLlm(c.env, episodeIds);
+    return c.json({ status: "ok", dispatched: processed, mode: "inline" });
+  } catch (e) {
+    console.error("Backfill LLM error:", e);
+    return c.json({ error: "LLM backfill failed", detail: e instanceof Error ? e.message : String(e) }, 500);
   }
 });
 

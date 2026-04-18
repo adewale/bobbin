@@ -246,6 +246,38 @@ export async function enrichEpisodesWithLlm(env: Bindings, sourceId: number, epi
   }
 }
 
+export async function enrichEpisodeIdsWithLlm(env: Bindings, episodeIds: number[]): Promise<number> {
+  if (!env.AI || episodeIds.length === 0) return 0;
+  const BATCH = 90;
+  let processed = 0;
+  for (let i = 0; i < episodeIds.length; i += BATCH) {
+    const batch = episodeIds.slice(i, i + BATCH);
+    const placeholders = batch.map(() => "?").join(",");
+    const episodeRows = await env.DB.prepare(
+      `SELECT id, source_id, slug, title FROM episodes WHERE id IN (${placeholders}) ORDER BY id ASC`
+    ).bind(...batch).all<{ id: number; source_id: number; slug: string; title: string }>();
+
+    for (const episode of episodeRows.results) {
+      const chunks = await env.DB.prepare(
+        "SELECT id, slug, title, content_plain FROM chunks WHERE episode_id = ? ORDER BY position"
+      ).bind(episode.id).all<{ id: number; slug: string; title: string; content_plain: string }>();
+      await enrichEpisodesWithLlm(env, episode.source_id, [{
+        id: episode.id,
+        slug: episode.slug,
+        title: episode.title,
+        chunks: chunks.results.map((chunk) => ({
+          id: chunk.id,
+          slug: chunk.slug,
+          title: chunk.title,
+          contentPlain: chunk.content_plain,
+        })),
+      }]);
+      processed += 1;
+    }
+  }
+  return processed;
+}
+
 export async function loadLlmBoostsForChunks(
   db: D1Database,
   chunkIds: number[],

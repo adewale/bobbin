@@ -11,17 +11,20 @@ import { slugify } from "../lib/slug";
 import { batchExec } from "../lib/db";
 import { extractCorpusNgrams } from "../services/ngram-extractor";
 import { extractPMIPhrases } from "../services/pmi-phrases";
+import { enrichEpisodeIdsWithLlm } from "../services/llm-ingest";
 import { processChunkBatch } from "./ingest";
 import type { Bindings } from "../types";
 
 export interface EnrichmentMessage {
-  type: "compute-related" | "assign-ngram" | "extract-ngrams" | "enrich-batch";
+  type: "compute-related" | "assign-ngram" | "extract-ngrams" | "enrich-batch" | "llm-episode-enrich";
   // compute-related
   topicId?: number;
   // assign-ngram
   phrase?: string;
   // enrich-batch
   chunkIds?: number[];
+  // llm-episode-enrich
+  episodeId?: number;
 }
 
 async function handleComputeRelated(db: D1Database, topicId: number) {
@@ -140,6 +143,8 @@ export async function handleEnrichmentBatch(
         await handleExtractNgrams(env.DB, env.ENRICHMENT_QUEUE);
       } else if (msg.body.type === "enrich-batch" && msg.body.chunkIds) {
         await handleEnrichBatch(env.DB, msg.body.chunkIds);
+      } else if (msg.body.type === "llm-episode-enrich" && msg.body.episodeId) {
+        await enrichEpisodeIdsWithLlm(env, [msg.body.episodeId]);
       }
       msg.ack();
     } catch (e) {

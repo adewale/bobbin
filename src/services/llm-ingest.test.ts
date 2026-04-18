@@ -3,6 +3,7 @@ import { env } from "cloudflare:test";
 import { applyTestMigrations } from "../../test/helpers/migrations";
 import {
   buildEpisodeLlmMessages,
+  enrichEpisodeIdsWithLlm,
   loadLlmBoostsForChunks,
   parseEpisodeLlmResponse,
   persistEpisodeLlmCandidates,
@@ -80,5 +81,39 @@ describe("llm ingest contract", () => {
       candidateName: "Prompt injection attack",
     });
     expect(boosts.get(2)).toBeUndefined();
+  });
+
+  it("loads episode/chunk rows and enriches existing episodes by id", async () => {
+    const calls: any[] = [];
+    const fakeEnv = {
+      ...env,
+      AI: {
+        run: async (_model: string, payload: any) => {
+          calls.push(payload);
+          const parsed = JSON.parse(payload.messages[1].content);
+          return {
+            response: JSON.stringify({
+              candidates: [
+                {
+                  name: "Prompt injection attack",
+                  kind: "phrase",
+                  confidence: 0.9,
+                  rank_position: 0,
+                  aliases: ["prompt injection"],
+                  evidence: [{ chunk_slug: parsed.chunks[0].slug, quote: "Prompt injection attack" }],
+                },
+              ],
+            }),
+          };
+        },
+      },
+    };
+
+    const processed = await enrichEpisodeIdsWithLlm(fakeEnv as any, [1]);
+    expect(processed).toBe(1);
+    expect(calls).toHaveLength(1);
+
+    const runCount = await env.DB.prepare("SELECT COUNT(*) as c FROM llm_enrichment_runs").first<{ c: number }>();
+    expect(runCount?.c).toBe(1);
   });
 });
