@@ -123,6 +123,7 @@ export function parseEpisodeLlmResponse(raw: string, chunks: EpisodeLlmChunkInpu
     .replace(/^```json\s*/i, "")
     .replace(/^```\s*/i, "")
     .replace(/```\s*$/i, "")
+    .replace(/[\u0000-\u001F]+/g, " ")
     .trim();
   const parsed = JSON.parse(cleaned);
   const candidates = Array.isArray(parsed?.candidates) ? parsed.candidates : [];

@@ -176,6 +176,8 @@ api.get("/backfill-source", async (c) => {
   if (denied) return denied;
 
   const docId = c.req.query("doc") || "";
+  const limit = safeParseInt(c.req.query("limit"), 0);
+  const offset = safeParseInt(c.req.query("offset"), 0);
   if (!docId) return c.json({ error: "doc is required" }, 400);
 
   try {
@@ -189,7 +191,8 @@ api.get("/backfill-source", async (c) => {
     await persistSourceHtmlChunks(c.env.DB, source.id, fetched.html, fetched.fetchedAt);
 
     const episodes = parseHtmlDocument(fetched.html);
-    const backfilled = await backfillExistingEpisodes(c.env.DB, source.id, episodes);
+    const windowedEpisodes = limit > 0 ? episodes.slice(offset, offset + limit) : episodes;
+    const backfilled = await backfillExistingEpisodes(c.env.DB, source.id, windowedEpisodes);
     if (backfilled.backfilledEpisodes.length > 0) {
       await enrichEpisodesWithLlm(c.env, source.id, backfilled.backfilledEpisodes);
     }
@@ -197,6 +200,10 @@ api.get("/backfill-source", async (c) => {
     return c.json({
       status: "ok",
       source: source.title,
+      totalEpisodesInSource: episodes.length,
+      episodesProcessed: windowedEpisodes.length,
+      offset,
+      limit,
       episodesUpdated: backfilled.episodesUpdated,
       chunksUpdated: backfilled.chunksUpdated,
       llmEpisodesUpdated: backfilled.backfilledEpisodes.length,
