@@ -9,7 +9,8 @@ export const KNOWN_ENTITIES: KnownEntity[] = [
   { name: "OpenAI", kind: "company", aliases: ["openai"] },
   { name: "Google", kind: "company", aliases: ["google", "alphabet", "deepmind"] },
   { name: "Anthropic", kind: "company", aliases: ["anthropic"] },
-  { name: "Meta", kind: "company", aliases: ["meta", "facebook"] },
+  { name: "Meta", kind: "company", aliases: ["meta"] },
+  { name: "Facebook", kind: "company", aliases: ["facebook"] },
   { name: "Microsoft", kind: "company", aliases: ["microsoft"] },
   { name: "Apple", kind: "company", aliases: ["apple"] },
   { name: "Amazon", kind: "company", aliases: ["amazon", "aws"] },
@@ -27,6 +28,8 @@ export const KNOWN_ENTITIES: KnownEntity[] = [
   { name: "Ben Follington", kind: "person", aliases: ["follington"] },
   { name: "Christopher Alexander", kind: "person", aliases: ["alexander"] },
   { name: "Tim O'Reilly", kind: "person", aliases: ["o'reilly", "oreilly"] },
+  { name: "Saruman", kind: "person", aliases: ["saruman"] },
+  { name: "Radagast", kind: "person", aliases: ["radagast"] },
 
   // Products
   { name: "Claude Code", kind: "product", aliases: ["claude code"] },
@@ -37,4 +40,8 @@ export const KNOWN_ENTITIES: KnownEntity[] = [
   { name: "Stratechery", kind: "product", aliases: ["stratechery"] },
   { name: "Cursor", kind: "product", aliases: ["cursor"] },
   { name: "Copilot", kind: "product", aliases: ["copilot", "github copilot"] },
+  { name: "GitHub", kind: "product", aliases: ["github"] },
+  { name: "Twitter", kind: "product", aliases: ["twitter"] },
+  { name: "Wikipedia", kind: "product", aliases: ["wikipedia"] },
+  { name: "Openclaw", kind: "product", aliases: ["openclaw"] },
 ];

@@ -1,3 +1,18 @@
+const PROTECTED_TOPICS = new Set([
+  "saruman",
+  "radagast",
+  "openclaw",
+  "facebook",
+  "github",
+  "twitter",
+  "wikipedia",
+  "react",
+]);
+
+export function isProtectedTopic(name: string): boolean {
+  return PROTECTED_TOPICS.has(name.toLowerCase());
+}
+
 /** Words that are never standalone topics — too generic or grammatical */
 const NOISE_WORDS = new Set([
   // Comparative/superlative adjectives
@@ -93,6 +108,7 @@ const NOISE_WORDS = new Set([
  */
 export function isNoiseTopic(name: string): boolean {
   const lower = name.toLowerCase();
+  if (isProtectedTopic(lower)) return false;
   if (NOISE_WORDS.has(lower)) return true;
   if (!lower.includes(" ") && lower.length < 4) return true;
 
@@ -157,6 +173,7 @@ export function isWeakSingletonTopic(
 ): boolean {
   const lower = name.toLowerCase();
   if (lower.includes(" ")) return false;
+  if (isProtectedTopic(lower)) return false;
   if (isNoiseTopic(lower)) return true;
 
   const weakSuffix = /(ed|ing|ment|ness|tion|sion|ance|ence)$/i.test(lower);
@@ -251,6 +268,15 @@ export function computeTopicDisplayDecisions(
     }
 
     if (topic.kind === "entity") {
+      return {
+        slug: topic.slug,
+        displaySuppressed: false,
+        hidden: false,
+        reason: null,
+      };
+    }
+
+    if (isProtectedTopic(topic.name)) {
       return {
         slug: topic.slug,
         displaySuppressed: false,

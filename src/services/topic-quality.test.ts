@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import fc from "fast-check";
-import { computeTopicDisplayDecisions, curateTopics, isNoiseTopic } from "./topic-quality";
+import { computeTopicDisplayDecisions, curateTopics, isNoiseTopic, isProtectedTopic, isWeakSingletonTopic } from "./topic-quality";
 
 function makeTopic(name: string, usage_count: number, distinctiveness = 1) {
   return {
@@ -183,5 +183,23 @@ describe("computeTopicDisplayDecisions", () => {
 
     const entityDecision = decisions.find((decision) => decision.slug === "claude");
     expect(entityDecision?.displaySuppressed).toBe(false);
+  });
+
+  it("keeps protected topics visible even when they look like weak singletons", () => {
+    expect(isProtectedTopic("react")).toBe(true);
+    expect(isNoiseTopic("react")).toBe(false);
+    expect(isWeakSingletonTopic("react", 1, 0)).toBe(false);
+
+    const decisions = computeTopicDisplayDecisions([
+      { slug: "react", name: "react", usage_count: 1, distinctiveness: 0, kind: "concept", hidden: 0, episode_support: 1 },
+    ]);
+    expect(decisions).toEqual([
+      {
+        slug: "react",
+        displaySuppressed: false,
+        hidden: false,
+        reason: null,
+      },
+    ]);
   });
 });

@@ -21,6 +21,20 @@ describe("extractKnownEntities", () => {
     expect(names).toContain("Stratechery");
   });
 
+  it("returns GitHub and Facebook as stable known entities", () => {
+    const results = extractKnownEntities("GitHub and Facebook both shaped developer culture.");
+    const names = results.map((r) => r.name);
+    expect(names).toContain("GitHub");
+    expect(names).toContain("Facebook");
+  });
+
+  it("does not collapse Facebook mentions into Meta", () => {
+    const results = extractKnownEntities("Facebook changed how social products were built.");
+    const names = results.map((r) => r.name);
+    expect(names).toContain("Facebook");
+    expect(names).not.toContain("Meta");
+  });
+
   it("is case-insensitive", () => {
     const results = extractKnownEntities("OPENAI is doing great work");
     const names = results.map((r) => r.name);

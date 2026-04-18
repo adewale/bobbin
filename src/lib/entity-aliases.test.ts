@@ -36,4 +36,10 @@ describe("expandEntityAliases", () => {
     expect(result).toContain("hackernews");
     expect(result).toContain("hn");
   });
+
+  it("treats Facebook as its own canonical entity, not as Meta", () => {
+    const result = expandEntityAliases("facebook", KNOWN_ENTITIES);
+    expect(result).toContain("facebook");
+    expect(result).not.toContain("meta");
+  });
 });

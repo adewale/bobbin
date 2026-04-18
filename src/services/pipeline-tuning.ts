@@ -1,4 +1,4 @@
-import { isNoiseTopic, isWeakSingletonTopic } from "./topic-quality";
+import { isNoiseTopic, isProtectedTopic, isWeakSingletonTopic } from "./topic-quality";
 
 export interface CandidatePromotionStats {
   chunkSupport: number;
@@ -48,6 +48,7 @@ export function getCorpusPriorRejectionReason(
   candidate: { kind: string; normalizedCandidate: string },
   stats: CandidatePromotionStats,
 ): string | null {
+  if (isProtectedTopic(candidate.normalizedCandidate)) return null;
   const words = candidate.normalizedCandidate.split(/\s+/).filter(Boolean);
   if (candidate.kind === "entity" || words.length !== 1) return null;
   if (isWeakSingletonTopic(candidate.normalizedCandidate, stats.chunkSupport, stats.wordDistinctiveness)) {
@@ -63,6 +64,7 @@ export function getCandidatePromotionReason(
   candidate: { kind: string; normalizedCandidate: string },
   stats: CandidatePromotionStats,
 ): string | null {
+  if (isProtectedTopic(candidate.normalizedCandidate)) return null;
   if (candidate.kind === "entity") return null;
 
   const words = candidate.normalizedCandidate.split(/\s+/).filter(Boolean);
@@ -84,6 +86,7 @@ export function getCandidatePromotionReason(
 
 export function getDisplaySuppressionReason(topic: DisplayTopicStats): string | null {
   const lower = topic.name.toLowerCase();
+  if (isProtectedTopic(lower)) return null;
   if (topic.kind === "entity") return null;
   if ((topic.episode_support ?? 0) < PIPELINE_TUNING.minVisibleEpisodeSupport) return "low_episode_spread";
   if (!lower.includes(" ") && topic.usage_count < PIPELINE_TUNING.minVisibleSingletonUsage && topic.distinctiveness < PIPELINE_TUNING.minVisibleSingletonDistinctiveness) {
