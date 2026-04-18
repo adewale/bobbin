@@ -37,6 +37,29 @@ export interface EpisodeLlmCandidate {
 }
 
 function extractResponseText(result: any): string {
+  function deepSearch(value: unknown, depth: number): string | null {
+    if (depth > 6 || value == null) return null;
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (trimmed.startsWith("{") || trimmed.startsWith("[")) return value;
+      return null;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const found = deepSearch(item, depth + 1);
+        if (found) return found;
+      }
+      return null;
+    }
+    if (typeof value === "object") {
+      for (const entry of Object.values(value as Record<string, unknown>)) {
+        const found = deepSearch(entry, depth + 1);
+        if (found) return found;
+      }
+    }
+    return null;
+  }
+
   if (typeof result === "string") return result;
   if (typeof result?.response === "string") return result.response;
   if (typeof result?.result?.response === "string") return result.result.response;
@@ -60,6 +83,8 @@ function extractResponseText(result: any): string {
   if (Array.isArray(result?.result?.response) && typeof result.result.response[0]?.content?.[0]?.text === "string") {
     return result.result.response[0].content[0].text;
   }
+  const discovered = deepSearch(result, 0);
+  if (discovered) return discovered;
   throw new Error("Unsupported Workers AI response format");
 }
 

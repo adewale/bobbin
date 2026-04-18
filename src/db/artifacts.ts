@@ -1,4 +1,4 @@
-const ARTIFACT_CHUNK_SIZE = 200000;
+const ARTIFACT_CHUNK_SIZE = 50000;
 
 function splitContent(content: string): string[] {
   if (!content) return [];
