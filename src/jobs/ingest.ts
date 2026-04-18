@@ -527,11 +527,16 @@ export async function backfillExistingEpisodes(
       }
     }
 
-    await db.prepare(
-      `UPDATE chunks
-       SET enriched = 0, enrichment_version = 0
-       WHERE id IN (${updatedChunks.map(() => "?").join(",") || "0"})`
-    ).bind(...updatedChunks).run();
+    const BATCH = 90;
+    for (let i = 0; i < updatedChunks.length; i += BATCH) {
+      const batch = updatedChunks.slice(i, i + BATCH);
+      const placeholders = batch.map(() => "?").join(",");
+      await db.prepare(
+        `UPDATE chunks
+         SET enriched = 0, enrichment_version = 0
+         WHERE id IN (${placeholders})`
+      ).bind(...batch).run();
+    }
 
     backfilledEpisodes.push({
       id: existingEpisode.id,

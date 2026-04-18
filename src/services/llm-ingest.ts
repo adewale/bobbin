@@ -119,7 +119,12 @@ export function buildEpisodeLlmMessages(input: EpisodeLlmInput) {
 }
 
 export function parseEpisodeLlmResponse(raw: string, chunks: EpisodeLlmChunkInput[]): EpisodeLlmCandidate[] {
-  const parsed = JSON.parse(raw);
+  const cleaned = raw
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/```\s*$/i, "")
+    .trim();
+  const parsed = JSON.parse(cleaned);
   const candidates = Array.isArray(parsed?.candidates) ? parsed.candidates : [];
   const chunkSlugSet = new Set(chunks.map((chunk) => chunk.slug));
   const validated: EpisodeLlmCandidate[] = [];
