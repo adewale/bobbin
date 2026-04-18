@@ -132,6 +132,8 @@ export async function persistEpisodeLlmCandidates(
   candidates: EpisodeLlmCandidate[],
   chunkIdBySlug: Map<string, number>,
 ): Promise<void> {
+  await db.prepare("DELETE FROM llm_enrichment_runs WHERE episode_id = ?").bind(episodeId).run();
+
   const run = await db.prepare(
     `INSERT INTO llm_enrichment_runs (source_id, episode_id, extractor_model, prompt_version, schema_version, status, raw_response_json)
      VALUES (?, ?, ?, ?, ?, 'completed', ?)`

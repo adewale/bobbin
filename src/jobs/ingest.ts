@@ -85,6 +85,10 @@ export interface InsertedEpisodeArtifact {
   chunks: Array<{ id: number; slug: string; title: string; contentPlain: string }>;
 }
 
+export interface BackfilledEpisodeArtifact extends InsertedEpisodeArtifact {
+  updatedChunks: number[];
+}
+
 async function runPipelineStage(
   name: string,
   results: PipelineStageResult[],
@@ -436,6 +440,100 @@ export async function ingestEpisodesOnly(
   }
 
   return { episodesAdded, chunksAdded, insertedEpisodes };
+}
+
+export async function backfillExistingEpisodes(
+  db: D1Database,
+  sourceId: number,
+  episodes: ParsedEpisode[]
+): Promise<{ episodesUpdated: number; chunksUpdated: number; backfilledEpisodes: BackfilledEpisodeArtifact[] }> {
+  let episodesUpdated = 0;
+  let chunksUpdated = 0;
+  const backfilledEpisodes: BackfilledEpisodeArtifact[] = [];
+
+  const existing = await db.prepare(
+    "SELECT id, slug, title, published_date FROM episodes WHERE source_id = ? ORDER BY published_date ASC"
+  ).bind(sourceId).all<{ id: number; slug: string; title: string; published_date: string }>();
+  const byDate = new Map(existing.results.map((row) => [row.published_date, row]));
+
+  for (const episode of episodes) {
+    const dateStr = formatDate(episode.parsedDate);
+    const existingEpisode = byDate.get(dateStr);
+    if (!existingEpisode) continue;
+
+    const storedChunks = episode.chunks.map((chunk) => ({
+      ...chunk,
+      richContent: chunk.richContent.map((block) => ({
+        ...block,
+        chunkTitle: chunk.title,
+        chunkPosition: chunk.position,
+      })),
+    }));
+    const episodeRichContent = storedChunks.flatMap((chunk) => chunk.richContent);
+
+    await db.prepare(
+      `UPDATE episodes
+       SET title = ?, chunk_count = ?, format = ?, content_markdown = ?, rich_content_json = ?, links_json = ?, updated_at = datetime('now')
+       WHERE id = ?`
+    ).bind(
+      episode.title,
+      storedChunks.length,
+      episode.format,
+      episode.contentMarkdown,
+      JSON.stringify(episodeRichContent),
+      JSON.stringify(episode.links),
+      existingEpisode.id,
+    ).run();
+
+    const chunkRows = await db.prepare(
+      "SELECT id, slug, position FROM chunks WHERE episode_id = ? ORDER BY position"
+    ).bind(existingEpisode.id).all<{ id: number; slug: string; position: number }>();
+    const chunkByPosition = new Map(chunkRows.results.map((row) => [row.position, row]));
+    const updatedChunks: number[] = [];
+
+    for (const chunk of storedChunks) {
+      const existingChunk = chunkByPosition.get(chunk.position);
+      const wordCount = countWords(chunk.contentPlain);
+      if (existingChunk) {
+        await db.prepare(
+          `UPDATE chunks
+           SET title = ?, content = ?, content_plain = ?, word_count = ?, content_markdown = ?, rich_content_json = ?, links_json = ?, images_json = ?, updated_at = datetime('now')
+           WHERE id = ?`
+        ).bind(
+          chunk.title,
+          chunk.content,
+          chunk.contentPlain,
+          wordCount,
+          chunk.contentMarkdown,
+          JSON.stringify(chunk.richContent.map((block) => ({ ...block, chunkSlug: existingChunk.slug }))),
+          JSON.stringify(chunk.links),
+          JSON.stringify(chunk.images),
+          existingChunk.id,
+        ).run();
+        updatedChunks.push(existingChunk.id);
+        chunksUpdated++;
+      }
+    }
+
+    await db.prepare(
+      `UPDATE chunks
+       SET enriched = 0, enrichment_version = 0
+       WHERE id IN (${updatedChunks.map(() => "?").join(",") || "0"})`
+    ).bind(...updatedChunks).run();
+
+    backfilledEpisodes.push({
+      id: existingEpisode.id,
+      slug: existingEpisode.slug,
+      title: episode.title,
+      chunks: chunkRows.results
+        .filter((row) => updatedChunks.includes(row.id))
+        .map((row) => ({ id: row.id, slug: row.slug, title: storedChunks[row.position].title, contentPlain: storedChunks[row.position].contentPlain })),
+      updatedChunks,
+    });
+    episodesUpdated++;
+  }
+
+  return { episodesUpdated, chunksUpdated, backfilledEpisodes };
 }
 
 /**

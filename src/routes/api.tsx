@@ -2,10 +2,11 @@ import { Hono } from "hono";
 import type { AppEnv } from "../types";
 import { fetchGoogleDoc } from "../crawler/fetch";
 import { parseHtmlDocument } from "../services/html-parser";
-import { ingestParsedEpisodes, enrichChunks, finalizeEnrichment, isEnrichmentComplete } from "../jobs/ingest";
+import { backfillExistingEpisodes, ingestParsedEpisodes, enrichChunks, finalizeEnrichment, isEnrichmentComplete } from "../jobs/ingest";
 import { createIngestionLog, completeIngestionLog, failIngestionLog } from "../db/ingestion";
 import { recordPipelineRun } from "../db/pipeline-metrics";
 import { ftsSearch } from "../services/search";
+import { enrichEpisodesWithLlm } from "../services/llm-ingest";
 import { parseSearchQuery } from "../lib/query-parser";
 import { keywordSearch } from "../db/search";
 import { safeParseInt, escapeLike } from "../lib/html";
@@ -165,6 +166,41 @@ api.get("/ingest", async (c) => {
       });
     }
     return c.json({ error: "Ingestion failed" }, 500); // S5: generic message
+  }
+});
+
+api.get("/backfill-source", async (c) => {
+  const denied = requireAuth(c);
+  if (denied) return denied;
+
+  const docId = c.req.query("doc") || "";
+  if (!docId) return c.json({ error: "doc is required" }, 400);
+
+  try {
+    const source = await c.env.DB.prepare("SELECT * FROM sources WHERE google_doc_id = ?").bind(docId).first<any>();
+    if (!source) return c.json({ error: "No source found" }, 404);
+
+    const fetched = await fetchGoogleDoc(source.google_doc_id);
+    await c.env.DB.prepare(
+      "UPDATE sources SET latest_html = ?, last_fetched_at = datetime('now') WHERE id = ?"
+    ).bind(fetched.html, source.id).run();
+
+    const episodes = parseHtmlDocument(fetched.html);
+    const backfilled = await backfillExistingEpisodes(c.env.DB, source.id, episodes);
+    if (backfilled.backfilledEpisodes.length > 0) {
+      await enrichEpisodesWithLlm(c.env, source.id, backfilled.backfilledEpisodes);
+    }
+
+    return c.json({
+      status: "ok",
+      source: source.title,
+      episodesUpdated: backfilled.episodesUpdated,
+      chunksUpdated: backfilled.chunksUpdated,
+      llmEpisodesUpdated: backfilled.backfilledEpisodes.length,
+    });
+  } catch (e) {
+    console.error("Backfill source error:", e);
+    return c.json({ error: "Backfill failed" }, 500);
   }
 });
 
