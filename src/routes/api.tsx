@@ -178,6 +178,7 @@ api.get("/backfill-source", async (c) => {
   const docId = c.req.query("doc") || "";
   const limit = safeParseInt(c.req.query("limit"), 0);
   const offset = safeParseInt(c.req.query("offset"), 0);
+  const runLlm = c.req.query("llm") !== "0";
   if (!docId) return c.json({ error: "doc is required" }, 400);
 
   try {
@@ -193,7 +194,7 @@ api.get("/backfill-source", async (c) => {
     const episodes = parseHtmlDocument(fetched.html);
     const windowedEpisodes = limit > 0 ? episodes.slice(offset, offset + limit) : episodes;
     const backfilled = await backfillExistingEpisodes(c.env.DB, source.id, windowedEpisodes);
-    if (backfilled.backfilledEpisodes.length > 0) {
+    if (runLlm && backfilled.backfilledEpisodes.length > 0) {
       await enrichEpisodesWithLlm(c.env, source.id, backfilled.backfilledEpisodes);
     }
 
@@ -204,9 +205,10 @@ api.get("/backfill-source", async (c) => {
       episodesProcessed: windowedEpisodes.length,
       offset,
       limit,
+      llmEnabled: runLlm,
       episodesUpdated: backfilled.episodesUpdated,
       chunksUpdated: backfilled.chunksUpdated,
-      llmEpisodesUpdated: backfilled.backfilledEpisodes.length,
+      llmEpisodesUpdated: runLlm ? backfilled.backfilledEpisodes.length : 0,
     });
   } catch (e) {
     console.error("Backfill source error:", e);
