@@ -9,6 +9,7 @@ describe("yake runtime switch", () => {
     expect(normalizeTopicExtractorMode("naive")).toBe("naive");
     expect(normalizeTopicExtractorMode("yaket")).toBe("yaket");
     expect(normalizeTopicExtractorMode("yaket_bobbin")).toBe("yaket_bobbin");
+    expect(normalizeTopicExtractorMode("episode_hybrid")).toBe("episode_hybrid");
     expect(normalizeTopicExtractorMode("something-else")).toBe("naive");
   });
 
@@ -16,8 +17,9 @@ describe("yake runtime switch", () => {
     const naive = extractRuntimeYakeKeywords(SAMPLE_TEXT, 5, 3, "naive");
     const yaket = extractRuntimeYakeKeywords(SAMPLE_TEXT, 5, 3, "yaket");
     const yaketBobbin = extractRuntimeYakeKeywords(SAMPLE_TEXT, 5, 3, "yaket_bobbin");
+    const episodeHybrid = extractRuntimeYakeKeywords(SAMPLE_TEXT, 5, 3, "episode_hybrid");
 
-    for (const resultSet of [naive, yaket, yaketBobbin]) {
+    for (const resultSet of [naive, yaket, yaketBobbin, episodeHybrid]) {
       expect(resultSet.length).toBeGreaterThan(0);
       expect(resultSet.length).toBeLessThanOrEqual(5);
       for (const keyword of resultSet) {
@@ -37,6 +39,12 @@ describe("yake runtime switch", () => {
   it("yaket_bobbin mode is deterministic for the same input", () => {
     const first = extractRuntimeYakeKeywords(SAMPLE_TEXT, 8, 3, "yaket_bobbin");
     const second = extractRuntimeYakeKeywords(SAMPLE_TEXT, 8, 3, "yaket_bobbin");
+    expect(second).toEqual(first);
+  });
+
+  it("episode_hybrid mode is deterministic for the same input", () => {
+    const first = extractRuntimeYakeKeywords(SAMPLE_TEXT, 8, 3, "episode_hybrid");
+    const second = extractRuntimeYakeKeywords(SAMPLE_TEXT, 8, 3, "episode_hybrid");
     expect(second).toEqual(first);
   });
 });

@@ -13,6 +13,7 @@
     "characterize:pipeline:naive": "node scripts/characterize-pipeline.mjs naive",
     "characterize:pipeline:yaket": "node scripts/characterize-pipeline.mjs yaket",
     "characterize:pipeline:yaket_bobbin": "node scripts/characterize-pipeline.mjs yaket_bobbin",
+    "characterize:pipeline:episode_hybrid": "node scripts/characterize-pipeline.mjs episode_hybrid",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "types": "wrangler types"

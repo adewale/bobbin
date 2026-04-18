@@ -72,7 +72,7 @@ describe.skipIf(!RUN_CHARACTERIZATION)("pipeline characterization", () => {
     const { characterizationSources } = await loadCharacterizationSources();
     const metrics = await runPipelineCharacterization(env.DB, characterizationSources, MODE);
 
-    expect(metrics.extractorMode).toBe(MODE === "yaket" || MODE === "yaket_bobbin" ? MODE : "naive");
+    expect(metrics.extractorMode).toBe(MODE === "yaket" || MODE === "yaket_bobbin" || MODE === "episode_hybrid" ? MODE : "naive");
     expect(metrics.sources).toBe(4);
     expect(metrics.episodes).toBe(80);
     expect(metrics.chunks).toBe(5771);

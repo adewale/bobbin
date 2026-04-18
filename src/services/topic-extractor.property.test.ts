@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import fc from "fast-check";
-import { extractCandidateDecisions, extractTopics, normalizeChunkText } from "./topic-extractor";
+import { extractCandidateDecisions, extractHeuristicPhraseCandidates, extractTopics, normalizeChunkText } from "./topic-extractor";
 import { STOPWORDS } from "../lib/text";
 
 describe("extractTopics properties", () => {
@@ -97,6 +97,21 @@ describe("extractTopics properties", () => {
           expect(acceptedNonEntities.length).toBeLessThanOrEqual(maxTopics);
         }
       )
+    );
+  });
+
+  it("heuristic phrase candidates never start or end with stopwords", () => {
+    fc.assert(
+      fc.property(fc.string({ minLength: 0, maxLength: 500 }), (text) => {
+        const candidates = extractHeuristicPhraseCandidates(normalizeChunkText(text), 1, 20);
+        for (const candidate of candidates) {
+          const words = candidate.normalizedCandidate.split(/\s+/).filter(Boolean);
+          if (words.length === 0) continue;
+          expect(STOPWORDS.has(words[0])).toBe(false);
+          expect(STOPWORDS.has(words[words.length - 1])).toBe(false);
+          expect(candidate.slug).toMatch(/^[a-z0-9-]+$/);
+        }
+      })
     );
   });
 });

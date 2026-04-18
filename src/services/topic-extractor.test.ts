@@ -3,6 +3,7 @@ import {
   buildPhraseLexicon,
   canonicalizeTopicCandidate,
   extractCandidateDecisions,
+  extractHeuristicPhraseCandidates,
   extractTopics,
   rejectTopicCandidate,
   normalizeChunkText,
@@ -141,5 +142,18 @@ describe("candidate pipeline hardening", () => {
     expect(claudeEntries).toHaveLength(1);
     expect(claudeEntries[0].normalizedName).toBe("claude code");
     expect(claudeEntries[0].qualityScore).toBeGreaterThan(0);
+  });
+
+  it("extracts noun-phrase style candidates without stopword-bounded fragments", () => {
+    const candidates = extractHeuristicPhraseCandidates(
+      normalizeChunkText("Prompt injection attack is a real security issue in large language model systems. The vast majority of users ignore disconfirming evidence."),
+      1,
+      10,
+    );
+
+    const names = candidates.map((candidate: { normalizedCandidate: string }) => candidate.normalizedCandidate);
+    expect(names).toContain("prompt injection attack");
+    expect(names).not.toContain("vast majority");
+    expect(names).not.toContain("the vast majority");
   });
 });

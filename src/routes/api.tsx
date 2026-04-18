@@ -99,6 +99,9 @@ api.get("/ingest", async (c) => {
     sourceForLog = source as { id: number; title: string; google_doc_id: string };
     logId = await createIngestionLog(c.env.DB, source.id, "manual_ingest");
     const fetched = await fetchGoogleDoc(source.google_doc_id);
+    await c.env.DB.prepare(
+      "UPDATE sources SET latest_html = ? WHERE id = ?"
+    ).bind(fetched.html, source.id).run();
     const allEpisodes = parseHtmlDocument(fetched.html);
 
     const existing = await c.env.DB.prepare(

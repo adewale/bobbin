@@ -36,6 +36,26 @@ describe("parseHtmlDocument", () => {
     expect(firstChunk.contentPlain).toContain("latter");
   });
 
+  it("preserves rich links with resolved hrefs", () => {
+    const chunkWithLink = episodes.flatMap((ep) => ep.chunks).find((chunk) => chunk.links.length > 0);
+    expect(chunkWithLink).toBeDefined();
+    expect(chunkWithLink!.links[0].href.startsWith("http")).toBe(true);
+    expect(chunkWithLink!.links[0].href).not.toContain("google.com/url?");
+  });
+
+  it("preserves rich formatting and nesting metadata", () => {
+    const firstChunk = episodes[0].chunks[0];
+    expect(firstChunk.richContent.length).toBeGreaterThan(0);
+    expect(firstChunk.richContent[0].depth).toBe(0);
+    expect(firstChunk.richContent.some((block) => block.depth > 0)).toBe(true);
+  });
+
+  it("derives markdown for chunks", () => {
+    const firstChunk = episodes[0].chunks[0];
+    expect(firstChunk.contentMarkdown.length).toBeGreaterThan(10);
+    expect(firstChunk.contentMarkdown).toContain("- ");
+  });
+
   it("generates meaningful titles from main chunk text", () => {
     const title = episodes[0].chunks[0].title;
     expect(title.length).toBeGreaterThan(5);

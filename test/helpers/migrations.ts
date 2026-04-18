@@ -1,4 +1,7 @@
 const DROPS = [
+  "DROP TABLE IF EXISTS llm_episode_candidate_evidence",
+  "DROP TABLE IF EXISTS llm_episode_candidates",
+  "DROP TABLE IF EXISTS llm_enrichment_runs",
   "DROP TABLE IF EXISTS pipeline_stage_metrics",
   "DROP TABLE IF EXISTS pipeline_runs",
   "DROP TABLE IF EXISTS topic_lineage_archive",
@@ -24,6 +27,7 @@ const CREATES = [
     last_fetched_at TEXT,
     last_revision_id TEXT,
     is_archive INTEGER NOT NULL DEFAULT 0,
+    latest_html TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   )`,
   `CREATE TABLE episodes (
@@ -38,6 +42,9 @@ const CREATES = [
     summary TEXT,
     chunk_count INTEGER NOT NULL DEFAULT 0,
     format TEXT NOT NULL DEFAULT 'notes',
+    content_markdown TEXT,
+    rich_content_json TEXT,
+    links_json TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   )`,
@@ -52,6 +59,10 @@ const CREATES = [
     position INTEGER NOT NULL DEFAULT 0,
     word_count INTEGER NOT NULL DEFAULT 0,
     vector_id TEXT,
+    content_markdown TEXT,
+    rich_content_json TEXT,
+    links_json TEXT,
+    images_json TEXT,
     reach INTEGER NOT NULL DEFAULT 0,
     analysis_text TEXT,
     normalization_version INTEGER NOT NULL DEFAULT 0,
@@ -166,6 +177,38 @@ const CREATES = [
     error_message TEXT,
     pipeline_report TEXT
   )`,
+  `CREATE TABLE llm_enrichment_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_id INTEGER REFERENCES sources(id),
+    episode_id INTEGER REFERENCES episodes(id) ON DELETE CASCADE,
+    extractor_model TEXT NOT NULL,
+    prompt_version TEXT NOT NULL,
+    schema_version TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'completed',
+    raw_response_json TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  )`,
+  `CREATE TABLE llm_episode_candidates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id INTEGER NOT NULL REFERENCES llm_enrichment_runs(id) ON DELETE CASCADE,
+    episode_id INTEGER NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
+    candidate_name TEXT NOT NULL,
+    normalized_name TEXT NOT NULL,
+    slug TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    confidence REAL NOT NULL DEFAULT 0,
+    rank_position INTEGER NOT NULL DEFAULT 0,
+    aliases_json TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  )`,
+  `CREATE TABLE llm_episode_candidate_evidence (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    candidate_id INTEGER NOT NULL REFERENCES llm_episode_candidates(id) ON DELETE CASCADE,
+    chunk_id INTEGER NOT NULL REFERENCES chunks(id) ON DELETE CASCADE,
+    chunk_slug TEXT NOT NULL,
+    quote TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  )`,
   `CREATE TABLE pipeline_runs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ingestion_log_id INTEGER REFERENCES ingestion_log(id) ON DELETE CASCADE,
@@ -218,6 +261,9 @@ const CREATES = [
   "CREATE INDEX IF NOT EXISTS idx_topic_merge_audit_to_topic ON topic_merge_audit(to_topic_id)",
   "CREATE INDEX IF NOT EXISTS idx_topic_lineage_archive_original ON topic_lineage_archive(original_topic_id)",
   "CREATE INDEX IF NOT EXISTS idx_topic_lineage_archive_compact_key ON topic_lineage_archive(slug, archive_reason, merge_stage, merged_to_topic_id)",
+  "CREATE INDEX IF NOT EXISTS idx_llm_enrichment_runs_episode ON llm_enrichment_runs(episode_id, created_at DESC)",
+  "CREATE INDEX IF NOT EXISTS idx_llm_episode_candidates_episode_slug ON llm_episode_candidates(episode_id, slug)",
+  "CREATE INDEX IF NOT EXISTS idx_llm_episode_candidate_evidence_candidate ON llm_episode_candidate_evidence(candidate_id)",
   "CREATE INDEX IF NOT EXISTS idx_pipeline_runs_created_at ON pipeline_runs(created_at DESC)",
   "CREATE INDEX IF NOT EXISTS idx_pipeline_runs_run_type ON pipeline_runs(run_type, created_at DESC)",
   "CREATE INDEX IF NOT EXISTS idx_pipeline_stage_metrics_run ON pipeline_stage_metrics(pipeline_run_id, phase, stage_order)",

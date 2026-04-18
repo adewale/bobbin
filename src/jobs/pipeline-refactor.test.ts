@@ -159,4 +159,90 @@ describe("chunk-local pipeline artifacts", () => {
     ).all<{ slug: string }>();
     expect(links.results.map((row) => row.slug)).toEqual(["ep1-1", "ep1-2", "ep2-1", "ep2-2"]);
   });
+
+  it("episode_hybrid attributes episode-level phrase candidates only to matching chunks", async () => {
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO chunks (episode_id, slug, title, content, content_plain, position)
+         VALUES (1, 'hybrid-1', 'Hybrid 1', 'Prompt injection attack is a real security issue in agent systems.', 'Prompt injection attack is a real security issue in agent systems.', 0)`
+      ),
+      env.DB.prepare(
+        `INSERT INTO chunks (episode_id, slug, title, content, content_plain, position)
+         VALUES (1, 'hybrid-2', 'Hybrid 2', 'Teams keep discussing prompt injection attack in production.', 'Teams keep discussing prompt injection attack in production.', 1)`
+      ),
+      env.DB.prepare(
+        `INSERT INTO chunks (episode_id, slug, title, content, content_plain, position)
+         VALUES (1, 'hybrid-3', 'Hybrid 3', 'This chunk is about business models instead.', 'This chunk is about business models instead.', 2)`
+      ),
+      env.DB.prepare(
+        `INSERT INTO chunks (episode_id, slug, title, content, content_plain, position)
+         VALUES (2, 'hybrid-4', 'Hybrid 4', 'Another prompt injection attack appears in this episode.', 'Another prompt injection attack appears in this episode.', 0)`
+      ),
+      env.DB.prepare(
+        `INSERT INTO chunks (episode_id, slug, title, content, content_plain, position)
+         VALUES (2, 'hybrid-5', 'Hybrid 5', 'Prompt injection attack remains a serious security issue.', 'Prompt injection attack remains a serious security issue.', 1)`
+      ),
+      env.DB.prepare(
+        `INSERT INTO chunks (episode_id, slug, title, content, content_plain, position)
+         VALUES (2, 'hybrid-6', 'Hybrid 6', 'This one only mentions vibe coding.', 'This one only mentions vibe coding.', 2)`
+      ),
+    ]);
+
+    await enrichChunks(env.DB, 100, "episode_hybrid");
+
+    const phraseTopic = await env.DB.prepare(
+      "SELECT kind FROM topics WHERE slug = 'prompt-injection-attack'"
+    ).first<{ kind: string }>();
+    expect(phraseTopic).not.toBeNull();
+
+    const linkedChunks = await env.DB.prepare(
+      `SELECT c.slug
+       FROM chunk_topics ct
+       JOIN chunks c ON c.id = ct.chunk_id
+       JOIN topics t ON t.id = ct.topic_id
+       WHERE t.slug = 'prompt-injection-attack'
+       ORDER BY c.slug`
+    ).all<{ slug: string }>();
+
+    expect(linkedChunks.results.map((row) => row.slug)).toEqual([
+      "hybrid-1",
+      "hybrid-2",
+      "hybrid-4",
+      "hybrid-5",
+    ]);
+    expect(linkedChunks.results.map((row) => row.slug)).not.toContain("hybrid-3");
+    expect(linkedChunks.results.map((row) => row.slug)).not.toContain("hybrid-6");
+  });
+
+  it("episode_hybrid preserves known entities as entities while using episode-level phrase generation", async () => {
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO chunks (episode_id, slug, title, content, content_plain, position)
+         VALUES (1, 'entity-hybrid-1', 'Entity Hybrid 1', 'OpenAI and Claude Code shipped updates for llms.', 'OpenAI and Claude Code shipped updates for llms.', 0)`
+      ),
+      env.DB.prepare(
+        `INSERT INTO chunks (episode_id, slug, title, content, content_plain, position)
+         VALUES (1, 'entity-hybrid-2', 'Entity Hybrid 2', 'Claude Code still helps teams use llms safely.', 'Claude Code still helps teams use llms safely.', 1)`
+      ),
+      env.DB.prepare(
+        `INSERT INTO chunks (episode_id, slug, title, content, content_plain, position)
+         VALUES (2, 'entity-hybrid-3', 'Entity Hybrid 3', 'OpenAI keeps changing how teams work with llms.', 'OpenAI keeps changing how teams work with llms.', 0)`
+      ),
+      env.DB.prepare(
+        `INSERT INTO chunks (episode_id, slug, title, content, content_plain, position)
+         VALUES (2, 'entity-hybrid-4', 'Entity Hybrid 4', 'Claude Code and OpenAI both appear in this episode.', 'Claude Code and OpenAI both appear in this episode.', 1)`
+      ),
+    ]);
+
+    await enrichChunks(env.DB, 100, "episode_hybrid");
+
+    const entityKinds = await env.DB.prepare(
+      "SELECT slug, kind FROM topics WHERE slug IN ('openai', 'claude-code') ORDER BY slug"
+    ).all<{ slug: string; kind: string }>();
+
+    expect(entityKinds.results).toEqual([
+      { slug: 'claude-code', kind: 'entity' },
+      { slug: 'openai', kind: 'entity' },
+    ]);
+  });
 });

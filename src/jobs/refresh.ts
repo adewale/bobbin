@@ -1,6 +1,7 @@
 import { fetchGoogleDoc } from "../crawler/fetch";
 import { parseHtmlDocument } from "../services/html-parser";
 import { ingestEpisodesOnly, enrichAllChunks, finalizeEnrichment, type ProcessChunkBatchResult, type FinalizeResult } from "./ingest";
+import { enrichEpisodesWithLlm } from "../services/llm-ingest";
 import { ensureSource, getSourceByDocId, updateSourceFetchedAt } from "../db/sources";
 import { createIngestionLog, completeIngestionLog, failIngestionLog } from "../db/ingestion";
 import { recordPipelineRun } from "../db/pipeline-metrics";
@@ -82,6 +83,9 @@ export async function runRefresh(env: Bindings): Promise<RefreshEvent> {
     currentStep = "fetch";
     const fetchStart = Date.now();
     const fetched = await fetchGoogleDoc(source.google_doc_id);
+    await env.DB.prepare(
+      "UPDATE sources SET latest_html = ? WHERE id = ?"
+    ).bind(fetched.html, source.id).run();
     event.fetch_ms = elapsed(fetchStart);
 
     // --- Parse ---
@@ -99,6 +103,11 @@ export async function runRefresh(env: Bindings): Promise<RefreshEvent> {
     event.ingest_ms = elapsed(ingestStart);
     event.new_episodes = result.episodesAdded;
     event.new_chunks = result.chunksAdded;
+
+    currentStep = "llm_enrich";
+    if (result.insertedEpisodes.length > 0) {
+      await enrichEpisodesWithLlm(env, source.id, result.insertedEpisodes);
+    }
 
     // --- Enrich (only if new chunks, or unenriched chunks exist) ---
     currentStep = "enrich";

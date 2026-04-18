@@ -38,6 +38,7 @@ const ENTITY_SKIP = new Set([
 const SOURCE_PRIORITY: Record<CandidateSource, number> = {
   known_entity: 4,
   phrase_lexicon: 3,
+  episode_phrase_heuristic: 3,
   heuristic_entity: 2,
   yake: 1,
 };
@@ -54,7 +55,7 @@ export interface CorpusStats {
   docFreq: Map<string, number>;
 }
 
-export type CandidateSource = "known_entity" | "heuristic_entity" | "phrase_lexicon" | "yake";
+export type CandidateSource = "known_entity" | "heuristic_entity" | "phrase_lexicon" | "yake" | "episode_phrase_heuristic";
 
 export interface TopicCandidate {
   chunkId: number;
@@ -362,6 +363,99 @@ function extractPhraseLexiconCandidates(
   return results;
 }
 
+const PHRASE_BREAK_TOKENS = new Set([...STOPWORDS, "bits", "bobs", "really", "actually", "basically"]);
+const GENERIC_PHRASE_STARTS = new Set(["real", "large", "good", "new", "old", "different", "important", "great", "vast", "more"]);
+
+function tokenizeWithStopwords(normalizedText: string): string[] {
+  return normalizedText
+    .toLowerCase()
+    .replace(/[^a-z0-9\s'-]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+function segmentContentTokens(tokens: string[]): string[][] {
+  const segments: string[][] = [];
+  let current: string[] = [];
+  for (const token of tokens) {
+    if (PHRASE_BREAK_TOKENS.has(token)) {
+      if (current.length > 0) segments.push(current);
+      current = [];
+      continue;
+    }
+    current.push(token);
+  }
+  if (current.length > 0) segments.push(current);
+  return segments;
+}
+
+function isGenericPhrase(candidate: string): boolean {
+  return [
+    "vast majority",
+    "huge amount",
+    "excellent piece",
+    "let alone",
+    "dead end",
+  ].includes(candidate);
+}
+
+function scorePhraseShape(words: string[], occurrences: number): number {
+  let score = occurrences * 5;
+  if (words.length === 2) score += 5;
+  if (words.length === 3) score += 5;
+  if (words.length === 4) score += 2;
+
+  const first = words[0];
+  const last = words[words.length - 1];
+  if (GENERIC_PHRASE_STARTS.has(first)) score -= 4;
+  if (/(ing|ed|ly)$/.test(first)) score -= 1;
+  if (/(ing|ed|ly)$/.test(last)) score -= 2;
+  if (/(ion|ment|ness|ity|ship|ware|code|model|attack|labor|evidence|industry|software|tool|system|issue|law|effect|models|systems)$/.test(last)) score += 2;
+  if (words.some((word) => word.length < 4)) score -= 1;
+
+  return score;
+}
+
+export function extractHeuristicPhraseCandidates(
+  artifact: ChunkTextArtifact,
+  chunkId: number,
+  maxCandidates: number = 8,
+): TopicCandidate[] {
+  const segments = segmentContentTokens(tokenizeWithStopwords(artifact.normalizedText));
+  const stats = new Map<string, { occurrences: number; words: string[] }>();
+
+  for (const segment of segments) {
+    for (let start = 0; start < segment.length; start++) {
+      for (let length = 2; length <= 4 && start + length <= segment.length; length++) {
+        const words = segment.slice(start, start + length);
+        if (words.some((word) => word.length < 4)) continue;
+        if (GENERIC_PHRASE_STARTS.has(words[0]) && words.length >= 3) continue;
+        const phrase = words.join(" ");
+        if (isGenericPhrase(phrase)) continue;
+        const current = stats.get(phrase) || { occurrences: 0, words };
+        current.occurrences += 1;
+        stats.set(phrase, current);
+      }
+    }
+  }
+
+  return [...stats.entries()]
+    .map(([phrase, info]) => ({
+      chunkId,
+      source: "episode_phrase_heuristic" as const,
+      rawCandidate: phrase,
+      normalizedCandidate: phrase,
+      name: phrase,
+      slug: slugify(phrase),
+      score: scorePhraseShape(info.words, info.occurrences),
+      kind: "phrase" as const,
+      provenance: [`phrase_occurrences:${info.occurrences}`, `phrase_length:${info.words.length}`],
+    }))
+    .filter((candidate) => candidate.slug.length >= 3)
+    .sort((left, right) => right.score - left.score || right.normalizedCandidate.length - left.normalizedCandidate.length)
+    .slice(0, maxCandidates);
+}
+
 function extractYakeCandidates(
   artifact: ChunkTextArtifact,
   chunkId: number,
@@ -530,6 +624,14 @@ export function extractCandidateDecisions(
   extractorMode: TopicExtractorMode = "naive"
 ): CandidateDecision[] {
   const rawCandidates = extractTopicCandidates(artifact, chunkId, maxTopics, phraseLexicon, extractorMode);
+
+  return decideCandidateDecisions(rawCandidates, maxTopics);
+}
+
+export function decideCandidateDecisions(
+  rawCandidates: TopicCandidate[],
+  maxTopics: number = 5,
+): CandidateDecision[] {
 
   const initialDecisions: CandidateDecision[] = rawCandidates.map((candidate) => {
     const rejectionReason = rejectTopicCandidate(candidate);

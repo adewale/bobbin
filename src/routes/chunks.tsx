@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { AppEnv } from "../types";
 import { Layout } from "../components/Layout";
 import { Breadcrumbs } from "../components/Breadcrumbs";
+import { RichContent, parseRichContentJson } from "../components/RichContent";
 import { getCrossReferences } from "../services/cross-refs";
 import { safeJsonForHtml } from "../lib/html";
 import { getChunkBySlug, getChunkTopics, getRelatedByTopics, getThreadChunks, getAdjacentChunks } from "../db/chunks";
@@ -42,6 +43,7 @@ chunks.get("/:slug", async (c) => {
 
   const prevChunk = adjacentResult.prev;
   const nextChunk = adjacentResult.next;
+  const richBlocks = parseRichContentJson(chunk.rich_content_json);
   const paragraphs = chunk.content.split("\n").filter((line, i) => {
     if (i === 0 && line.trim() === chunk.title.trim()) return false;
     return line.trim();
@@ -101,7 +103,19 @@ chunks.get("/:slug", async (c) => {
           )}
 
           <div class="chunk-content">
-            {paragraphs.map((para, i) => (
+            {richBlocks.length > 0 ? (
+              <div class="para-with-margin">
+                <RichContent blocks={richBlocks} />
+                {relatedItems[0]?.slug && (
+                  <aside class="margin-note">
+                    <a href={`/chunks/${relatedItems[0].slug}`}>
+                      {relatedItems[0].title}
+                    </a>
+                    <time>{relatedItems[0].rel_date}</time>
+                  </aside>
+                )}
+              </div>
+            ) : paragraphs.map((para, i) => (
               <div key={i} class="para-with-margin">
                 <p>{para}</p>
                 {relatedItems[i]?.slug && (
@@ -114,7 +128,7 @@ chunks.get("/:slug", async (c) => {
                 )}
               </div>
             ))}
-            {paragraphs.length > 0 && relatedItems.slice(paragraphs.length).filter((r: any) => r.slug).map((r: any) => (
+            {(richBlocks.length > 0 ? relatedItems.slice(1) : relatedItems.slice(paragraphs.length)).filter((r: any) => r.slug).map((r: any) => (
               <aside key={r.id} class="margin-note margin-note-trailing">
                 <a href={`/chunks/${r.slug}`}>{r.title}</a>
                 <time>{r.rel_date}</time>

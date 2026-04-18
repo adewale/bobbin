@@ -4,11 +4,11 @@ import { join } from "node:path";
 import { spawn } from "node:child_process";
 
 const requestedMode = process.argv[2];
-const mode = requestedMode === "yaket" || requestedMode === "yaket_bobbin" ? requestedMode : "naive";
-const port = mode === "naive" ? 8795 : mode === "yaket" ? 8796 : 8797;
+const mode = requestedMode === "yaket" || requestedMode === "yaket_bobbin" || requestedMode === "episode_hybrid" ? requestedMode : "naive";
+const port = mode === "naive" ? 8795 : mode === "yaket" ? 8796 : mode === "yaket_bobbin" ? 8797 : 8798;
 const adminSecret = "characterize-secret";
 const stateDir = mkdtempSync(join(tmpdir(), `bobbin-characterize-${mode}-`));
-const batchLimit = mode === "naive" ? 100 : 10;
+const batchLimit = mode === "naive" ? 100 : mode === "episode_hybrid" ? 50 : 10;
 
 const docs = [
   "1IPwKwmEgrL6R2lVe9IaPIu0sPB4O_ZNy8ZA0N0W3yw0",
@@ -48,7 +48,7 @@ async function runJson(command, args) {
   return JSON.parse(stdout);
 }
 
-async function waitForServer(url, headers) {
+async function waitForServer(url, headers, getLog) {
   for (let i = 0; i < 40; i++) {
     try {
       const res = await fetch(url, { headers });
@@ -56,7 +56,8 @@ async function waitForServer(url, headers) {
     } catch {}
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
-  throw new Error(`Timed out waiting for ${url}`);
+  const devLog = typeof getLog === "function" ? getLog() : "";
+  throw new Error(`Timed out waiting for ${url}\n\nDEV LOG:\n${devLog.slice(-12000)}`);
 }
 
 async function main() {
@@ -124,7 +125,7 @@ async function main() {
 
     await waitForServer(`http://127.0.0.1:${port}/api/health`, {
       Authorization: `Bearer ${adminSecret}`,
-    });
+    }, () => devLog);
 
     const ingestResults = [];
     for (const docId of ingestDocs) {

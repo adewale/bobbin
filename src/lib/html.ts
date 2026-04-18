@@ -14,6 +14,20 @@ export function decodeHtmlEntities(html: string): string {
     .replace(/[\u201C\u201D\u201E]/g, '"');
 }
 
+export function resolveGoogleRedirectUrl(rawHref: string): string {
+  const decoded = decodeHtmlEntities(rawHref);
+  try {
+    const url = new URL(decoded);
+    if (url.hostname === "www.google.com" && url.pathname === "/url") {
+      const target = url.searchParams.get("q");
+      return target ? decodeURIComponent(target) : decoded;
+    }
+    return decoded;
+  } catch {
+    return decoded;
+  }
+}
+
 /**
  * Escape a string for safe embedding in a JSON <script> block.
  * Prevents </script> breakout (S4).

@@ -151,3 +151,9 @@ or cron.
 
 Bobbin's runtime-switchable Yaket integration and Bobbin-specific tuning profile
 are documented in [yaket-bobbin-tuning.md](./yaket-bobbin-tuning.md).
+
+The planned LLM-at-ingest architecture is documented in
+[llm-ingest-plan.md](./llm-ingest-plan.md).
+
+Source-fidelity preservation for links, formatting, and nesting is documented in
+[source-fidelity-plan.md](./source-fidelity-plan.md).

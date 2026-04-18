@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { AppEnv, EpisodeRow, ChunkRow, TopicRow } from "../types";
 import { Layout } from "../components/Layout";
 import { Breadcrumbs } from "../components/Breadcrumbs";
+import { RichContent, parseRichContentJson } from "../components/RichContent";
 import { monthName } from "../lib/date";
 import { getAllEpisodesGrouped, getEpisodeBySlug, getChunksByEpisode, getEpisodeTopicsBlended, getAdjacentEpisodes } from "../db/episodes";
 import { getTrendingTopicsForEpisode } from "../db/topics";
@@ -117,12 +118,16 @@ episodes.get("/:slug", async (c) => {
               <article key={chunk.id} class="essay" id={chunk.slug}>
                 <h2><a href={`/chunks/${chunk.slug}`}>{chunk.title}</a></h2>
                 <div class="essay-content">
-                  {chunk.content.split("\n").filter((line, i) => {
-                    if (i === 0 && line.trim() === chunk.title.trim()) return false;
-                    return true;
-                  }).map((line, i) => (
-                    line.trim() ? <p key={i}>{line}</p> : null
-                  ))}
+                  {parseRichContentJson(chunk.rich_content_json).length > 0 ? (
+                    <RichContent blocks={parseRichContentJson(chunk.rich_content_json)} />
+                  ) : (
+                    chunk.content.split("\n").filter((line, i) => {
+                      if (i === 0 && line.trim() === chunk.title.trim()) return false;
+                      return true;
+                    }).map((line, i) => (
+                      line.trim() ? <p key={i}>{line}</p> : null
+                    ))
+                  )}
                 </div>
               </article>
             ))}
@@ -130,11 +135,12 @@ episodes.get("/:slug", async (c) => {
         ) : (
           <div class="episode-chunks">
             {chunksList.map((chunk, idx) => {
+              const richBlocks = parseRichContentJson(chunk.rich_content_json);
               const bodyLines = chunk.content.split("\n").filter((line, i) => {
                 if (i === 0 && line.trim() === chunk.title.trim()) return false;
                 return line.trim();
               });
-              const hasBody = bodyLines.length > 0;
+              const hasBody = richBlocks.length > 0 || bodyLines.length > 0;
 
               return hasBody ? (
                 <details key={chunk.id} class="chunk-row">
@@ -143,7 +149,9 @@ episodes.get("/:slug", async (c) => {
                     <span class="chunk-title">{chunk.title}</span>
                   </summary>
                   <div class="chunk-body">
-                    {bodyLines.map((line, i) => (
+                    {richBlocks.length > 0 ? (
+                      <RichContent blocks={richBlocks} />
+                    ) : bodyLines.map((line, i) => (
                       <p key={i}>{line}</p>
                     ))}
                   </div>

@@ -10,7 +10,7 @@ exports[`HTML parser golden file: essays format > full parse snapshot is stable 
       2,
     ],
     "chunkTitles": [
-      "As a software provider, are you selling the software, or the thing the software accomplishes ?",
+      "As a software provider, are you selling the software, or the thing the software accomplishes?",
       "Improving the software production cycle with LLMs is like trying to add a new room to a house that is on fire.",
       "When trying to grab people's attention with your writing, you have to stand out from the average.",
     ],

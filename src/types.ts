@@ -4,7 +4,7 @@ export type Bindings = {
   AI: Ai;
   ADMIN_SECRET: string;
   ENRICHMENT_QUEUE: Queue;
-  TOPIC_EXTRACTOR_MODE?: "naive" | "yaket" | "yaket_bobbin";
+  TOPIC_EXTRACTOR_MODE?: "naive" | "yaket" | "yaket_bobbin" | "episode_hybrid";
 };
 
 export type AppEnv = {
@@ -19,6 +19,7 @@ export interface SourceRow {
   last_fetched_at: string | null;
   last_revision_id: string | null;
   is_archive: number;
+  latest_html: string | null;
   created_at: string;
 }
 
@@ -34,6 +35,9 @@ export interface EpisodeRow {
   summary: string | null;
   chunk_count: number;
   format: "essays" | "notes";
+  content_markdown: string | null;
+  rich_content_json: string | null;
+  links_json: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -49,6 +53,10 @@ export interface ChunkRow {
   position: number;
   word_count: number;
   vector_id: string | null;
+  content_markdown: string | null;
+  rich_content_json: string | null;
+  links_json: string | null;
+  images_json: string | null;
   analysis_text: string | null;
   normalization_version: number;
   normalization_warnings: string | null;
@@ -111,6 +119,10 @@ export interface ParsedEpisode {
   title: string;
   headingId: string;
   format: "essays" | "notes";
+  contentMarkdown: string;
+  richContent: RichBlock[];
+  links: RichLink[];
+  images: RichImage[];
   chunks: ParsedChunk[];
 }
 
@@ -118,6 +130,44 @@ export interface ParsedChunk {
   title: string;
   content: string;
   contentPlain: string;
+  contentMarkdown: string;
+  richContent: RichBlock[];
+  links: RichLink[];
+  images: RichImage[];
   headingId: string;
   position: number;
+}
+
+export interface RichLink {
+  text: string;
+  href: string;
+}
+
+export interface RichImage {
+  src: string;
+  alt: string;
+}
+
+export interface RichTextNode {
+  type: "text" | "image" | "break";
+  text?: string;
+  href?: string;
+  src?: string;
+  alt?: string;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  strikethrough?: boolean;
+  superscript?: boolean;
+}
+
+export interface RichBlock {
+  type: "list_item" | "separator";
+  depth: number;
+  listStyle?: string | null;
+  plainText: string;
+  nodes: RichTextNode[];
+  chunkSlug?: string;
+  chunkTitle?: string;
+  chunkPosition?: number;
 }

@@ -18,7 +18,7 @@ import { normalizeChunkText, tokenizeNormalizedText } from "./analysis-text";
 import { extractYakeKeywords as extractNaiveYakeKeywords } from "./yake";
 import { isNoiseTopic, isWeakSingletonTopic } from "./topic-quality";
 
-export type TopicExtractorMode = "naive" | "yaket" | "yaket_bobbin";
+export type TopicExtractorMode = "naive" | "yaket" | "yaket_bobbin" | "episode_hybrid";
 
 export interface YakeKeywordResult {
   keyword: string;
@@ -202,7 +202,7 @@ function createBobbinYaketExtractor(): KeywordExtractor {
 }
 
 function getCachedExtractor(mode: TopicExtractorMode): KeywordExtractor | null {
-  if (mode !== "yaket_bobbin") return null;
+  if (mode !== "yaket_bobbin" && mode !== "episode_hybrid") return null;
   const existing = extractorCache.get(mode);
   if (existing) return existing;
   const created = createBobbinYaketExtractor();
@@ -211,7 +211,7 @@ function getCachedExtractor(mode: TopicExtractorMode): KeywordExtractor | null {
 }
 
 export function normalizeTopicExtractorMode(mode?: string | null): TopicExtractorMode {
-  if (mode === "yaket" || mode === "yaket_bobbin") return mode;
+  if (mode === "yaket" || mode === "yaket_bobbin" || mode === "episode_hybrid") return mode;
   return "naive";
 }
 
