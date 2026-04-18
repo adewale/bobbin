@@ -7,6 +7,7 @@ import { createIngestionLog, completeIngestionLog, failIngestionLog } from "../d
 import { recordPipelineRun } from "../db/pipeline-metrics";
 import { ftsSearch } from "../services/search";
 import { enrichEpisodesWithLlm } from "../services/llm-ingest";
+import { persistSourceHtmlChunks } from "../db/artifacts";
 import { parseSearchQuery } from "../lib/query-parser";
 import { keywordSearch } from "../db/search";
 import { safeParseInt, escapeLike } from "../lib/html";
@@ -101,8 +102,9 @@ api.get("/ingest", async (c) => {
     logId = await createIngestionLog(c.env.DB, source.id, "manual_ingest");
     const fetched = await fetchGoogleDoc(source.google_doc_id);
     await c.env.DB.prepare(
-      "UPDATE sources SET latest_html = ? WHERE id = ?"
-    ).bind(fetched.html, source.id).run();
+      "UPDATE sources SET latest_html = NULL WHERE id = ?"
+    ).bind(source.id).run();
+    await persistSourceHtmlChunks(c.env.DB, source.id, fetched.html, fetched.fetchedAt);
     const allEpisodes = parseHtmlDocument(fetched.html);
 
     const existing = await c.env.DB.prepare(
@@ -182,8 +184,9 @@ api.get("/backfill-source", async (c) => {
 
     const fetched = await fetchGoogleDoc(source.google_doc_id);
     await c.env.DB.prepare(
-      "UPDATE sources SET latest_html = ?, last_fetched_at = datetime('now') WHERE id = ?"
-    ).bind(fetched.html, source.id).run();
+      "UPDATE sources SET latest_html = NULL, last_fetched_at = datetime('now') WHERE id = ?"
+    ).bind(source.id).run();
+    await persistSourceHtmlChunks(c.env.DB, source.id, fetched.html, fetched.fetchedAt);
 
     const episodes = parseHtmlDocument(fetched.html);
     const backfilled = await backfillExistingEpisodes(c.env.DB, source.id, episodes);

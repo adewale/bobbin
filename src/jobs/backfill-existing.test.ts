@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { applyTestMigrations } from "../../test/helpers/migrations";
 import { env } from "cloudflare:test";
 import { parseHtmlDocument } from "../services/html-parser";
+import { loadEpisodeArtifact } from "../db/artifacts";
 import { backfillExistingEpisodes, ingestEpisodesOnly } from "./ingest";
 import sampleHtml from "../../test/fixtures/sample-mobilebasic.html?raw";
 
@@ -20,11 +21,8 @@ describe("backfillExistingEpisodes", () => {
     expect(backfill.episodesUpdated).toBe(3);
     expect(backfill.chunksUpdated).toBeGreaterThan(0);
 
-    const episode = await env.DB.prepare(
-      "SELECT content_markdown, rich_content_json, links_json FROM episodes ORDER BY id LIMIT 1"
-    ).first<{ content_markdown: string | null; rich_content_json: string | null; links_json: string | null }>();
-    expect(episode?.content_markdown).toBeTruthy();
-    expect(episode?.rich_content_json).toBeTruthy();
+    expect(await loadEpisodeArtifact(env.DB, 1, "content_markdown")).toBeTruthy();
+    expect(await loadEpisodeArtifact(env.DB, 1, "rich_content_json")).toBeTruthy();
 
     const chunk = await env.DB.prepare(
       "SELECT content_markdown, rich_content_json, links_json, images_json, enriched, enrichment_version FROM chunks ORDER BY id LIMIT 1"

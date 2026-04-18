@@ -1,4 +1,6 @@
 const DROPS = [
+  "DROP TABLE IF EXISTS episode_artifact_chunks",
+  "DROP TABLE IF EXISTS source_html_chunks",
   "DROP TABLE IF EXISTS llm_episode_candidate_evidence",
   "DROP TABLE IF EXISTS llm_episode_candidates",
   "DROP TABLE IF EXISTS llm_enrichment_runs",
@@ -209,6 +211,20 @@ const CREATES = [
     quote TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   )`,
+  `CREATE TABLE source_html_chunks (
+    source_id INTEGER NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+    chunk_index INTEGER NOT NULL,
+    fetched_at TEXT NOT NULL,
+    html_chunk TEXT NOT NULL,
+    PRIMARY KEY (source_id, chunk_index)
+  )`,
+  `CREATE TABLE episode_artifact_chunks (
+    episode_id INTEGER NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
+    artifact_key TEXT NOT NULL,
+    chunk_index INTEGER NOT NULL,
+    content_chunk TEXT NOT NULL,
+    PRIMARY KEY (episode_id, artifact_key, chunk_index)
+  )`,
   `CREATE TABLE pipeline_runs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ingestion_log_id INTEGER REFERENCES ingestion_log(id) ON DELETE CASCADE,
@@ -264,6 +280,8 @@ const CREATES = [
   "CREATE INDEX IF NOT EXISTS idx_llm_enrichment_runs_episode ON llm_enrichment_runs(episode_id, created_at DESC)",
   "CREATE INDEX IF NOT EXISTS idx_llm_episode_candidates_episode_slug ON llm_episode_candidates(episode_id, slug)",
   "CREATE INDEX IF NOT EXISTS idx_llm_episode_candidate_evidence_candidate ON llm_episode_candidate_evidence(candidate_id)",
+  "CREATE INDEX IF NOT EXISTS idx_source_html_chunks_source ON source_html_chunks(source_id, chunk_index)",
+  "CREATE INDEX IF NOT EXISTS idx_episode_artifact_chunks_episode ON episode_artifact_chunks(episode_id, artifact_key, chunk_index)",
   "CREATE INDEX IF NOT EXISTS idx_pipeline_runs_created_at ON pipeline_runs(created_at DESC)",
   "CREATE INDEX IF NOT EXISTS idx_pipeline_runs_run_type ON pipeline_runs(run_type, created_at DESC)",
   "CREATE INDEX IF NOT EXISTS idx_pipeline_stage_metrics_run ON pipeline_stage_metrics(pipeline_run_id, phase, stage_order)",

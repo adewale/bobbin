@@ -2,6 +2,7 @@ import { slugify } from "../lib/slug";
 import { formatDate } from "../lib/date";
 import { countWords } from "../lib/text";
 import { batchExec } from "../lib/db";
+import { persistEpisodeArtifactChunks } from "../db/artifacts";
 import {
   buildPhraseLexicon,
   decideCandidateDecisions,
@@ -386,9 +387,9 @@ export async function ingestEpisodesOnly(
         episode.parsedDate.getUTCMonth() + 1,
         episode.parsedDate.getUTCDate(),
         episode.chunks.length, episode.format,
-        episode.contentMarkdown,
-        JSON.stringify(episodeRichContent),
-        JSON.stringify(episode.links),
+        null,
+        null,
+        null,
       )
       .run();
 
@@ -422,6 +423,11 @@ export async function ingestEpisodesOnly(
     }
 
     await batchExec(db, chunkInserts);
+    await persistEpisodeArtifactChunks(db, Number(episodeId), {
+      content_markdown: episode.contentMarkdown,
+      rich_content_json: JSON.stringify(episodeRichContent),
+      links_json: JSON.stringify(episode.links),
+    });
     const insertedChunkRows = await db.prepare(
       "SELECT id, slug, title, content_plain FROM chunks WHERE episode_id = ? ORDER BY position"
     ).bind(episodeId).all<{ id: number; slug: string; title: string; content_plain: string }>();
@@ -479,11 +485,16 @@ export async function backfillExistingEpisodes(
       episode.title,
       storedChunks.length,
       episode.format,
-      episode.contentMarkdown,
-      JSON.stringify(episodeRichContent),
-      JSON.stringify(episode.links),
+      null,
+      null,
+      null,
       existingEpisode.id,
     ).run();
+    await persistEpisodeArtifactChunks(db, existingEpisode.id, {
+      content_markdown: episode.contentMarkdown,
+      rich_content_json: JSON.stringify(episodeRichContent),
+      links_json: JSON.stringify(episode.links),
+    });
 
     const chunkRows = await db.prepare(
       "SELECT id, slug, position FROM chunks WHERE episode_id = ? ORDER BY position"

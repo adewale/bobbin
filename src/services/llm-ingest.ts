@@ -41,6 +41,25 @@ function extractResponseText(result: any): string {
   if (typeof result?.response === "string") return result.response;
   if (typeof result?.result?.response === "string") return result.result.response;
   if (typeof result?.output_text === "string") return result.output_text;
+  if (typeof result?.text === "string") return result.text;
+  if (typeof result?.result?.text === "string") return result.result.text;
+  if (typeof result?.content === "string") return result.content;
+  if (typeof result?.result?.content === "string") return result.result.content;
+  if (Array.isArray(result?.choices) && typeof result.choices[0]?.message?.content === "string") {
+    return result.choices[0].message.content;
+  }
+  if (Array.isArray(result?.response) && typeof result.response[0]?.content?.[0]?.text === "string") {
+    return result.response[0].content[0].text;
+  }
+  if (Array.isArray(result?.output) && typeof result.output[0]?.content?.[0]?.text === "string") {
+    return result.output[0].content[0].text;
+  }
+  if (Array.isArray(result?.result?.output) && typeof result.result.output[0]?.content?.[0]?.text === "string") {
+    return result.result.output[0].content[0].text;
+  }
+  if (Array.isArray(result?.result?.response) && typeof result.result.response[0]?.content?.[0]?.text === "string") {
+    return result.result.response[0].content[0].text;
+  }
   throw new Error("Unsupported Workers AI response format");
 }
 

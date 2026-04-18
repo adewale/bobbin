@@ -1,4 +1,5 @@
 import { fetchGoogleDoc } from "../crawler/fetch";
+import { persistSourceHtmlChunks } from "../db/artifacts";
 import { parseHtmlDocument } from "../services/html-parser";
 import { ingestEpisodesOnly, enrichAllChunks, finalizeEnrichment, type ProcessChunkBatchResult, type FinalizeResult } from "./ingest";
 import { enrichEpisodesWithLlm } from "../services/llm-ingest";
@@ -84,8 +85,9 @@ export async function runRefresh(env: Bindings): Promise<RefreshEvent> {
     const fetchStart = Date.now();
     const fetched = await fetchGoogleDoc(source.google_doc_id);
     await env.DB.prepare(
-      "UPDATE sources SET latest_html = ? WHERE id = ?"
-    ).bind(fetched.html, source.id).run();
+      "UPDATE sources SET latest_html = NULL WHERE id = ?"
+    ).bind(source.id).run();
+    await persistSourceHtmlChunks(env.DB, source.id, fetched.html, fetched.fetchedAt);
     event.fetch_ms = elapsed(fetchStart);
 
     // --- Parse ---

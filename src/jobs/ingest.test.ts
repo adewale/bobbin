@@ -3,6 +3,7 @@ import { ingestParsedEpisodes } from "./ingest";
 import { parseHtmlDocument } from "../services/html-parser";
 import { env } from "cloudflare:test";
 import { applyTestMigrations } from "../../test/helpers/migrations";
+import { loadEpisodeArtifact } from "../db/artifacts";
 import sampleHtml from "../../test/fixtures/sample-mobilebasic.html?raw";
 
 const parsedEpisodes = parseHtmlDocument(sampleHtml);
@@ -108,12 +109,9 @@ describe("ingestParsedEpisodes", () => {
     const source = await env.DB.prepare("SELECT latest_html FROM sources WHERE id = 1").first<{ latest_html: string | null }>();
     expect(source?.latest_html).toBeNull();
 
-    const episodes = await env.DB.prepare(
-      "SELECT content_markdown, rich_content_json, links_json FROM episodes ORDER BY id LIMIT 1"
-    ).first<{ content_markdown: string | null; rich_content_json: string | null; links_json: string | null }>();
-    expect(episodes?.content_markdown).toBeTruthy();
-    expect(episodes?.rich_content_json).toBeTruthy();
-    expect(episodes?.links_json).toBeTruthy();
+    expect(await loadEpisodeArtifact(env.DB, 1, "content_markdown")).toBeTruthy();
+    expect(await loadEpisodeArtifact(env.DB, 1, "rich_content_json")).toBeTruthy();
+    expect(await loadEpisodeArtifact(env.DB, 1, "links_json")).toBeTruthy();
 
     const chunks = await env.DB.prepare(
       "SELECT content_markdown, rich_content_json, links_json FROM chunks ORDER BY id LIMIT 1"
