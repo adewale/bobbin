@@ -200,7 +200,7 @@ api.get("/backfill-source", async (c) => {
     });
   } catch (e) {
     console.error("Backfill source error:", e);
-    return c.json({ error: "Backfill failed" }, 500);
+    return c.json({ error: "Backfill failed", detail: e instanceof Error ? e.message : String(e) }, 500);
   }
 });
 

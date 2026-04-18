@@ -489,6 +489,7 @@ export async function backfillExistingEpisodes(
       "SELECT id, slug, position FROM chunks WHERE episode_id = ? ORDER BY position"
     ).bind(existingEpisode.id).all<{ id: number; slug: string; position: number }>();
     const chunkByPosition = new Map(chunkRows.results.map((row) => [row.position, row]));
+    const parsedChunkByPosition = new Map(storedChunks.map((chunk) => [chunk.position, chunk]));
     const updatedChunks: number[] = [];
 
     for (const chunk of storedChunks) {
@@ -527,7 +528,15 @@ export async function backfillExistingEpisodes(
       title: episode.title,
       chunks: chunkRows.results
         .filter((row) => updatedChunks.includes(row.id))
-        .map((row) => ({ id: row.id, slug: row.slug, title: storedChunks[row.position].title, contentPlain: storedChunks[row.position].contentPlain })),
+        .map((row) => {
+          const parsedChunk = parsedChunkByPosition.get(row.position);
+          return {
+            id: row.id,
+            slug: row.slug,
+            title: parsedChunk?.title || row.slug,
+            contentPlain: parsedChunk?.contentPlain || "",
+          };
+        }),
       updatedChunks,
     });
     episodesUpdated++;
