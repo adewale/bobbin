@@ -8,6 +8,7 @@ export default defineConfig({
       "src/**/real-data.test.ts",
       "src/**/distinctiveness.test.ts",
       "src/**/html-parser.property.test.ts",
+      "src/**/source-fidelity.corpus.test.tsx",
     ],
   },
 });

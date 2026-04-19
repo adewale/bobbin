@@ -162,7 +162,7 @@ export interface RichTextNode {
 }
 
 export interface RichBlock {
-  type: "list_item" | "separator";
+  type: "paragraph" | "list_item" | "separator";
   depth: number;
   listStyle?: string | null;
   plainText: string;

@@ -74,8 +74,10 @@ describe("source fidelity rendering", () => {
     expect(html).toContain("<u><a href=\"https://example.com/article\">Read more</a></u>");
     expect(html).toContain("<sup>superscript</sup>");
     expect(html).toContain("<s>Struck</s>");
+    expect(html).toContain('<ul class="rich-list rich-depth-0">');
+    expect(html).toContain('<ul class="rich-list rich-depth-1">');
+    expect(html).toContain('<figure class="rich-image-figure">');
     expect(html).toContain('src="https://example.com/image.png"');
-    expect(html).toContain("rich-depth-1");
     expect(html).toContain("rich-separator");
   });
 
@@ -85,7 +87,7 @@ describe("source fidelity rendering", () => {
 
     expect(res.status).toBe(200);
     expect(html).toContain('href="https://example.com/article"');
-    expect(html).toContain("rich-depth-1");
+    expect(html).toContain('<ul class="rich-list rich-depth-1">');
     expect(html).toContain('src="https://example.com/image.png"');
   });
 });

@@ -122,6 +122,25 @@ a:hover { text-decoration: underline; }
 .chunks .chunk h2 a:hover { color: var(--accent); }
 .chunk-content p { margin-bottom: 0.75rem; }
 
+/* === Rich content fidelity rendering === */
+.rich-content { display: flex; flex-direction: column; gap: 0.6rem; }
+.rich-content-group { display: block; }
+.rich-paragraph { display: block; }
+.rich-list { margin: 0; padding-left: 1.2rem; }
+.rich-list.rich-depth-0 { padding-left: 1.2rem; }
+.rich-list.rich-depth-1 { padding-left: 1rem; }
+.rich-list.rich-depth-2, .rich-list.rich-depth-3, .rich-list.rich-depth-4, .rich-list.rich-depth-5 { padding-left: 0.9rem; }
+.rich-list-item { margin: 0.2rem 0; }
+.rich-block-content { display: inline; }
+.rich-image-figure { display: block; margin: 0.75rem 0; }
+.rich-image { max-width: 100%; height: auto; display: block; border-radius: 4px; }
+.rich-image-figure figcaption { font-size: var(--text-caption); font-family: var(--font-ui); color: var(--text-light); margin-top: 0.3rem; }
+.rich-separator { border: 0; border-top: 1px solid var(--border); margin: 0.85rem 0; }
+@media (max-width: 768px) {
+  .rich-list { padding-left: 1rem; }
+  .rich-list.rich-depth-1, .rich-list.rich-depth-2, .rich-list.rich-depth-3, .rich-list.rich-depth-4, .rich-list.rich-depth-5 { padding-left: 0.75rem; }
+}
+
 /* === Chunk Detail (Tufte layout) === */
 .tufte-layout { max-width: var(--max-width); }
 .chunk-detail .chunk-meta { color: var(--text-light); font-size: var(--text-secondary); font-family: var(--font-ui); margin-bottom: 1.25rem; }
@@ -471,4 +490,3 @@ mark { background: color-mix(in srgb, var(--accent-light) 60%, transparent); col
 .latest-topics { margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border); font-family: var(--font-ui); }
 .latest-topics h3 { font-size: var(--text-secondary); color: var(--text-light); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; margin-bottom: var(--space-xs); }
 .latest-topics .topics { display: flex; flex-wrap: wrap; gap: 0.25rem; }
-

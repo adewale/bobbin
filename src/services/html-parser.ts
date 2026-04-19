@@ -38,8 +38,12 @@ function collapseWhitespace(text: string): string {
   return decodeHtmlEntities(text).replace(/[\u00A0\u1680\u2000-\u200D\u202F\u205F\u3000]/g, " ").replace(/\s+/g, " ");
 }
 
+function stripSuperscriptMarkers(text: string): string {
+  return text.replace(/\[(?:[a-z]{1,4}|\d+)\]/gi, "").replace(/\s+/g, " ").trim();
+}
+
 function generateTitle(text: string): string {
-  const firstLine = text.split(/\n/)[0].trim();
+  const firstLine = stripSuperscriptMarkers(text.split(/\n/)[0].trim());
   const sentenceEnd = firstLine.match(/[.!?](?:\s|$)/);
   if (sentenceEnd && sentenceEnd.index !== undefined) {
     const sentence = firstLine.substring(0, sentenceEnd.index + 1).trim();
@@ -56,6 +60,10 @@ type FormattingState = {
   superscript?: boolean;
   href?: string;
 };
+
+const KNOWN_INLINE_TAGS = new Set([
+  "a", "b", "strong", "i", "em", "u", "sup", "s", "strike", "del", "span", "img", "br", "hr",
+]);
 
 function getAttr(tag: string, attr: string): string | null {
   const match = tag.match(new RegExp(`${attr}="([^"]*)"`, "i"));
@@ -76,7 +84,17 @@ function parseStyleFlags(style: string | null): Partial<FormattingState> {
 function pushTextNode(nodes: RichTextNode[], state: FormattingState, text: string) {
   if (!text) return;
   const normalized = collapseWhitespace(text);
-  if (!normalized.trim()) return;
+  if (!normalized.trim()) {
+    if (/\s/.test(text)) {
+      const previous = nodes[nodes.length - 1];
+      if (!previous || previous.type !== "text") {
+        nodes.push({ type: "text", text: " " });
+      } else if (!(previous.text || "").endsWith(" ")) {
+        previous.text = `${previous.text || ""} `;
+      }
+    }
+    return;
+  }
   const previous = nodes[nodes.length - 1];
   if (
     previous && previous.type === "text" && previous.href === state.href &&
@@ -126,6 +144,27 @@ function renderNodesToPlainText(nodes: RichTextNode[]): string {
   }).join("").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
+function normalizeNodeSpacing(nodes: RichTextNode[]) {
+  for (let i = 1; i < nodes.length; i++) {
+    const current = nodes[i];
+    const previous = nodes[i - 1];
+    if (current?.type !== "text" || previous?.type !== "text") continue;
+    const currentText = current.text || "";
+    const previousText = previous.text || "";
+    if (/^[.,;:!?)]/.test(currentText.trimStart())) {
+      previous.text = previousText.replace(/\s+$/g, "");
+      current.text = currentText.replace(/^\s+/g, "");
+    }
+    if (/^]/.test(currentText.trimStart())) {
+      previous.text = previousText.replace(/\s+$/g, "");
+      current.text = currentText.replace(/^\s+/g, "");
+    }
+    if (/\[$/.test(previous.text || "") || /\[[^\]]*:$/.test((previous.text || "").trim())) {
+      current.text = (current.text || "").replace(/^\s+/g, "");
+    }
+  }
+}
+
 function parseRichInline(html: string): RichParseResult {
   const nodes: RichTextNode[] = [];
   const links: RichLink[] = [];
@@ -165,6 +204,10 @@ function parseRichInline(html: string): RichParseResult {
     const close = token.match(/^<\/([a-z0-9]+)>$/i);
     if (close) {
       const tag = close[1].toLowerCase();
+      if (!KNOWN_INLINE_TAGS.has(tag)) {
+        pushTextNode(nodes, stack[stack.length - 1].state, token);
+        continue;
+      }
       for (let i = stack.length - 1; i > 0; i--) {
         if (stack[i].tag === tag) {
           stack.splice(i, 1);
@@ -175,8 +218,15 @@ function parseRichInline(html: string): RichParseResult {
     }
 
     const open = token.match(/^<([a-z0-9]+)\b[^>]*>$/i);
-    if (!open) continue;
+    if (!open) {
+      pushTextNode(nodes, stack[stack.length - 1].state, token);
+      continue;
+    }
     const tag = open[1].toLowerCase();
+    if (!KNOWN_INLINE_TAGS.has(tag)) {
+      pushTextNode(nodes, stack[stack.length - 1].state, token);
+      continue;
+    }
     const current = stack[stack.length - 1].state;
     const next: FormattingState = { ...current };
 
@@ -201,6 +251,8 @@ function parseRichInline(html: string): RichParseResult {
       links.push({ text: node.text || "", href: node.href });
     }
   }
+
+  normalizeNodeSpacing(nodes);
 
   return {
     nodes,
@@ -228,11 +280,12 @@ function parseSequence(bodyHtml: string): SequenceItem[] {
     const attrs = match[3] || "";
     const marginMatch = attrs.match(/margin-left:\s*(\d+)pt/i);
     if (!marginMatch) continue;
+    const listStyleMatch = attrs.match(/list-style-type:\s*([^;"']+)/i);
     sequence.push({
       kind: "item",
       margin: parseInt(marginMatch[1], 10),
       html: match[4],
-      listStyle: getAttr(attrs, "class") || null,
+      listStyle: listStyleMatch ? listStyleMatch[1].trim() : "unordered",
     });
   }
   return sequence;
@@ -267,7 +320,7 @@ function splitEpisodeContent(html: string): { chunks: ObservationChunk[]; episod
       return { chunks: [], episodeRichContent: [], episodeMarkdown: "", episodeLinks: [], episodeImages: [] };
     }
     const block: RichBlock = {
-      type: "list_item",
+      type: "paragraph",
       depth: 0,
       listStyle: "paragraph",
       plainText: rich.plainText,
@@ -334,7 +387,7 @@ function splitEpisodeContent(html: string): { chunks: ObservationChunk[]; episod
 
     if ((isTopLevel && !isFirstItem) || isFirstItem) {
       flushChunk();
-      currentMain = parsed.block.plainText;
+      currentMain = stripSuperscriptMarkers(parsed.block.plainText);
       currentFull = [parsed.block.plainText];
       currentMarkdown = [parsed.markdown];
       currentBlocks = [parsed.block];
