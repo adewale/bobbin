@@ -133,7 +133,11 @@ export async function handleEnrichmentBatch(
   batch: MessageBatch<EnrichmentMessage>,
   env: Bindings
 ): Promise<void> {
-  for (const msg of batch.messages) {
+  const messages = [...batch.messages];
+  const concurrency = Math.min(5, messages.length);
+  let index = 0;
+
+  async function processOne(msg: Message<EnrichmentMessage>) {
     try {
       if (msg.body.type === "compute-related" && msg.body.topicId) {
         await handleComputeRelated(env.DB, msg.body.topicId);
@@ -152,4 +156,12 @@ export async function handleEnrichmentBatch(
       msg.retry();
     }
   }
+
+  await Promise.all(Array.from({ length: concurrency }, async () => {
+    while (index < messages.length) {
+      const current = messages[index++];
+      if (!current) return;
+      await processOne(current);
+    }
+  }));
 }
