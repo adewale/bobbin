@@ -65,6 +65,7 @@ const CREATES = [
     rich_content_json TEXT,
     links_json TEXT,
     images_json TEXT,
+    footnotes_json TEXT,
     reach INTEGER NOT NULL DEFAULT 0,
     analysis_text TEXT,
     normalization_version INTEGER NOT NULL DEFAULT 0,

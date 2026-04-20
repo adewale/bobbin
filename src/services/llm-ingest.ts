@@ -11,6 +11,10 @@ export interface EpisodeLlmChunkInput {
   slug: string;
   title: string;
   contentPlain: string;
+  linkCount?: number;
+  imageCount?: number;
+  maxDepth?: number;
+  formattingHints?: string[];
 }
 
 export interface EpisodeLlmInput {
@@ -93,6 +97,10 @@ export function buildEpisodeLlmMessages(input: EpisodeLlmInput) {
     slug: chunk.slug,
     title: chunk.title,
     excerpt: normalizeChunkText(chunk.contentPlain).normalizedText.slice(0, 320),
+    link_count: chunk.linkCount || 0,
+    image_count: chunk.imageCount || 0,
+    max_depth: chunk.maxDepth || 0,
+    formatting_hints: chunk.formattingHints || [],
   }));
 
   return [

@@ -6,6 +6,7 @@ export interface CandidatePromotionStats {
   existingUsageCount: number;
   wordDistinctiveness: number;
   llmSupportCount: number;
+  fidelitySupportCount: number;
 }
 
 export interface PhrasePromotionStats {
@@ -77,11 +78,12 @@ export function getCandidatePromotionReason(
     : PIPELINE_TUNING.minNonEntityEpisodeSupport;
 
   const episodeSupport = stats.episodeSupport + (stats.llmSupportCount > 0 ? 1 : 0);
-  const chunkSupport = stats.chunkSupport + (stats.llmSupportCount > 0 ? 1 : 0);
+  const chunkSupport = stats.chunkSupport + (stats.llmSupportCount > 0 ? 1 : 0) + (stats.fidelitySupportCount > 0 ? 1 : 0);
+  const distinctiveness = stats.wordDistinctiveness + stats.fidelitySupportCount * 5;
 
   if (episodeSupport < minEpisodeSupport) return "insufficient_episode_support";
   if (chunkSupport < minChunkSupport) return "insufficient_chunk_support";
-  if (words.length === 1 && stats.wordDistinctiveness < PIPELINE_TUNING.minSingletonDistinctiveness && stats.existingUsageCount < 8) {
+  if (words.length === 1 && distinctiveness < PIPELINE_TUNING.minSingletonDistinctiveness && stats.existingUsageCount < 8) {
     return "low_distinctiveness_support";
   }
 

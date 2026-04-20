@@ -57,6 +57,7 @@ export interface ChunkRow {
   rich_content_json: string | null;
   links_json: string | null;
   images_json: string | null;
+  footnotes_json: string | null;
   analysis_text: string | null;
   normalization_version: number;
   normalization_warnings: string | null;
@@ -134,6 +135,7 @@ export interface ParsedChunk {
   richContent: RichBlock[];
   links: RichLink[];
   images: RichImage[];
+  footnotes: RichFootnote[];
   headingId: string;
   position: number;
 }
@@ -161,6 +163,12 @@ export interface RichTextNode {
   superscript?: boolean;
 }
 
+export interface RichFootnote {
+  id: string;
+  label: string;
+  text: string;
+}
+
 export interface RichBlock {
   type: "paragraph" | "list_item" | "separator";
   depth: number;
@@ -170,4 +178,5 @@ export interface RichBlock {
   chunkSlug?: string;
   chunkTitle?: string;
   chunkPosition?: number;
+  anchorIds?: string[];
 }

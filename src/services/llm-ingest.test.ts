@@ -27,13 +27,15 @@ describe("llm ingest contract", () => {
       title: "Bits and Bobs 1/6/25",
       normalizedText: "prompt injection attack matters claude code is useful",
       chunks: [
-        { slug: "chunk-a", title: "A", contentPlain: "Prompt injection attack matters." },
+        { slug: "chunk-a", title: "A", contentPlain: "Prompt injection attack matters.", linkCount: 1, imageCount: 0, maxDepth: 2, formattingHints: ["underline", "nested_list"] },
       ],
     });
 
     expect(messages).toHaveLength(2);
     expect(messages[1].content).toContain("chunk-a");
     expect(messages[1].content).toContain("normalized_episode_text");
+    expect(messages[1].content).toContain("link_count");
+    expect(messages[1].content).toContain("formatting_hints");
   });
 
   it("parses valid LLM JSON and rejects unsupported evidence", () => {

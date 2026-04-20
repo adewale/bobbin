@@ -1,4 +1,4 @@
-import type { RichBlock, RichTextNode } from "../types";
+import type { RichBlock, RichFootnote, RichTextNode } from "../types";
 
 function renderNode(node: RichTextNode, key: string) {
   if (node.type === "break") return <br key={key} />;
@@ -21,7 +21,21 @@ function renderNode(node: RichTextNode, key: string) {
   return <>{content}</>;
 }
 
+function renderAnchorTargets(block: RichBlock) {
+  return (block.anchorIds || []).map((anchorId) => <a id={anchorId} class="rich-anchor-target" aria-hidden="true"></a>);
+}
+
 export function parseRichContentJson(value: string | null): RichBlock[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export function parseFootnotesJson(value: string | null): RichFootnote[] {
   if (!value) return [];
   try {
     const parsed = JSON.parse(value);
@@ -52,6 +66,7 @@ function renderList(blocks: RichBlock[], startIndex: number, depth: number): [an
 
     const content = (
       <div class="rich-block-content">
+        {renderAnchorTargets(block)}
         {block.nodes.map((node, nodeIndex) => renderNode(node, `${index}-${nodeIndex}`))}
       </div>
     );
@@ -77,6 +92,7 @@ export function RichContent({ blocks }: { blocks: RichBlock[] }) {
     if (block.type === "paragraph") {
       rendered.push(
         <div key={`para-${index}`} class="rich-paragraph">
+          {renderAnchorTargets(block)}
           {block.nodes.map((node, nodeIndex) => renderNode(node, `${index}-${nodeIndex}`))}
         </div>
       );
@@ -90,4 +106,20 @@ export function RichContent({ blocks }: { blocks: RichBlock[] }) {
   }
 
   return <div class="rich-content">{rendered}</div>;
+}
+
+export function RichFootnotes({ footnotes }: { footnotes: RichFootnote[] }) {
+  if (footnotes.length === 0) return null;
+  return (
+    <aside class="rich-footnotes">
+      <hr class="rich-separator" />
+      <ol>
+        {footnotes.map((footnote) => (
+          <li id={footnote.id} class="rich-footnote-item">
+            <sup>[{footnote.label}]</sup> {footnote.text}
+          </li>
+        ))}
+      </ol>
+    </aside>
+  );
 }

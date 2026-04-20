@@ -1,6 +1,6 @@
 import { parseEpisodeDate } from "../lib/date";
 import { decodeHtmlEntities, resolveGoogleRedirectUrl } from "../lib/html";
-import type { ParsedEpisode, ParsedChunk, RichBlock, RichImage, RichLink, RichTextNode } from "../types";
+import type { ParsedEpisode, ParsedChunk, RichBlock, RichFootnote, RichImage, RichLink, RichTextNode } from "../types";
 
 const DATE_PATTERN = /\d{1,2}\/\d{1,2}\/\d{2,4}/;
 
@@ -13,10 +13,11 @@ interface RichParseResult {
 }
 
 interface SequenceItem {
-  kind: "separator" | "item";
+  kind: "separator" | "item" | "anchor";
   margin?: number;
   html?: string;
   listStyle?: string | null;
+  anchorId?: string;
 }
 
 interface ObservationChunk {
@@ -26,6 +27,7 @@ interface ObservationChunk {
   richBlocks: RichBlock[];
   links: RichLink[];
   images: RichImage[];
+  footnotes: RichFootnote[];
 }
 
 function stripHtml(html: string): string {
@@ -270,25 +272,43 @@ function buildMarkdownForBlock(depth: number, markdown: string): string {
 
 function parseSequence(bodyHtml: string): SequenceItem[] {
   const sequence: SequenceItem[] = [];
-  const regex = /(<hr\b[^>]*>)|(<li\b([^>]*)>([\s\S]*?)(?=<\/li>))/gi;
+  const regex = /(<hr\b[^>]*>)|(<a\s+id="([^"]+)"\s*><\/a>)|(<li\b([^>]*)>([\s\S]*?)(?=<\/li>))/gi;
   let match: RegExpExecArray | null;
   while ((match = regex.exec(bodyHtml)) !== null) {
     if (match[1]) {
       sequence.push({ kind: "separator" });
       continue;
     }
-    const attrs = match[3] || "";
+    if (match[2]) {
+      sequence.push({ kind: "anchor", anchorId: match[3] });
+      continue;
+    }
+    const attrs = match[5] || "";
     const marginMatch = attrs.match(/margin-left:\s*(\d+)pt/i);
     if (!marginMatch) continue;
     const listStyleMatch = attrs.match(/list-style-type:\s*([^;"']+)/i);
     sequence.push({
       kind: "item",
       margin: parseInt(marginMatch[1], 10),
-      html: match[4],
+      html: match[6],
       listStyle: listStyleMatch ? listStyleMatch[1].trim() : "unordered",
     });
   }
   return sequence;
+}
+
+function extractCommentDefinitions(html: string): Map<string, RichFootnote> {
+  const map = new Map<string, RichFootnote>();
+  const regex = /<p[^>]*>\s*<a href="#cmnt_ref\d+" id="(cmnt\d+)">\[([^\]]+)\]<\/a>([\s\S]*?)<\/p>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(html)) !== null) {
+    const id = match[1];
+    const label = match[2];
+    const text = stripHtml(match[3]);
+    if (!text) continue;
+    map.set(id, { id, label, text });
+  }
+  return map;
 }
 
 function blockFromSequenceItem(item: SequenceItem): { block: RichBlock; markdown: string; links: RichLink[]; images: RichImage[] } | null {
@@ -313,6 +333,7 @@ function blockFromSequenceItem(item: SequenceItem): { block: RichBlock; markdown
 
 function splitEpisodeContent(html: string): { chunks: ObservationChunk[]; episodeRichContent: RichBlock[]; episodeMarkdown: string; episodeLinks: RichLink[]; episodeImages: RichImage[] } {
   const sequence = parseSequence(html);
+  const commentMap = extractCommentDefinitions(html);
 
   if (!sequence.some((item) => item.kind === "item")) {
     const rich = parseRichInline(html);
@@ -330,11 +351,12 @@ function splitEpisodeContent(html: string): { chunks: ObservationChunk[]; episod
       chunks: [{
         mainText: rich.plainText,
         fullText: rich.plainText,
-        markdown: rich.markdown,
-        richBlocks: [block],
-        links: rich.links,
-        images: rich.images,
-      }],
+      markdown: rich.markdown,
+      richBlocks: [block],
+      links: rich.links,
+      images: rich.images,
+      footnotes: [],
+    }],
       episodeRichContent: [block],
       episodeMarkdown: rich.markdown,
       episodeLinks: rich.links,
@@ -354,6 +376,8 @@ function splitEpisodeContent(html: string): { chunks: ObservationChunk[]; episod
   let currentBlocks: RichBlock[] = [];
   let currentLinks: RichLink[] = [];
   let currentImages: RichImage[] = [];
+  let currentFootnotes: RichFootnote[] = [];
+  let pendingAnchorIds: string[] = [];
 
   function flushChunk() {
     if (!currentMain) return;
@@ -364,10 +388,15 @@ function splitEpisodeContent(html: string): { chunks: ObservationChunk[]; episod
       richBlocks: currentBlocks,
       links: currentLinks,
       images: currentImages,
+      footnotes: currentFootnotes,
     });
   }
 
   for (const item of sequence) {
+    if (item.kind === "anchor") {
+      if (item.anchorId) pendingAnchorIds.push(item.anchorId);
+      continue;
+    }
     if (item.kind === "separator") {
       const separator: RichBlock = { type: "separator", depth: 0, listStyle: null, plainText: "", nodes: [] };
       episodeRichContent.push(separator);
@@ -377,6 +406,10 @@ function splitEpisodeContent(html: string): { chunks: ObservationChunk[]; episod
 
     const parsed = blockFromSequenceItem(item);
     if (!parsed) continue;
+    if (pendingAnchorIds.length > 0) {
+      parsed.block.anchorIds = [...pendingAnchorIds];
+      pendingAnchorIds = [];
+    }
     episodeRichContent.push(parsed.block);
     episodeMarkdown.push(parsed.markdown);
     episodeLinks.push(...parsed.links);
@@ -393,12 +426,25 @@ function splitEpisodeContent(html: string): { chunks: ObservationChunk[]; episod
       currentBlocks = [parsed.block];
       currentLinks = [...parsed.links];
       currentImages = [...parsed.images];
+      currentFootnotes = [];
     } else {
       currentFull.push(parsed.block.plainText);
       currentMarkdown.push(parsed.markdown);
       currentBlocks.push(parsed.block);
       currentLinks.push(...parsed.links);
       currentImages.push(...parsed.images);
+    }
+
+    const footnoteIds = [...new Set(parsed.links
+      .map((link) => link.href)
+      .filter((href) => href.startsWith("#cmnt"))
+      .map((href) => href.slice(1))
+    )];
+    for (const id of footnoteIds) {
+      const footnote = commentMap.get(id);
+      if (footnote && !currentFootnotes.some((entry) => entry.id === id)) {
+        currentFootnotes.push(footnote);
+      }
     }
   }
 
@@ -448,6 +494,7 @@ export function parseHtmlDocument(html: string): ParsedEpisode[] {
       richContent: chunk.richBlocks.map((block) => ({ ...block, chunkPosition: i })),
       links: chunk.links,
       images: chunk.images,
+      footnotes: chunk.footnotes,
       headingId: "",
       position: i,
     }));

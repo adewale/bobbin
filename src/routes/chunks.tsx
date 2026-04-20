@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { AppEnv } from "../types";
 import { Layout } from "../components/Layout";
 import { Breadcrumbs } from "../components/Breadcrumbs";
-import { RichContent, parseRichContentJson } from "../components/RichContent";
+import { RichContent, RichFootnotes, parseFootnotesJson, parseRichContentJson } from "../components/RichContent";
 import { getCrossReferences } from "../services/cross-refs";
 import { safeJsonForHtml } from "../lib/html";
 import { getChunkBySlug, getChunkTopics, getRelatedByTopics, getThreadChunks, getAdjacentChunks } from "../db/chunks";
@@ -44,6 +44,7 @@ chunks.get("/:slug", async (c) => {
   const prevChunk = adjacentResult.prev;
   const nextChunk = adjacentResult.next;
   const richBlocks = parseRichContentJson(chunk.rich_content_json);
+  const footnotes = parseFootnotesJson((chunk as any).footnotes_json ?? null);
   const paragraphs = chunk.content.split("\n").filter((line, i) => {
     if (i === 0 && line.trim() === chunk.title.trim()) return false;
     return line.trim();
@@ -105,7 +106,10 @@ chunks.get("/:slug", async (c) => {
           <div class="chunk-content">
             {richBlocks.length > 0 ? (
               <div class="para-with-margin">
-                <RichContent blocks={richBlocks} />
+                <>
+                  <RichContent blocks={richBlocks} />
+                  <RichFootnotes footnotes={footnotes} />
+                </>
                 {relatedItems[0]?.slug && (
                   <aside class="margin-note">
                     <a href={`/chunks/${relatedItems[0].slug}`}>

@@ -83,7 +83,7 @@ export interface InsertedEpisodeArtifact {
   id: number;
   slug: string;
   title: string;
-  chunks: Array<{ id: number; slug: string; title: string; contentPlain: string }>;
+  chunks: Array<{ id: number; slug: string; title: string; contentPlain: string; linkCount: number; imageCount: number; maxDepth: number; formattingHints: string[] }>;
 }
 
 export interface BackfilledEpisodeArtifact extends InsertedEpisodeArtifact {
@@ -245,10 +245,26 @@ function buildEpisodeHybridCandidateDecisions(
   return decisions;
 }
 
+function collectFormattingHints(blocks: import("../types").RichBlock[]): string[] {
+  const hints = new Set<string>();
+  for (const block of blocks) {
+    if (block.depth > 0) hints.add("nested_list");
+    for (const node of block.nodes) {
+      if (node.bold) hints.add("bold");
+      if (node.italic) hints.add("italic");
+      if (node.underline) hints.add("underline");
+      if (node.superscript) hints.add("superscript");
+      if (node.strikethrough) hints.add("strikethrough");
+      if (node.type === "image") hints.add("image");
+    }
+  }
+  return [...hints];
+}
+
 async function loadCandidatePromotionStats(
   db: D1Database,
   candidates: CandidateDecision[]
-): Promise<Map<string, { chunkSupport: number; episodeSupport: number; existingUsageCount: number; wordDistinctiveness: number; llmSupportCount: number }>> {
+): Promise<Map<string, { chunkSupport: number; episodeSupport: number; existingUsageCount: number; wordDistinctiveness: number; llmSupportCount: number; fidelitySupportCount: number }>> {
   const accepted = candidates.filter((candidate) => candidate.decision === "accepted");
   if (accepted.length === 0) return new Map();
 
@@ -298,15 +314,21 @@ async function loadCandidatePromotionStats(
   const distinctivenessByWord = new Map(distinctivenessRows.map((row) => [row.word, row.distinctiveness]));
 
   const acceptedChunkIds = [...new Set(accepted.map((candidate) => candidate.chunkId))];
-  const chunkRows: Array<{ id: number; episode_id: number }> = [];
+  const chunkRows: Array<{ id: number; episode_id: number; links_json: string | null; rich_content_json: string | null; images_json: string | null }> = [];
   for (let i = 0; i < acceptedChunkIds.length; i += BATCH) {
     const batch = acceptedChunkIds.slice(i, i + BATCH);
     const rowBatch = await db.prepare(
-      `SELECT id, episode_id FROM chunks WHERE id IN (${batch.map(() => "?").join(",")})`
-    ).bind(...batch).all<{ id: number; episode_id: number }>();
+      `SELECT id, episode_id, links_json, rich_content_json, images_json FROM chunks WHERE id IN (${batch.map(() => "?").join(",")})`
+    ).bind(...batch).all<{ id: number; episode_id: number; links_json: string | null; rich_content_json: string | null; images_json: string | null }>();
     chunkRows.push(...rowBatch.results);
   }
   const episodeByChunkId = new Map(chunkRows.map((row) => [row.id, row.episode_id]));
+  const fidelityByChunkId = new Map(chunkRows.map((row) => [
+    row.id,
+    !!(row.links_json && row.links_json !== "[]") ||
+      !!(row.images_json && row.images_json !== "[]") ||
+      !!(row.rich_content_json && (/"depth":[1-9]/.test(row.rich_content_json) || /"(bold|italic|underline|superscript|strikethrough)":true/.test(row.rich_content_json))),
+  ]));
 
   const currentSupportBySlug = new Map<string, { chunkIds: Set<number>; episodeIds: Set<number> }>();
   for (const candidate of accepted) {
@@ -319,10 +341,15 @@ async function loadCandidatePromotionStats(
 
   const llmBoostsByChunk = await loadLlmBoostsForChunks(db, acceptedChunkIds);
   const llmSupportBySlug = new Map<string, number>();
+  const fidelitySupportBySlug = new Map<string, number>();
   for (const candidate of accepted) {
     const chunkBoosts = llmBoostsByChunk.get(candidate.chunkId);
     if (!chunkBoosts?.has(candidate.slug)) continue;
     llmSupportBySlug.set(candidate.slug, (llmSupportBySlug.get(candidate.slug) || 0) + 1);
+  }
+  for (const candidate of accepted) {
+    if (!fidelityByChunkId.get(candidate.chunkId)) continue;
+    fidelitySupportBySlug.set(candidate.slug, (fidelitySupportBySlug.get(candidate.slug) || 0) + 1);
   }
 
   return new Map(slugs.map((slug) => {
@@ -337,6 +364,7 @@ async function loadCandidatePromotionStats(
       existingUsageCount: usageBySlug.get(slug) || 0,
       wordDistinctiveness: distinctivenessByWord.get(candidate.normalizedCandidate) || 0,
       llmSupportCount: llmSupportBySlug.get(slug) || 0,
+      fidelitySupportCount: fidelitySupportBySlug.get(slug) || 0,
     }];
   }));
 }
@@ -403,8 +431,8 @@ export async function ingestEpisodesOnly(
 
       chunkInserts.push(
         db.prepare(
-          `INSERT INTO chunks (episode_id, slug, title, content, content_plain, position, word_count, vector_id, content_markdown, rich_content_json, links_json, images_json)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          `INSERT INTO chunks (episode_id, slug, title, content, content_plain, position, word_count, vector_id, content_markdown, rich_content_json, links_json, images_json, footnotes_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         ).bind(
           episodeId,
           chunk.slug,
@@ -418,6 +446,7 @@ export async function ingestEpisodesOnly(
           JSON.stringify(chunk.richContent),
           JSON.stringify(chunk.links),
           JSON.stringify(chunk.images),
+          JSON.stringify(chunk.footnotes),
         )
       );
     }
@@ -440,6 +469,10 @@ export async function ingestEpisodesOnly(
         slug: row.slug,
         title: row.title,
         contentPlain: row.content_plain,
+        linkCount: storedChunks.find((chunk) => chunk.slug === row.slug)?.links.length || 0,
+        imageCount: storedChunks.find((chunk) => chunk.slug === row.slug)?.images.length || 0,
+        maxDepth: Math.max(0, ...(storedChunks.find((chunk) => chunk.slug === row.slug)?.richContent.map((block) => block.depth) || [0])),
+        formattingHints: collectFormattingHints(storedChunks.find((chunk) => chunk.slug === row.slug)?.richContent || []),
       })),
     });
     chunksAdded += episode.chunks.length;
@@ -509,7 +542,7 @@ export async function backfillExistingEpisodes(
       if (existingChunk) {
         await db.prepare(
           `UPDATE chunks
-           SET title = ?, content = ?, content_plain = ?, word_count = ?, content_markdown = ?, rich_content_json = ?, links_json = ?, images_json = ?, updated_at = datetime('now')
+           SET title = ?, content = ?, content_plain = ?, word_count = ?, content_markdown = ?, rich_content_json = ?, links_json = ?, images_json = ?, footnotes_json = ?, updated_at = datetime('now')
            WHERE id = ?`
         ).bind(
           chunk.title,
@@ -520,6 +553,7 @@ export async function backfillExistingEpisodes(
           JSON.stringify(chunk.richContent.map((block) => ({ ...block, chunkSlug: existingChunk.slug }))),
           JSON.stringify(chunk.links),
           JSON.stringify(chunk.images),
+          JSON.stringify(chunk.footnotes),
           existingChunk.id,
         ).run();
         updatedChunks.push(existingChunk.id);
@@ -551,6 +585,10 @@ export async function backfillExistingEpisodes(
             slug: row.slug,
             title: parsedChunk?.title || row.slug,
             contentPlain: parsedChunk?.contentPlain || "",
+            linkCount: parsedChunk?.links.length || 0,
+            imageCount: parsedChunk?.images.length || 0,
+            maxDepth: Math.max(0, ...(parsedChunk?.richContent.map((block) => block.depth) || [0])),
+            formattingHints: collectFormattingHints(parsedChunk?.richContent || []),
           };
         }),
       updatedChunks,

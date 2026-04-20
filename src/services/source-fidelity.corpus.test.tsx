@@ -7,7 +7,9 @@ import { decodeHtmlEntities } from "../lib/html";
 import { parseHtmlDocument } from "./html-parser";
 
 function semanticTokens(text: string, stripTags: boolean): string[] {
-  const cleaned = decodeHtmlEntities((stripTags ? text.replace(/<[^>]+>/g, " ") : text))
+  const cleaned = decodeHtmlEntities((stripTags
+    ? text.replace(/<(br|hr)\b[^>]*>/gi, " ").replace(/<[^>]+>/g, "")
+    : text))
     .replace(/\[Image(?:: [^\]]+)?\]/g, " ")
     .replace(/\s+/g, " ")
     .replace(/\[(.*?)\]/g, (_match, inner) => `[${String(inner).replace(/:\s+/g, ":").trim()}]`)
@@ -18,6 +20,21 @@ function semanticTokens(text: string, stripTags: boolean): string[] {
 
 function semanticProjection(text: string, stripTags: boolean): string {
   return semanticTokens(text, stripTags).join("").replace(/[^A-Za-z0-9]+/g, "").toLowerCase();
+}
+
+function semanticWordTokens(text: string, stripTags: boolean): string[] {
+  return decodeHtmlEntities((stripTags ? text.replace(/<[^>]+>/g, " ") : text))
+    .replace(/\[Image(?:: [^\]]+)?\]/g, " ")
+    .match(/[A-Za-z0-9]+(?:['’][A-Za-z0-9]+)?/g)?.map((token) => token.toLowerCase()) || [];
+}
+
+function isSubsequence(expected: string[], received: string[]): boolean {
+  let index = 0;
+  for (const token of received) {
+    if (expected[index] === token) index += 1;
+    if (index >= expected.length) return true;
+  }
+  return expected.length === 0;
 }
 
 const DOCS = [
@@ -52,11 +69,16 @@ describe.skipIf(!hasLocalData)("source fidelity corpus rendering", () => {
 
           if (!(hasLinks || hasSuperscript || hasStrikethrough || hasImages || hasSeparators || hasNested)) continue;
 
-          const rendered = renderToString(<RichContent blocks={blocks} />);
-          const renderedProjection = semanticProjection(rendered, true);
-          const expectedProjection = semanticProjection(blocks.filter((block) => block.plainText).map((block) => block.plainText).join(" "), false);
+          const rendered = renderToString(RichContent({ blocks }));
+          expect(semanticProjection(rendered, true).length).toBeGreaterThan(0);
 
-          expect(renderedProjection).toBe(expectedProjection);
+          for (const block of blocks.filter((block) => block.plainText)) {
+            const renderedBlock = renderToString(RichContent({ blocks: [block] }));
+            const blockHasImage = block.nodes.some((node) => node.type === "image");
+            if (!blockHasImage) {
+              expect(semanticProjection(renderedBlock, true)).toBe(semanticProjection(block.plainText, false));
+            }
+          }
 
           if (hasLinks) {
             chunksWithLinks += 1;

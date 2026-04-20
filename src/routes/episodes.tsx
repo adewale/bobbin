@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { AppEnv, EpisodeRow, ChunkRow, TopicRow } from "../types";
 import { Layout } from "../components/Layout";
 import { Breadcrumbs } from "../components/Breadcrumbs";
-import { RichContent, parseRichContentJson } from "../components/RichContent";
+import { RichContent, RichFootnotes, parseFootnotesJson, parseRichContentJson } from "../components/RichContent";
 import { monthName } from "../lib/date";
 import { getAllEpisodesGrouped, getEpisodeBySlug, getChunksByEpisode, getEpisodeTopicsBlended, getAdjacentEpisodes } from "../db/episodes";
 import { getTrendingTopicsForEpisode } from "../db/topics";
@@ -119,7 +119,10 @@ episodes.get("/:slug", async (c) => {
                 <h2><a href={`/chunks/${chunk.slug}`}>{chunk.title}</a></h2>
                 <div class="essay-content">
                   {parseRichContentJson(chunk.rich_content_json).length > 0 ? (
-                    <RichContent blocks={parseRichContentJson(chunk.rich_content_json)} />
+                    <>
+                      <RichContent blocks={parseRichContentJson(chunk.rich_content_json)} />
+                      <RichFootnotes footnotes={parseFootnotesJson((chunk as any).footnotes_json ?? null)} />
+                    </>
                   ) : (
                     chunk.content.split("\n").filter((line, i) => {
                       if (i === 0 && line.trim() === chunk.title.trim()) return false;
@@ -150,7 +153,10 @@ episodes.get("/:slug", async (c) => {
                   </summary>
                   <div class="chunk-body">
                     {richBlocks.length > 0 ? (
-                      <RichContent blocks={richBlocks} />
+                      <>
+                        <RichContent blocks={richBlocks} />
+                        <RichFootnotes footnotes={parseFootnotesJson((chunk as any).footnotes_json ?? null)} />
+                      </>
                     ) : bodyLines.map((line, i) => (
                       <p key={i}>{line}</p>
                     ))}

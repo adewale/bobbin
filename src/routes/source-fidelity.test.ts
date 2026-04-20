@@ -12,7 +12,9 @@ const richBlocks = JSON.stringify([
       { type: "text", text: "Prompt injection attack", bold: true },
       { type: "text", text: " matters. " },
       { type: "text", text: "Read more", href: "https://example.com/article", underline: true },
+      { type: "text", text: " See note", href: "#cmnt470", superscript: true },
     ],
+    anchorIds: ["id.anchor-1"],
   },
   {
     type: "list_item",
@@ -53,12 +55,13 @@ beforeEach(async () => {
       "INSERT INTO episodes (source_id, slug, title, published_date, year, month, day, chunk_count, format, rich_content_json, content_markdown, links_json) VALUES (1, '2025-01-06-doc', 'Bits and Bobs 1/6/25', '2025-01-06', 2025, 1, 6, 1, 'essays', ?, ?, ?)"
     ).bind(richBlocks, '- Prompt injection attack matters.', JSON.stringify([{ text: 'Read more', href: 'https://example.com/article' }])),
     env.DB.prepare(
-      "INSERT INTO chunks (episode_id, slug, title, content, content_plain, position, rich_content_json, content_markdown, links_json, images_json) VALUES (1, 'prompt-injection-doc-0', 'Prompt injection attack matters.', 'Prompt injection attack matters.', 'Prompt injection attack matters.', 0, ?, ?, ?, ?)"
+      "INSERT INTO chunks (episode_id, slug, title, content, content_plain, position, rich_content_json, content_markdown, links_json, images_json, footnotes_json) VALUES (1, 'prompt-injection-doc-0', 'Prompt injection attack matters.', 'Prompt injection attack matters.', 'Prompt injection attack matters.', 0, ?, ?, ?, ?, ?)"
     ).bind(
       richBlocks,
       '- Prompt injection attack matters.',
-      JSON.stringify([{ text: 'Read more', href: 'https://example.com/article' }]),
+      JSON.stringify([{ text: 'Read more', href: 'https://example.com/article' }, { text: '[rb]', href: '#cmnt470' }]),
       JSON.stringify([{ src: 'https://example.com/image.png', alt: 'Diagram' }]),
+      JSON.stringify([{ id: 'cmnt470', label: 'rb', text: 'One total reaction' }]),
     ),
   ]);
 });
@@ -79,6 +82,9 @@ describe("source fidelity rendering", () => {
     expect(html).toContain('<figure class="rich-image-figure">');
     expect(html).toContain('src="https://example.com/image.png"');
     expect(html).toContain("rich-separator");
+    expect(html).toContain('id="id.anchor-1"');
+    expect(html).toContain('id="cmnt470"');
+    expect(html).toContain('One total reaction');
   });
 
   it("renders rich episode content with nested blocks", async () => {
