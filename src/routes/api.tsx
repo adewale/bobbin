@@ -16,6 +16,7 @@ import { expandEntityAliases } from "../lib/entity-aliases";
 import { KNOWN_ENTITIES } from "../data/known-entities";
 import { combinePipelineReports, summarizeEnrichBatches, summarizeFinalizeResult } from "../services/pipeline-report";
 import { normalizeTopicExtractorMode } from "../services/yake-runtime";
+import { runRefresh } from "../jobs/refresh";
 
 const api = new Hono<AppEnv>();
 
@@ -169,6 +170,14 @@ api.get("/ingest", async (c) => {
     }
     return c.json({ error: "Ingestion failed" }, 500); // S5: generic message
   }
+});
+
+api.get("/refresh", async (c) => {
+  const denied = requireAuth(c);
+  if (denied) return denied;
+
+  const event = await runRefresh(c.env);
+  return c.json(event);
 });
 
 api.get("/backfill-source", async (c) => {

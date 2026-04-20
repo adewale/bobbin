@@ -5,6 +5,7 @@ import { createIngestionLog } from "./db/ingestion";
 import { recordPipelineRun } from "./db/pipeline-metrics";
 
 beforeEach(async () => {
+  (env as any).ADMIN_SECRET = "";
   await applyTestMigrations(env.DB);
   await env.DB.batch([
     env.DB.prepare("INSERT INTO sources (google_doc_id, title) VALUES ('t', 'T')"),
@@ -18,11 +19,19 @@ beforeEach(async () => {
 // S1: Auth on admin endpoints
 describe("S1: Admin endpoint auth", () => {
   it("GET /api/ingest without auth returns 401", async () => {
+    (env as any).ADMIN_SECRET = "test-secret";
     const res = await SELF.fetch("http://localhost/api/ingest");
     expect(res.status).toBe(401);
   });
 
+  it("GET /api/refresh without auth returns 401", async () => {
+    (env as any).ADMIN_SECRET = "test-secret";
+    const res = await SELF.fetch("http://localhost/api/refresh");
+    expect(res.status).toBe(401);
+  });
+
   it("GET /api/embed without auth returns 401", async () => {
+    (env as any).ADMIN_SECRET = "test-secret";
     const res = await SELF.fetch("http://localhost/api/embed");
     expect(res.status).toBe(401);
   });
@@ -66,6 +75,29 @@ describe("S5: Generic error messages", () => {
       expect(data.error).not.toContain("/Users/");
     }
   });
+});
+
+describe("Manual refresh endpoint", () => {
+  it("reuses the refresh pipeline and records a refresh run", async () => {
+    (env as any).ADMIN_SECRET = "test-secret";
+    const res = await SELF.fetch("http://localhost/api/refresh", {
+      headers: { Authorization: "Bearer test-secret" },
+    });
+    const data = await res.json() as any;
+
+    expect(res.status).toBe(200);
+    expect(data.event).toBe("refresh");
+    expect(["completed", "failed"]).toContain(data.status);
+    expect(typeof data.duration_ms).toBe("number");
+
+    const logs = await env.DB.prepare(
+      "SELECT run_type, pipeline_report FROM ingestion_log ORDER BY id DESC LIMIT 1"
+    ).first<{ run_type: string; pipeline_report: string | null }>();
+
+    expect(logs).not.toBeNull();
+    expect(logs?.run_type).toBe("refresh");
+    expect(logs?.pipeline_report).not.toBeNull();
+  }, 20000);
 });
 
 describe("Pipeline reporting tables", () => {

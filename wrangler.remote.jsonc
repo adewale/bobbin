@@ -28,7 +28,7 @@
     "binding": "AI"
   },
   "triggers": {
-    "crons": ["0 6 * * 1"]
+    "crons": ["0 18 * * 1"]
   },
   "queues": {
     "producers": [

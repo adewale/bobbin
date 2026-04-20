@@ -131,7 +131,7 @@ ingestion_log (audit trail)
 ```
 
 Triggered by:
-- **Cron**: `0 6 * * 1` (Monday 6am UTC) — runs the full pipeline via `runRefresh`
+- **Cron**: `0 18 * * 1` (Monday 6pm UTC / 7pm BST) — runs the full pipeline via `runRefresh`
 - **Manual**: Admin API endpoints with Bearer auth
 
 ## Search pipeline
