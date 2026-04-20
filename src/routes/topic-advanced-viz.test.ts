@@ -116,23 +116,23 @@ describe("Topics index does not show ThemeRiver", () => {
   });
 });
 
-describe("Slopegraph on topic detail page", () => {
-  it("shows slopegraph when topic spans multiple years", async () => {
+describe("Evolution timeline on topic detail page", () => {
+  it("shows evolution timeline when topic spans multiple years", async () => {
     const res = await SELF.fetch("http://localhost/topics/llms");
     expect(res.status).toBe(200);
     const html = await res.text();
-    expect(html).toContain("slopegraph-svg");
-    expect(html).toContain("Rank over time");
+    expect(html).toContain("topic-evolution");
+    expect(html).toContain("Evolution over time");
   });
 
-  it("shows year labels in the slopegraph", async () => {
+  it("shows year labels in the evolution timeline", async () => {
     const res = await SELF.fetch("http://localhost/topics/llms");
     const html = await res.text();
     expect(html).toContain("2024");
     expect(html).toContain("2025");
   });
 
-  it("does not show slopegraph when topic has data in only 1 year", async () => {
+  it("still shows evolution timeline when a topic only has one-year data", async () => {
     // Create a topic that only appears in one year
     await env.DB.batch([
       env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('oneyear', 'oneyear', 3)"),
@@ -145,6 +145,6 @@ describe("Slopegraph on topic detail page", () => {
     const res = await SELF.fetch("http://localhost/topics/oneyear");
     expect(res.status).toBe(200);
     const html = await res.text();
-    expect(html).not.toContain("slopegraph-svg");
+    expect(html).toContain("topic-evolution");
   });
 });

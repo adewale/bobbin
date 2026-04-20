@@ -78,8 +78,41 @@ describe("Topic detail page — word_stats integration", () => {
     const res = await SELF.fetch("http://localhost/topics/llms");
     const html = await res.text();
     // "agents" co-occurs with "llms" on chunk 1 and 2, so should appear as related
-    expect(html).toContain("Related");
+    expect(html).toContain("Related topics");
     expect(html).toContain('href="/topics/agents"');
+  });
+
+  it("adds an on-this-page table of contents and sensemaking sections", async () => {
+    const res = await SELF.fetch("http://localhost/topics/llms");
+    const html = await res.text();
+
+    expect(html).toContain("page-toc");
+    expect(html).toContain('href="#over-time"');
+    expect(html).toContain('href="#in-context"');
+    expect(html).toContain('href="#evolution"');
+    expect(html).toContain('href="#episodes"');
+    expect(html).toContain('id="over-time"');
+    expect(html).toContain('id="in-context"');
+    expect(html).toContain('id="evolution"');
+    expect(html).toContain('id="episodes"');
+  });
+
+  it("uses an expandable in-context presentation instead of the old KWIC table", async () => {
+    const res = await SELF.fetch("http://localhost/topics/llms");
+    const html = await res.text();
+
+    expect(html).toContain("kwic-row");
+    expect(html).toContain("kwic-body");
+    expect(html).not.toContain("kwic-table");
+  });
+
+  it("renders episodes inside a collapsed details timeline", async () => {
+    const res = await SELF.fetch("http://localhost/topics/llms");
+    const html = await res.text();
+
+    expect(html).toContain('<details class="topic-episode-timeline" id="episodes">');
+    expect(html).toContain("topic-episode-summary");
+    expect(html).not.toContain("<h2>Episodes</h2>");
   });
 
   it("highlights topic name in chunk excerpts with <mark>", async () => {

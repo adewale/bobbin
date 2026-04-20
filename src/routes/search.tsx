@@ -118,6 +118,8 @@ search.get("/", async (c) => {
       title={query ? `Search: ${query}` : "Search"}
       description="Search the Bits and Bobs archive"
       activePath="/search"
+      searchQuery={query}
+      mainClassName="main-wide"
     >
       <SearchForm query={query} autofocus />
 

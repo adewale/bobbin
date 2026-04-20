@@ -25,7 +25,7 @@ episodes.get("/", async (c) => {
   const years = [...byYear.keys()].sort((a, b) => b - a);
 
   return c.html(
-    <Layout title="Episodes" description="All Bits and Bobs episodes by date" activePath="/episodes">
+    <Layout title="Episodes" description="All Bits and Bobs episodes by date" activePath="/episodes" mainClassName="main-wide">
       <p class="page-count">{allEpisodesList.length} episodes</p>
 
       {years.map((year) => {
@@ -73,18 +73,81 @@ episodes.get("/:slug", async (c) => {
   ]);
 
   return c.html(
-    <Layout title={episode.title} description={`Bits and Bobs from ${episode.published_date} — ${episode.chunk_count} chunks`} activePath="/episodes">
+    <Layout title={episode.title} description={`Bits and Bobs from ${episode.published_date} — ${episode.chunk_count} chunks`} activePath="/episodes" mainClassName="main-wide">
       <Breadcrumbs
         crumbs={[
           { label: "Episodes", href: "/episodes" },
           { label: episode.title },
         ]}
       />
-      <article class="episode-detail">
-        <h1>{episode.title}</h1>
-        <time datetime={episode.published_date}>{episode.published_date}</time>
+      <div class={(blendedTopics.main.length > 0 || blendedTopics.distinctive.length > 0) ? "page-with-rail episode-detail-layout" : "episode-detail-layout"}>
+        <article class="page-body episode-detail">
+          <h1>{episode.title}</h1>
+          <time datetime={episode.published_date}>{episode.published_date}</time>
+
+          {episode.format === "essays" ? (
+            <section class="episode-essays">
+              {chunksList.map((chunk) => (
+                <article key={chunk.id} class="essay" id={chunk.slug}>
+                  <h2><a href={`/chunks/${chunk.slug}`}>{chunk.title}</a></h2>
+                  <div class="essay-content">
+                    {parseRichContentJson(chunk.rich_content_json).length > 0 ? (
+                      <>
+                        <RichContent blocks={parseRichContentJson(chunk.rich_content_json)} />
+                        <RichFootnotes footnotes={parseFootnotesJson((chunk as any).footnotes_json ?? null)} />
+                      </>
+                    ) : (
+                      chunk.content.split("\n").filter((line, i) => {
+                        if (i === 0 && line.trim() === chunk.title.trim()) return false;
+                        return true;
+                      }).map((line, i) => (
+                        line.trim() ? <p key={i}>{line}</p> : null
+                      ))
+                    )}
+                  </div>
+                </article>
+              ))}
+            </section>
+          ) : (
+            <div class="episode-chunks">
+              {chunksList.map((chunk, idx) => {
+                const richBlocks = parseRichContentJson(chunk.rich_content_json);
+                const bodyLines = chunk.content.split("\n").filter((line, i) => {
+                  if (i === 0 && line.trim() === chunk.title.trim()) return false;
+                  return line.trim();
+                });
+                const hasBody = richBlocks.length > 0 || bodyLines.length > 0;
+
+                return hasBody ? (
+                  <details key={chunk.id} class="chunk-row">
+                    <summary>
+                      <a href={`/chunks/${chunk.slug}`} class="chunk-num" onclick="event.stopPropagation()">{idx + 1}</a>
+                      <span class="chunk-title">{chunk.title}</span>
+                    </summary>
+                    <div class="chunk-body">
+                      {richBlocks.length > 0 ? (
+                        <>
+                          <RichContent blocks={richBlocks} />
+                          <RichFootnotes footnotes={parseFootnotesJson((chunk as any).footnotes_json ?? null)} />
+                        </>
+                      ) : bodyLines.map((line, i) => (
+                        <p key={i}>{line}</p>
+                      ))}
+                    </div>
+                  </details>
+                ) : (
+                  <div key={chunk.id} class="chunk-row chunk-row-single">
+                    <a href={`/chunks/${chunk.slug}`} class="chunk-num">{idx + 1}</a>
+                    <span class="chunk-title">{chunk.title}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </article>
+
         {(blendedTopics.main.length > 0 || blendedTopics.distinctive.length > 0) && (
-          <aside class="topics-margin">
+          <aside class="page-rail topics-margin">
             {blendedTopics.main.length > 0 && (
               <div class="topic-tier-main">
                 <h3>Topics</h3>
@@ -111,67 +174,7 @@ episodes.get("/:slug", async (c) => {
             )}
           </aside>
         )}
-
-        {episode.format === "essays" ? (
-          <section class="episode-essays">
-            {chunksList.map((chunk) => (
-              <article key={chunk.id} class="essay" id={chunk.slug}>
-                <h2><a href={`/chunks/${chunk.slug}`}>{chunk.title}</a></h2>
-                <div class="essay-content">
-                  {parseRichContentJson(chunk.rich_content_json).length > 0 ? (
-                    <>
-                      <RichContent blocks={parseRichContentJson(chunk.rich_content_json)} />
-                      <RichFootnotes footnotes={parseFootnotesJson((chunk as any).footnotes_json ?? null)} />
-                    </>
-                  ) : (
-                    chunk.content.split("\n").filter((line, i) => {
-                      if (i === 0 && line.trim() === chunk.title.trim()) return false;
-                      return true;
-                    }).map((line, i) => (
-                      line.trim() ? <p key={i}>{line}</p> : null
-                    ))
-                  )}
-                </div>
-              </article>
-            ))}
-          </section>
-        ) : (
-          <div class="episode-chunks">
-            {chunksList.map((chunk, idx) => {
-              const richBlocks = parseRichContentJson(chunk.rich_content_json);
-              const bodyLines = chunk.content.split("\n").filter((line, i) => {
-                if (i === 0 && line.trim() === chunk.title.trim()) return false;
-                return line.trim();
-              });
-              const hasBody = richBlocks.length > 0 || bodyLines.length > 0;
-
-              return hasBody ? (
-                <details key={chunk.id} class="chunk-row">
-                  <summary>
-                    <a href={`/chunks/${chunk.slug}`} class="chunk-num" onclick="event.stopPropagation()">{idx + 1}</a>
-                    <span class="chunk-title">{chunk.title}</span>
-                  </summary>
-                  <div class="chunk-body">
-                    {richBlocks.length > 0 ? (
-                      <>
-                        <RichContent blocks={richBlocks} />
-                        <RichFootnotes footnotes={parseFootnotesJson((chunk as any).footnotes_json ?? null)} />
-                      </>
-                    ) : bodyLines.map((line, i) => (
-                      <p key={i}>{line}</p>
-                    ))}
-                  </div>
-                </details>
-              ) : (
-                <div key={chunk.id} class="chunk-row chunk-row-single">
-                  <a href={`/chunks/${chunk.slug}`} class="chunk-num">{idx + 1}</a>
-                  <span class="chunk-title">{chunk.title}</span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </article>
+      </div>
 
       {(adjacent.prev || adjacent.next) && (
         <nav class="episode-nav">

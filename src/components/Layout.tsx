@@ -5,6 +5,8 @@ type LayoutProps = PropsWithChildren<{
   description?: string;
   canonicalUrl?: string;
   activePath?: string;
+  searchQuery?: string;
+  mainClassName?: string;
 }>;
 
 const NAV_ITEMS = [
@@ -17,6 +19,8 @@ export const Layout: FC<LayoutProps> = ({
   description,
   canonicalUrl,
   activePath,
+  searchQuery,
+  mainClassName,
   children,
 }) => (
   <html lang="en">
@@ -54,12 +58,21 @@ export const Layout: FC<LayoutProps> = ({
               </li>
             ))}
           </ul>
+          <form class="header-search" action="/search" method="get" role="search">
+            <input
+              type="search"
+              name="q"
+              value={searchQuery || ""}
+              placeholder="Search..."
+              aria-label="Search"
+            />
+          </form>
           <a href="/search" class={`search-icon ${activePath === "/search" ? "nav-active" : ""}`} aria-label="Search">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           </a>
         </nav>
       </header>
-      <main>{children}</main>
+      <main class={mainClassName}>{children}</main>
       <footer>
         <p>
           <a href="https://komoroske.com/bits-and-bobs">Bits and Bobs</a> by Alex Komoroske

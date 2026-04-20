@@ -112,7 +112,18 @@ describe("Homepage margin layout", () => {
     const res = await SELF.fetch("http://localhost/");
     const html = await res.text();
     expect(res.status).toBe(200);
+    expect(html).toContain("page-with-rail");
+    expect(html).toContain("page-rail");
     expect(html).toContain("home-margin");
     expect(html).toContain("Recent Episodes");
+  });
+
+  it("uses header search as the homepage's primary search affordance", async () => {
+    const res = await SELF.fetch("http://localhost/");
+    const html = await res.text();
+
+    expect(res.status).toBe(200);
+    expect(html).toContain('class="header-search"');
+    expect(html).not.toContain('class="search-form"');
   });
 });

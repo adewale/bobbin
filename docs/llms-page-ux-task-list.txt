@@ -1,0 +1,83 @@
+LLMs Page UX Task List
+
+Source branch: claude/assess-llms-page-ux-Zgytc
+Goal: rebuild the branch intent from main without inheriting the layout regressions caused by the broad shared-grid refactor.
+
+Branch goals to preserve
+
+1. Topic detail page should be easier to navigate and understand.
+- Add a sticky "On this page" table of contents.
+- Add active-section highlighting while scrolling.
+- Open collapsed target sections when navigated by hash.
+
+2. Topic detail page should present richer sensemaking views.
+- Keep the improved sparkline / over-time section.
+- Keep clearer distinctiveness explanation / tooltip treatment.
+- Keep the expandable in-context rows.
+- Keep the first-class evolution timeline.
+- Keep the collapsible episodes section.
+- Keep related topics near the topic page, preferably in secondary UI.
+
+3. Search should feel more integrated into the product shell.
+- Add a header search affordance on desktop.
+- Preserve a dedicated, obvious search form on the search page itself.
+- Keep search usable on mobile via icon or compact header behavior.
+
+4. Shared page chrome should feel more cohesive.
+- Reuse the warmer panel treatment where helpful.
+- Improve consistency between home/topic/chunk/episode/search pages.
+
+5. Topic browsing page should be more legible.
+- Keep tooltip/title help on topic multiples and charts.
+- Keep improved topic-card affordances where useful.
+
+6. Chunk / episode pages may use better secondary layout treatment.
+- Keep useful right-rail or marginalia patterns only where they genuinely add value.
+- Do not force a right rail onto pages that read better as single-column layouts.
+
+Audit-derived constraints
+
+1. Do not make a global body+rail grid the default for every page.
+- Main is the known-good baseline.
+- If a page needs a rail, opt into it deliberately.
+- Pages without meaningful side content should remain single-column.
+
+2. Preserve page-local task affordances.
+- Search page must keep a visible in-page search form on desktop and mobile.
+- Header search is additive, not a replacement.
+
+3. Keep content-first mobile ordering.
+- Any rail or ToC must not appear before the main content on mobile.
+- ToC-only rails should collapse or disappear on small screens.
+
+4. Avoid dead reserved space.
+- No permanent empty right column on pages with no rail content.
+- No tiny ToC rail stealing width from a prose column unless it materially helps desktop navigation.
+
+5. Preserve main's stronger page-specific layouts where they are already good.
+- Home page should not lose its clarity or feel hollow at the top.
+- Chunk page should keep its readable content flow.
+- Episode page should keep its comfortable reading rhythm.
+
+6. Rebuild incrementally with red-green-refactor TDD.
+- Add behavior tests before each substantial layout change.
+- Add PBT for search-form/query invariants or other clear contracts.
+- Verify with browser checks at desktop and mobile widths.
+
+Pages to inspect during rebuild
+
+- /
+- /search
+- /topics
+- /topics/:slug
+- /episodes/:slug
+- /chunks/:slug
+
+Success criteria
+
+- Topic detail page gains the branch's navigation and sensemaking improvements.
+- Header search exists without degrading the dedicated search page.
+- Home, chunk, episode, and search pages do not gain weird empty space.
+- Mobile ordering stays content-first.
+- No page reserves a dead rail by default.
+- Local preview on port 9090 looks intentionally improved, not just different.

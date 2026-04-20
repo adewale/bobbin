@@ -65,33 +65,31 @@ describe("Topic detail page — dispersion plot", () => {
     const res = await SELF.fetch("http://localhost/topics/llms");
     expect(res.status).toBe(200);
     const html = await res.text();
-    expect(html).toContain("dispersion-svg");
+    expect(html).toContain("topic-spark-svg");
   });
 
   it("has rect elements for episodes where the topic appears", async () => {
     const res = await SELF.fetch("http://localhost/topics/llms");
     const html = await res.text();
-    // The sparkline has 2 episodes (2024-04-08 and 2024-05-01), so there should be rect elements
+    // The sparkline includes rug marks for 2 episodes where the topic appears.
     expect(html).toMatch(/<rect[^>]*class="dispersion-mark"/);
-    // Count the rect elements with dispersion-mark class
     const marks = html.match(/<rect[^>]*class="dispersion-mark"/g);
     expect(marks).not.toBeNull();
     expect(marks!.length).toBe(2);
   });
 });
 
-describe("Topic detail page — KWIC table", () => {
-  it("contains a kwic-table element", async () => {
+describe("Topic detail page — in-context rows", () => {
+  it("contains expandable kwic-row elements", async () => {
     const res = await SELF.fetch("http://localhost/topics/llms");
     expect(res.status).toBe(200);
     const html = await res.text();
-    expect(html).toContain("kwic-table");
+    expect(html).toContain("kwic-row");
   });
 
   it("shows the topic name centered between left and right context", async () => {
     const res = await SELF.fetch("http://localhost/topics/llms");
     const html = await res.text();
-    // Each KWIC row should have three tds: left, keyword, right
     expect(html).toContain('class="kwic-left"');
     expect(html).toContain('class="kwic-word"');
     expect(html).toContain('class="kwic-right"');
@@ -100,7 +98,6 @@ describe("Topic detail page — KWIC table", () => {
   it("links KWIC entries to chunk detail pages", async () => {
     const res = await SELF.fetch("http://localhost/topics/llms");
     const html = await res.text();
-    // The keyword should link to the chunk
-    expect(html).toMatch(/class="kwic-word"[^>]*>.*?<a href="\/chunks\/chunk-llms/s);
+    expect(html).toContain('href="/chunks/chunk-llms-1"');
   });
 });

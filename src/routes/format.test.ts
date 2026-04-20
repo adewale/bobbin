@@ -58,6 +58,8 @@ describe("Notes-format chunk page", () => {
   it("shows compact layout without tufte-layout", async () => {
     const res = await SELF.fetch("http://localhost/chunks/note-1");
     const html = await res.text();
+    expect(html).toContain('class="main-wide"');
+    expect(html).not.toContain("page-with-rail");
     expect(html).toContain("chunk-compact");
     expect(html).not.toContain("tufte-layout");
   });
@@ -75,7 +77,18 @@ describe("Essay-format chunk page", () => {
   it("shows rich tufte-layout", async () => {
     const res = await SELF.fetch("http://localhost/chunks/essay-1");
     const html = await res.text();
+    expect(html).toContain('class="main-wide"');
+    expect(html).not.toContain("page-with-rail");
     expect(html).toContain("tufte-layout");
     expect(html).not.toContain("chunk-compact");
+  });
+});
+
+describe("Episodes index layout", () => {
+  it("uses the wider canvas without a forced rail", async () => {
+    const res = await SELF.fetch("http://localhost/episodes");
+    const html = await res.text();
+    expect(html).toContain('class="main-wide"');
+    expect(html).not.toContain("page-with-rail");
   });
 });

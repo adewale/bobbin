@@ -76,12 +76,14 @@ describe("Ladder of abstraction on /topics/:slug", () => {
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).toContain("topic-sparkline");
+    expect(html).toContain('id="over-time"');
   });
 
   it("shows episode-level timeline", async () => {
     const res = await SELF.fetch("http://localhost/topics/ecosystem");
     const html = await res.text();
     expect(html).toContain("topic-episode-timeline");
+    expect(html).toContain('id="episodes"');
     // Should list all 3 episodes that have this topic
     expect(html).toContain("2024-01-15");
     expect(html).toContain("2024-02-12");
@@ -100,6 +102,7 @@ describe("Ladder of abstraction on /topics/:slug", () => {
   it("shows collapsible evolution section", async () => {
     const res = await SELF.fetch("http://localhost/topics/ecosystem");
     const html = await res.text();
-    expect(html).toContain("topic-diff-section");
+    expect(html).toContain("topic-evolution");
+    expect(html).toContain('id="evolution"');
   });
 });

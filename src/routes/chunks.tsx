@@ -55,6 +55,7 @@ chunks.get("/:slug", async (c) => {
       title={chunk.title}
       description={chunk.content_plain.substring(0, 160)}
       activePath="/episodes"
+      mainClassName="main-wide"
     >
       <Breadcrumbs
         crumbs={[
@@ -63,8 +64,8 @@ chunks.get("/:slug", async (c) => {
           { label: chunk.title },
         ]}
       />
-      <div class={isNotes ? "chunk-compact" : "tufte-layout"}>
-        <article class="chunk-detail">
+      <div class={(topics.length > 0 || episodeBlend.distinctive.length > 0) ? `page-with-rail ${isNotes ? "chunk-compact" : "tufte-layout"}` : (isNotes ? "chunk-compact" : "tufte-layout")}>
+        <article class="page-body chunk-detail">
           <h1>{chunk.title}</h1>
           <div class="chunk-meta">
             <time datetime={chunk.published_date}>{chunk.published_date}</time>
@@ -73,35 +74,6 @@ chunks.get("/:slug", async (c) => {
               {chunk.episode_title}
             </a>
           </div>
-
-          {(topics.length > 0 || episodeBlend.distinctive.length > 0) && (
-            <aside class="topics-margin">
-              {topics.length > 0 && (
-                <div class="topic-tier-main">
-                  <h3>Topics</h3>
-                  <div class="topics">
-                    {topics.map((topic) => (
-                      <a key={topic.id} href={`/topics/${topic.slug}`} class="topic">
-                        {topic.name}
-                      </a>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {episodeBlend.distinctive.length > 0 && (
-                <div class="distinctive-topics">
-                  <h4>Distinctive this episode</h4>
-                  <div class="topics">
-                    {episodeBlend.distinctive.map((topic) => (
-                      <a key={topic.id} href={`/topics/${topic.slug}`} class="topic topic-distinctive">
-                        {topic.name}
-                      </a>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </aside>
-          )}
 
           <div class="chunk-content">
             {richBlocks.length > 0 ? (
@@ -155,6 +127,35 @@ chunks.get("/:slug", async (c) => {
             }}
           />
         </article>
+
+        {(topics.length > 0 || episodeBlend.distinctive.length > 0) && (
+          <aside class="page-rail topics-margin">
+            {topics.length > 0 && (
+              <div class="topic-tier-main">
+                <h3>Topics</h3>
+                <div class="topics">
+                  {topics.map((topic) => (
+                    <a key={topic.id} href={`/topics/${topic.slug}`} class="topic">
+                      {topic.name}
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+            {episodeBlend.distinctive.length > 0 && (
+              <div class="distinctive-topics">
+                <h4>Distinctive this episode</h4>
+                <div class="topics">
+                  {episodeBlend.distinctive.map((topic) => (
+                    <a key={topic.id} href={`/topics/${topic.slug}`} class="topic topic-distinctive">
+                      {topic.name}
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+          </aside>
+        )}
 
         {(thread as any[]).length > 0 && (
           <section class="more-on-this">

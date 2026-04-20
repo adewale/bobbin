@@ -3,7 +3,6 @@ import type { AppEnv } from "../types";
 import { Layout } from "../components/Layout";
 import { EpisodeCard } from "../components/EpisodeCard";
 import { TopicCloud } from "../components/TopicCloud";
-import { SearchForm } from "../components/SearchForm";
 import { getRecentEpisodes, getChunksByEpisode, getEpisodeTopics } from "../db/episodes";
 import { getTopTopics } from "../db/topics";
 import { getMostConnected } from "../db/word-stats";
@@ -31,17 +30,17 @@ home.get("/", async (c) => {
     <Layout
       title="Home"
       description="An archive of Alex Komoroske's Bits and Bobs weekly newsletter"
+      mainClassName="main-wide"
     >
       <section class="hero">
         <p>
           A searchable archive of Alex Komoroske's{" "}
           <em>Bits and Bobs</em> weekly newsletter.
         </p>
-        <SearchForm />
       </section>
 
-      <div class="home-with-margin">
-        <div class="home-main">
+      <div class="page-with-rail home-with-margin">
+        <div class="page-body home-main">
           {latestEp && (
             <section class="latest-episode-panel">
               <h2>
@@ -87,7 +86,7 @@ home.get("/", async (c) => {
           )}
         </div>
 
-        <aside class="home-margin">
+        <aside class="page-rail home-margin">
           <section class="recent-episodes">
             <h3>Recent Episodes</h3>
             {episodes.slice(0, 8).map((ep) => (
