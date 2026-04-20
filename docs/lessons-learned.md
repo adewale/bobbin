@@ -398,3 +398,145 @@ To finish live ingestion and deployment work, we temporarily deployed with a kno
 34. Evaluation harnesses need batching, isolation, and good failure reporting just like production pipelines do.
 35. Repo-wide `tsc --noEmit` is a product-quality gate because it catches invalid fixtures, helpers, and route contracts that example tests ignore.
 36. Temporary operational secrets solve immediate problems but create immediate rotation debt.
+
+## What we learned in the source-fidelity rollout and ingest-time LLM architecture
+
+The next phase of work was about preserving the source more honestly and moving the LLM to the only place it makes economic and operational sense: once per episode, as close to ingest as possible. That work taught us a different set of lessons than the original build or the topic migrations. The hard problems were not feature ideas. They were storage limits, parser fidelity, repairability, and the difference between fixing code and fixing already-ingested production data.
+
+### Fidelity is a storage contract, not just a rendering feature
+
+The first instinct is to treat links, superscripts, list depth, images, and separators as a frontend concern: parse more, render more. But the real lesson was that fidelity is primarily a storage design problem. Once the system only stores flattened text, every downstream improvement turns into archaeology. The winning design was:
+
+- raw HTML stays canonical
+- rich parsed artifacts are stored explicitly
+- normalized analysis text remains separate for deterministic extraction
+
+That separation is what made later repairs possible. Without it, every parser bug would have required refetching or accepting irreversible data loss.
+
+### Raw HTML is not a luxury backup; it is the recovery path
+
+Persisting the original Google Docs HTML felt redundant until production-only bugs appeared. Then it became obvious that raw HTML is the only trustworthy source for:
+
+- parser upgrades
+- fidelity backfills
+- fragment-link repair
+- verifying whether the bug is in parsing, storage, or rendering
+
+The important lesson is: **if you plan to improve a parser later, store the original input exactly as received**.
+
+### D1 limits are schema constraints, not just performance quirks
+
+The source-fidelity rollout hit several production-only limits that local logic alone did not reveal:
+
+- row-size limits for large HTML and episode artifacts
+- SQL variable limits on batched updates and lookups
+- CPU sensitivity on wide correlated operations
+
+The fix was not "optimize a query". The fix was to change the storage model:
+
+- chunk large artifacts into side tables
+- batch using actual row IDs
+- separate hot working tables from large artifact payloads
+
+That is a broader lesson: **when D1 says a row or statement is too large, the answer is often a different data shape, not a more clever SQL expression**.
+
+### Preserve both sides of a reference or the link is still broken
+
+The fragment-link bug was instructive. Rewriting a source link from `#id...` to `/chunks/...#id...` was only half the problem. The target anchor also had to survive parsing, storage, and rendering. A reference is only valid if both sides survive:
+
+1. the source link is preserved and resolved
+2. the destination anchor is preserved in stored rich content
+3. the destination anchor is actually rendered into live HTML
+
+That is the real lesson: **cross-document or cross-chunk references are two-part data, not one-part data**.
+
+### Parser bugs often hide in inline structure, not block structure
+
+The parser already preserved standalone anchors, but it missed inline `<a id="..."></a>` targets embedded inside list items. That created a subtle failure mode:
+
+- source links looked valid in raw HTML
+- target IDs existed in raw HTML
+- parsed artifacts silently dropped the target anchor
+- live pages rendered a dead link that looked structurally correct
+
+This is why parser tests need to cover not just blocks, but also inline structural tokens living inside otherwise-normal content.
+
+### Existing production data is a separate system you must migrate deliberately
+
+Fixing code did not fix the live site. Already-ingested rows still contained old artifacts. That forced a separate operational step:
+
+- repair existing chunk rows
+- repair existing episode artifact chunks
+- verify the repaired pages on live
+
+The broader lesson is: **a parser/storage bug creates both a code bug and a data bug**. Shipping the code only fixes future ingests. You still need an explicit repair path for historical data.
+
+### Data repair scope must include dependents, not just changed rows
+
+One repair pass updated only the obviously changed source rows. That was not enough, because target chunks that now needed preserved anchor IDs were still serving stale rich content. The correct repair scope was broader than "rows whose href changed". It had to include all rows in affected episodes whose stored artifacts depended on the new parse behavior.
+
+This is the operational version of dependency tracking: **repair the closure of affected data, not only the rows that look obviously different at first glance**.
+
+### Episode-level LLM caching is the right unit of expensive intelligence
+
+Running the LLM at episode ingest time turned out to be the right boundary for three reasons:
+
+- it is much cheaper than per-chunk invocation
+- it captures thematic context that chunk-level calls miss
+- it makes downstream reruns deterministic because the expensive semantic proposal step is cached
+
+The key design rule held up well: **the LLM proposes, deterministic code decides**.
+
+### The LLM's biggest win was architectural, not magical product quality
+
+The LLM did not suddenly transform the visible topic metrics by itself. The bigger win was that it changed the shape of the system in a useful way:
+
+- every episode now has a cached proposal artifact instead of requiring repeated semantic calls
+- downstream pipeline experiments can be rerun deterministically against the same semantic proposals
+- topic promotion still stays bounded by deterministic evidence and corpus rules
+- proposals now carry chunk-level evidence, which makes audits and debugging substantially easier
+
+The practical result was not "the LLM fixed topic quality in one shot". The practical result was: **semantic hints became persistent, inspectable, and cheap to reuse**. That is a stronger foundation for iteration than a one-time metric spike would have been.
+
+### Model output contracts must be treated as hostile input
+
+Workers AI output was not stable enough to trust casually. Real failures included:
+
+- variable response envelopes
+- fenced JSON
+- control characters
+- malformed content that was close to valid but not valid enough
+
+The lesson is not that the model is bad. The lesson is that **LLM output is an external input format and must be normalized, sanitized, and validated like any other untrusted payload**.
+
+### Live audits need representative pathological pages, not generic smoke checks
+
+The most valuable verification was not "page returns 200". It was targeted live inspection of pages known to contain:
+
+- superscript footnotes
+- nested lists
+- images
+- separators
+- internal fragment links
+
+Those pathological pages exposed issues that broad route tests and generic samples did not. The right mental model is that live audits are characterization tests for real content, not just manual spot checks.
+
+### Documentation is part of the pipeline, not commentary about it
+
+Once the pipeline had raw HTML preservation, chunked artifact storage, episode-level LLM caching, deterministic reruns, backfill routes, and repair-specific behavior, the old "pipeline" doc was no longer enough. The system had become too stateful and too operationally subtle to leave implicit.
+
+The lesson is simple: **if a pipeline has distinct ingest, cache, deterministic rerun, and repair paths, those paths need first-class documentation or the system will become tribal knowledge**.
+
+### Updated lesson list
+
+37. Source fidelity is primarily a storage contract; rendering is downstream of that decision.
+38. Store raw source input exactly as fetched if you ever expect parser bugs or parser evolution.
+39. D1 row-size and statement-size limits usually require a different data shape, not just faster queries.
+40. Cross-chunk references only work when both the source link and the destination anchor survive parse, storage, and rendering.
+41. Parser tests must cover inline structural tokens inside normal content, not just top-level block boundaries.
+42. Fixing an ingest bug requires both a code deploy and a historical data repair plan.
+43. Data repairs must update the full dependent artifact set, not just the rows with the most obvious diff.
+44. Episode-level LLM caching is the right economic boundary: expensive semantics once, deterministic reruns forever.
+45. LLM responses are untrusted external payloads and need sanitization, schema validation, and deterministic evidence checks.
+46. Live audits should target the weirdest real pages in the corpus, because that is where fidelity bugs actually surface.
+47. Once a pipeline has separate ingest, cache, rerun, and repair paths, documentation becomes part of the system, not optional explanation.
