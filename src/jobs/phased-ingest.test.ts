@@ -72,6 +72,110 @@ describe("Phase 1: ingestEpisodesOnly", () => {
     expect(byFormat.essays).toBe(3);
     expect(byFormat.notes).toBe(1);
   });
+
+  it("resolves internal fragment links to target chunk URLs during ingest", async () => {
+    await ingestEpisodesOnly(env.DB, 1, [{
+      dateStr: "4/20/26",
+      parsedDate: new Date("2026-04-20T00:00:00.000Z"),
+      title: "Bits and Bobs 4/20/26",
+      headingId: "",
+      format: "notes",
+      contentMarkdown: "[Target](#id.target)\n\nTarget body",
+      richContent: [
+        {
+          type: "paragraph",
+          depth: 0,
+          listStyle: "paragraph",
+          plainText: "Target",
+          nodes: [{ type: "text", text: "Target", href: "#id.target" }],
+        },
+        {
+          type: "paragraph",
+          depth: 0,
+          listStyle: "paragraph",
+          plainText: "Target body",
+          nodes: [{ type: "text", text: "Target body" }],
+        },
+      ],
+      links: [{ text: "Target", href: "#id.target" }],
+      images: [],
+      chunks: [
+        {
+          title: "Source chunk",
+          content: "Source chunk\nSee target",
+          contentPlain: "Source chunk\nSee target",
+          contentMarkdown: "[Target](#id.target)",
+          richContent: [{
+            type: "paragraph",
+            depth: 0,
+            listStyle: "paragraph",
+            plainText: "Target",
+            nodes: [{ type: "text", text: "Target", href: "#id.target" }],
+          }],
+          links: [{ text: "Target", href: "#id.target" }],
+          images: [],
+          footnotes: [],
+          headingId: "",
+          position: 0,
+        },
+        {
+          title: "Target chunk",
+          content: "Target chunk\nDestination",
+          contentPlain: "Target chunk\nDestination",
+          contentMarkdown: "Destination",
+          richContent: [{
+            type: "paragraph",
+            depth: 0,
+            listStyle: "paragraph",
+            plainText: "Destination",
+            nodes: [{ type: "text", text: "Destination" }],
+            anchorIds: ["id.target"],
+          }],
+          links: [],
+          images: [],
+          footnotes: [],
+          headingId: "",
+          position: 1,
+        },
+      ],
+    }]);
+
+    const rows = await env.DB.prepare(
+      "SELECT slug, content_markdown, rich_content_json, links_json FROM chunks ORDER BY position"
+    ).all<{ slug: string; content_markdown: string; rich_content_json: string; links_json: string }>();
+
+    expect(rows.results).toHaveLength(2);
+    const sourceChunk = rows.results[0];
+    const targetChunk = rows.results[1];
+    const expectedHref = `/chunks/${targetChunk.slug}#id.target`;
+
+    expect(sourceChunk.content_markdown).toContain(expectedHref);
+    expect(sourceChunk.links_json).toContain(expectedHref);
+    expect(sourceChunk.rich_content_json).toContain(expectedHref);
+  });
+
+  it("preserves inline anchor targets from parsed HTML so ingest can resolve fragment links", async () => {
+    const parsed = parseHtmlDocument([
+      '<h1><span>4/20/26</span></h1>',
+      '<li style="margin-left:36pt"><span><a href="#id.target">Target ref</a></span></li>',
+      '<li style="margin-left:36pt"><a id="id.target"></a><span>Anchor target</span></li>',
+    ].join(""));
+
+    await ingestEpisodesOnly(env.DB, 1, parsed);
+
+    const rows = await env.DB.prepare(
+      "SELECT slug, content_markdown, rich_content_json, links_json FROM chunks ORDER BY position"
+    ).all<{ slug: string; content_markdown: string; rich_content_json: string; links_json: string }>();
+
+    expect(rows.results).toHaveLength(2);
+    const sourceChunk = rows.results[0];
+    const targetChunk = rows.results[1];
+    const expectedHref = `/chunks/${targetChunk.slug}#id.target`;
+
+    expect(sourceChunk.content_markdown).toContain(expectedHref);
+    expect(sourceChunk.links_json).toContain(expectedHref);
+    expect(targetChunk.rich_content_json).toContain('"anchorIds":["id.target"]');
+  });
 });
 
 // === Phase 2: Enrichment (background) ===

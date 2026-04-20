@@ -1,159 +1,281 @@
-Enrichment Pipeline Architecture
+# Pipeline Architecture
 
-## Pipeline flow
+## Purpose
 
-```
-WEEKLY CRON (Mon 6am UTC, 15 min budget on paid plan)
-  |
-  v
-1. FETCH NEW CONTENT ------------------------------------------------- O(1)
-   fetchGoogleDoc(docId)
-   HTTP GET docs.google.com/d/{id}/mobilebasic
-   Returns HTML. One request per source doc.
+Bobbin has two distinct pipeline goals:
 
-  |
-  v
-2. PARSE HTML -> EPISODES + CHUNKS ----------------------------------- O(html_size)
-   parseHtmlDocument(html)
-   Margin-left based chunking, format detection (essays vs notes).
-   ~70 chunks per episode. In-memory, fast.
+1. preserve the Google Docs source faithfully enough to render useful chunk and episode pages
+2. build a deterministic topic pipeline that can be rerun cheaply without reinvoking the LLM
 
-  |
-  v
-3. INSERT EPISODES + CHUNKS (Phase 1) -------------------------------- O(new_chunks)
-   ingestEpisodesOnly(db, sourceId, episodes)
-   INSERT episodes + chunks. Skips existing dates (dedup by published_date).
-   Batches of 50 D1 statements. Only inserts new data.
+The pipeline is deliberately split so the expensive semantic step happens once per episode at ingest time, while the downstream topic pipeline remains reproducible and cheap to rerun.
 
-  |
-  v
-4. ENRICH CHUNKS (Phase 2) ------------------------------------------- O(chunks x topics_per_chunk)
-   enrichAllChunks(db, 200, 120000)
-   Loops with 2-min time budget, processes batches of unenriched chunks.
+## End-to-end flow
 
-   For each unenriched chunk batch (processChunkBatch):
-     a. DELETE old chunk_topics for batch (clean slate on re-enrichment)
-     b. extractTopics(text, 5)                                        O(words)
-        - extractKnownEntities (curated list, always included)
-        - extractEntities (capitalization heuristics, noise-filtered)
-        - YAKE keyphrases (within-document features, replaces TF-IDF)
-     c. isNoiseTopic filter (250+ words, suffix heuristics, phrase rules)
-     d. INSERT topics, chunk_topics, episode_topics                   O(topics)
-     e. tokenizeForWordStats -> INSERT chunk_words                    O(words)
-
-   NOTE: YAKE is per-document — no corpus stats needed. 5 keyphrases/chunk
-   (was 10-15 with TF-IDF). Multi-word phrases extracted naturally.
-
-  |
-  v
-5. FINALIZE ENRICHMENT (18 steps, ~3s total) ------------------------- mixed
-   finalizeEnrichment(db, queue)
-   All steps are resilient (continue on error, report per-step timing).
-
-   DATA MIGRATION:
-   0a. Fix topic names ----------- decode HTML entities, strip apostrophes
-   0b. Early orphan purge -------- DELETE topics with no chunk_topics
-
-   CORE AGGREGATION (batched by actual row IDs):
-   1. Recalculate usage_count ---- batched UPDATE by topic IDs -------- O(topics)
-   2. Rebuild word_stats --------- DELETE orphans + UPSERT ------------ O(words)
-   3. Precompute reach ----------- batched UPDATE by chunk IDs -------- O(chunks)
-   4. Merge co-occurring topics -- 5 hardcoded rules ----------------- O(1)
-   5. N-gram extraction ---------- dispatched to queue or inline ------ O(phrases)
-   6. Precompute distinctiveness - batched UPDATE by topic IDs -------- O(topics)
-   7. Related slugs -------------- batch SQL or queue fallback -------- O(topics)
-
-   CLEANUP:
-   8. Entity validation ---------- DELETE false chunk_topics ---------- O(entities)
-   9. Noise cleanup -------------- batched IN-clause DELETEs --------- O(noise)
-   10. Usage recalculation ------- batched by actual IDs -------------- O(topics)
-
-   QUALITY GATES (corpus-wide, Yang & Pedersen 1997):
-   11. df≥5 gate ----------------- prune topics appearing in <5 chunks  O(topics)
-   12. Stem merge ---------------- merge inflectional variants -------- O(active)
-   13. Similarity cluster -------- Dice coefficient ≥0.7 ------------- O(active²)
-   14. Final usage recount ------- batched by actual IDs -------------- O(topics)
-   15. Delete orphans ------------ remove usage=0 non-entity topics --- O(orphans)
-   16. Phrase dedup --------------- merge plural variants ------------- O(active)
+```text
+Google Docs mobilebasic HTML
+  -> fetchGoogleDoc()
+  -> persistSourceHtmlChunks()
+  -> parseHtmlDocument()
+  -> ingestEpisodesOnly()
+     -> episodes
+     -> chunks
+     -> episode_artifact_chunks
+     -> chunk rich-content fields
+  -> enrichEpisodesWithLlm() for new/backfilled episodes only
+     -> llm_enrichment_runs
+     -> llm_episode_candidates
+     -> llm_episode_candidate_evidence
+  -> enrichChunks() / processChunkBatch()
+     -> analysis_text
+     -> chunk_words
+     -> topic_candidate_audit
+     -> topics / chunk_topics / episode_topics
+  -> finalizeEnrichment()
+     -> usage recounts
+     -> word_stats rebuild
+     -> phrase lexicon + merges + display decisions
 ```
 
-## Queue architecture
+## Stage 1: Fetch And Preserve Source
 
-```
-Queue: bobbin-enrichment
-  max_batch_size: 10
-  max_concurrency: 10
-  max_retries: 2
-  Cost: free tier (< 10K ops/day)
+Entry point:
 
-Message types:
-  "compute-related" { topicId: number }  -- compute related_slugs for 1 topic
-  "assign-ngram"    { phrase: string }   -- create phrase topic + assign to chunks
+- `fetchGoogleDoc()`
 
-Consumer: queue() handler in src/index.tsx
-  Processes batches of 10 messages concurrently.
-  Each message does 1-2 D1 queries + 1 UPDATE.
-  Automatic retry on failure (max 2 retries).
+Primary storage:
 
-Fallback: when no queue binding (tests, dev, pre-queue deploy),
-  all slow steps run inline serial. Works but may timeout at scale.
-```
+- `source_html_chunks`
 
-## Scaling characteristics
+What is preserved:
 
-| Component | Current (6K chunks) | At 10x (50K chunks) | Bottleneck? |
-|-----------|:---:|:---:|:---:|
-| Fetch HTML | 1 req/week | 1 req/week | No |
-| Parse HTML | ~200KB | ~2MB | No |
-| Insert chunks | ~70/week | ~700/week | No |
-| extractTopics per chunk | 15 topics x 70 | 15 x 700 | Watch: IDF batch scan |
-| Noise filter at insert | O(1) per topic | O(1) | No |
-| word_stats rebuild | 1 SQL | 1 SQL | No |
-| N-gram LIKE scans (queue) | 100 x 6K = ~10s | 100 x 50K = ~60s | Yes: needs FTS index |
-| N-gram LIKE scans (no queue) | 100 x 6K = ~30s | Times out | Breaks without queue |
-| Related slugs (queue) | 6K msgs, ~6s | 30K msgs, ~30s | Watch: may need +concurrency |
-| Related slugs (no queue) | 6K serial, ~60s | Times out | Breaks without queue |
-| Entity validation | 26 LIKE scans | 30 LIKE scans | No |
-| Prune usage<=1 | 1 SQL | 1 SQL | No |
+- raw source HTML exactly as fetched
+- fetch timestamp
 
-## Cost
+Why this exists:
 
-| Service | Usage | Monthly cost |
-|---------|-------|:---:|
-| Workers (paid plan) | ~100 requests + cron | $5.00 |
-| D1 | ~5M rows read/week | Free tier |
-| Queue | ~7K operations/week | Free tier |
-| Vectorize | 6K vectors | Included |
-| AI | Embedding generation | Included |
-| Total | | $5.00/mo |
+- parser improvements must be able to replay the original source
+- fidelity bugs can be repaired by reparsing and backfilling artifacts
 
-## When to upgrade
+## Stage 2: Parse HTML To Episodes And Chunks
 
-| Trigger | Current | Upgrade path |
-|---------|---------|-------------|
-| N-gram LIKE scans > 60s | ~10s with queue | Add FTS index for phrase matching |
-| Related slugs > 30K topics | 6K | Increase queue max_concurrency to 50 |
-| Corpus > 50K chunks | 6K | Precompute IDF in word_stats, not per-batch |
-| Cron > 15 min wall clock | ~3 min | Switch to Workflows (unlimited duration) |
-| Need real-time enrichment | Weekly batch | Workflow triggered on content change |
+Entry point:
 
-## Production state
+- `parseHtmlDocument()` in `src/services/html-parser.ts`
 
-The queue is deployed (bobbin-enrichment, 1 producer, 1 consumer).
-Finalization dispatches slow steps to the queue when triggered via cron
-or /api/finalize. The queue processes messages in parallel (10 concurrent).
+Output model:
 
-Note: the queue is NOT available in wrangler dev --remote mode. Testing
-queue behavior requires deploying and triggering via the live endpoint
-or cron.
+- `ParsedEpisode[]`
+- each episode contains parsed chunks plus rich-content artifacts
 
-## Extractor tuning
+Current parser responsibilities:
 
-Bobbin's runtime-switchable Yaket integration and Bobbin-specific tuning profile
-are documented in [yaket-bobbin-tuning.md](./yaket-bobbin-tuning.md).
+- split documents into episodes by date headings
+- split notes/essay content into chunks using Google Docs list indentation structure
+- preserve rich content blocks and inline spans
+- preserve links with resolved URLs
+- preserve nested list depth
+- preserve images, superscript, strikethrough, separators, footnotes
+- preserve inline fragment anchors used for cross-chunk references
 
-The planned LLM-at-ingest architecture is documented in
-[llm-ingest-plan.md](./llm-ingest-plan.md).
+Derived artifacts:
 
-Source-fidelity preservation for links, formatting, and nesting is documented in
-[source-fidelity-plan.md](./source-fidelity-plan.md).
+- `contentPlain`
+- `contentMarkdown`
+- `richContent`
+- `links`
+- `images`
+- `footnotes`
+
+Important invariant:
+
+- source fidelity is derived from structured rich content, not from the normalized analysis text used downstream
+
+## Stage 3: Phase-1 Ingest
+
+Entry point:
+
+- `ingestEpisodesOnly()` in `src/jobs/ingest.ts`
+
+Writes:
+
+- `episodes`
+- `chunks`
+- `episode_artifact_chunks`
+
+What Phase 1 does:
+
+- dedups by `published_date` per source
+- inserts episodes and chunks
+- stores chunk rich-content fields directly on `chunks`
+- stores large episode artifacts in chunked side tables
+- resolves non-footnote fragment links to real chunk URLs when the target anchor is known in the same ingested source
+
+Important invariant:
+
+- fragment links such as `#id...` are rewritten at ingest/backfill time to `/chunks/:slug#id...` only when a real target anchor exists
+
+## Stage 4: Episode-Level LLM Enrichment
+
+Entry points:
+
+- `enrichEpisodesWithLlm()`
+- `enrichEpisodeIdsWithLlm()`
+
+Model:
+
+- `@cf/google/gemma-4-26b-a4b-it`
+
+Primary tables:
+
+- `llm_enrichment_runs`
+- `llm_episode_candidates`
+- `llm_episode_candidate_evidence`
+
+Input to the model:
+
+- normalized episode text
+- chunk slugs
+- chunk titles
+- short normalized excerpts
+- fidelity hints such as links, nesting, formatting, images
+
+Output contract:
+
+- proposals only, never authoritative truth
+- candidate name
+- kind
+- confidence
+- rank position
+- aliases
+- evidence: `chunk_slug` and quote
+
+Important invariant:
+
+- the LLM runs once per episode ingest/backfill event
+- downstream reruns do not need another LLM call
+
+## Stage 5: Deterministic Chunk Enrichment
+
+Entry point:
+
+- `enrichChunks()`
+- `processChunkBatch()`
+
+Core steps:
+
+1. normalize chunk text to `analysis_text`
+2. rebuild phrase lexicon inputs
+3. extract deterministic candidates
+4. validate entity boundaries
+5. apply corpus-prior rejection
+6. combine deterministic candidates with bounded LLM/fidelity boosts
+7. gate promotion deterministically
+8. write `topic_candidate_audit`, `chunk_topics`, `episode_topics`, `chunk_words`
+
+Primary tables touched:
+
+- `chunks.analysis_text`
+- `phrase_lexicon`
+- `topic_candidate_audit`
+- `topics`
+- `chunk_topics`
+- `episode_topics`
+- `chunk_words`
+
+Important invariant:
+
+- LLM output can only boost or add candidates with real evidence; it does not bypass deterministic gating
+
+## Stage 6: Finalization
+
+Entry point:
+
+- `finalizeEnrichment()`
+
+Responsibilities:
+
+- recount topic usage
+- rebuild `word_stats`
+- compute reach and distinctiveness
+- validate entities and clean noise topics
+- apply phrase/topic merges
+- apply display suppression decisions
+- archive lineage rows for removed topics
+
+Operational characteristic:
+
+- this is the corpus-wide cleanup and consolidation phase after chunk-level extraction
+
+## Backfill And Repair Paths
+
+Admin routes:
+
+- `GET /api/backfill-source?doc=...&offset=...&limit=...&llm=0|1`
+- `GET /api/backfill-llm?doc=...&limit=...`
+
+Use `backfill-source` when you need to repair:
+
+- source fidelity artifacts
+- rich-content rendering bugs
+- fragment-link resolution
+- episode/chunk artifact storage derived from parser changes
+
+Use `backfill-llm` when you need to populate missing episode-level LLM proposal caches without reparsing source fidelity.
+
+## Queue And Async Work
+
+Queue:
+
+- `bobbin-enrichment`
+
+Used for:
+
+- enrichment batch work
+- slow background steps
+- queued LLM episode backfill when available
+
+Important note:
+
+- the queue improves throughput but does not change the storage contract or deterministic downstream rules
+
+## Storage Summary
+
+Core source preservation:
+
+- `source_html_chunks`
+- `episodes`
+- `chunks`
+- `episode_artifact_chunks`
+
+LLM cache:
+
+- `llm_enrichment_runs`
+- `llm_episode_candidates`
+- `llm_episode_candidate_evidence`
+
+Deterministic topic pipeline:
+
+- `phrase_lexicon`
+- `topic_candidate_audit`
+- `topics`
+- `chunk_topics`
+- `episode_topics`
+- `chunk_words`
+- `word_stats`
+- `topic_lineage_archive`
+
+## Operational Invariants
+
+- raw HTML is the canonical recovery source
+- rich source fidelity and normalized analysis text are separate concerns
+- episode-level LLM enrichment is cached and bounded
+- downstream topic promotion remains deterministic
+- backfill can repair stored artifacts without changing the raw source
+- non-footnote fragment links should resolve to real chunk URLs only when a preserved target anchor exists
+
+## Related Docs
+
+- `docs/source-fidelity-plan.md`
+- `docs/llm-ingest-plan.md`
+- `docs/yaket-bobbin-tuning.md`
+- `docs/architecture.md`

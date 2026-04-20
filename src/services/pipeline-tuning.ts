@@ -77,9 +77,12 @@ export function getCandidatePromotionReason(
     ? PIPELINE_TUNING.minPhraseEpisodeSupport
     : PIPELINE_TUNING.minNonEntityEpisodeSupport;
 
-  const episodeSupport = stats.episodeSupport + (stats.llmSupportCount > 0 ? 1 : 0);
-  const chunkSupport = stats.chunkSupport + (stats.llmSupportCount > 0 ? 1 : 0) + (stats.fidelitySupportCount > 0 ? 1 : 0);
-  const distinctiveness = stats.wordDistinctiveness + stats.fidelitySupportCount * 5;
+  const llmSupportBonus = stats.llmSupportCount > 0 ? 1 : 0;
+  const fidelityChunkBonus = Math.min(stats.fidelitySupportCount, 2);
+  const fidelityEpisodeBonus = stats.fidelitySupportCount >= 2 ? 1 : 0;
+  const episodeSupport = stats.episodeSupport + llmSupportBonus + fidelityEpisodeBonus;
+  const chunkSupport = stats.chunkSupport + llmSupportBonus + fidelityChunkBonus;
+  const distinctiveness = stats.wordDistinctiveness + Math.min(stats.fidelitySupportCount, 3) * 6;
 
   if (episodeSupport < minEpisodeSupport) return "insufficient_episode_support";
   if (chunkSupport < minChunkSupport) return "insufficient_chunk_support";

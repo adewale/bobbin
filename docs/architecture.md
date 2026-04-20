@@ -59,6 +59,8 @@ Google Docs (mobilebasic HTML)
 | Route | Purpose |
 |-------|---------|
 | `GET /api/ingest?limit=N&doc=ID` | Fetch doc, parse, ingest N new episodes |
+| `GET /api/backfill-source?doc=ID&offset=N&limit=N&llm=0|1` | Reparse existing source and repair episode/chunk fidelity artifacts |
+| `GET /api/backfill-llm?doc=ID&limit=N` | Backfill missing episode-level LLM proposal caches |
 | `GET /api/embed?limit=N` | Batch-embed N chunks to Vectorize |
 | `GET /api/enrich?batch=N` | Enrich unenriched chunks (topics, word stats) |
 | `GET /api/enrich-parallel?batch=N` | Dispatch enrichment batches to queue |

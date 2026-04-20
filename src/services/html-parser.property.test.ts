@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
+import fc from "fast-check";
 import { parseHtmlDocument } from "./html-parser";
 import sampleEssays from "../../test/fixtures/sample-mobilebasic.html?raw";
 import sampleNotes from "../../test/fixtures/sample-notes-format.html?raw";

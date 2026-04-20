@@ -28,7 +28,7 @@ import { enrichEpisodesWithLlm, loadLlmBoostsForChunks } from "../services/llm-i
 import { normalizeTopicExtractorMode, type TopicExtractorMode } from "../services/yake-runtime";
 import { getExistingDatesForSource, getSourceTag } from "../db/sources";
 import { getUnenrichedChunks, markChunksEnriched, isEnrichmentDone } from "../db/ingestion";
-import type { Bindings, ParsedEpisode } from "../types";
+import type { Bindings, ParsedChunk, ParsedEpisode, RichBlock, RichLink, RichTextNode } from "../types";
 
 /** Current enrichment algorithm version. Bump to re-enrich all chunks.
  * v1: Initial TF-IDF extraction (maxTopics=15, no noise filter on heuristics)
@@ -88,6 +88,111 @@ export interface InsertedEpisodeArtifact {
 
 export interface BackfilledEpisodeArtifact extends InsertedEpisodeArtifact {
   updatedChunks: number[];
+}
+
+type StoredParsedChunk = ParsedChunk & {
+  slug: string;
+  richContent: RichBlock[];
+};
+
+type StoredParsedEpisode = ParsedEpisode & {
+  slug: string;
+  richContent: RichBlock[];
+  storedChunks: StoredParsedChunk[];
+};
+
+function resolveInternalFragmentHref(href: string, anchorTargetById: Map<string, string>): string {
+  if (!href.startsWith("#") || href.startsWith("#cmnt")) return href;
+  return anchorTargetById.get(href.slice(1)) || href;
+}
+
+function resolveInternalFragmentLinks(links: RichLink[], anchorTargetById: Map<string, string>): RichLink[] {
+  return links.map((link) => ({
+    ...link,
+    href: resolveInternalFragmentHref(link.href, anchorTargetById),
+  }));
+}
+
+function resolveInternalFragmentNodes(nodes: RichTextNode[], anchorTargetById: Map<string, string>): RichTextNode[] {
+  return nodes.map((node) => {
+    if (node.type !== "text" || !node.href) return node;
+    return {
+      ...node,
+      href: resolveInternalFragmentHref(node.href, anchorTargetById),
+    };
+  });
+}
+
+function resolveInternalFragmentBlocks(blocks: RichBlock[], anchorTargetById: Map<string, string>): RichBlock[] {
+  return blocks.map((block) => ({
+    ...block,
+    nodes: resolveInternalFragmentNodes(block.nodes, anchorTargetById),
+  }));
+}
+
+function resolveInternalFragmentMarkdown(markdown: string, anchorTargetById: Map<string, string>): string {
+  return markdown.replace(/\]\(#(?!cmnt)([^)]+)\)/g, (match, anchorId) => {
+    const resolvedHref = anchorTargetById.get(String(anchorId));
+    return resolvedHref ? `](${resolvedHref})` : match;
+  });
+}
+
+function buildStoredEpisodes(
+  episodes: ParsedEpisode[],
+  getEpisodeSlug: (episode: ParsedEpisode) => string,
+  getChunkSlug: (episode: ParsedEpisode, episodeSlug: string, chunk: ParsedChunk) => string,
+): StoredParsedEpisode[] {
+  const storedEpisodes = episodes.map((episode) => {
+    const episodeSlug = getEpisodeSlug(episode);
+    const storedChunks = episode.chunks.map((chunk) => {
+      const chunkSlug = getChunkSlug(episode, episodeSlug, chunk);
+      return {
+        ...chunk,
+        slug: chunkSlug,
+        richContent: chunk.richContent.map((block) => ({
+          ...block,
+          chunkSlug,
+          chunkTitle: chunk.title,
+          chunkPosition: chunk.position,
+        })),
+      };
+    });
+
+    return {
+      ...episode,
+      slug: episodeSlug,
+      richContent: storedChunks.flatMap((chunk) => chunk.richContent),
+      storedChunks,
+    };
+  });
+
+  const anchorTargetById = new Map<string, string>();
+  for (const episode of storedEpisodes) {
+    for (const chunk of episode.storedChunks) {
+      for (const block of chunk.richContent) {
+        for (const anchorId of block.anchorIds || []) {
+          anchorTargetById.set(anchorId, `/chunks/${chunk.slug}#${anchorId}`);
+        }
+      }
+    }
+  }
+
+  return storedEpisodes.map((episode) => {
+    const storedChunks = episode.storedChunks.map((chunk) => ({
+      ...chunk,
+      contentMarkdown: resolveInternalFragmentMarkdown(chunk.contentMarkdown, anchorTargetById),
+      richContent: resolveInternalFragmentBlocks(chunk.richContent, anchorTargetById),
+      links: resolveInternalFragmentLinks(chunk.links, anchorTargetById),
+    }));
+
+    return {
+      ...episode,
+      contentMarkdown: resolveInternalFragmentMarkdown(episode.contentMarkdown, anchorTargetById),
+      richContent: storedChunks.flatMap((chunk) => chunk.richContent),
+      links: resolveInternalFragmentLinks(episode.links, anchorTargetById),
+      storedChunks,
+    };
+  });
 }
 
 async function runPipelineStage(
@@ -384,27 +489,19 @@ export async function ingestEpisodesOnly(
 
   const existingDates = await getExistingDatesForSource(db, sourceId);
   const sourceTag = await getSourceTag(db, sourceId);
+  const storedEpisodes = buildStoredEpisodes(
+    episodes,
+    (episode) => `${formatDate(episode.parsedDate)}-${sourceTag}`,
+    (_episode, episodeSlug, chunk) => `${slugify(chunk.title) || `chunk-${chunk.position}`}-${episodeSlug}-${chunk.position}`,
+  );
 
-  for (const episode of episodes) {
+  for (const episode of storedEpisodes) {
     const dateStr = formatDate(episode.parsedDate);
     if (existingDates.has(dateStr)) continue;
 
-    const episodeSlug = `${dateStr}-${sourceTag}`;
-    const storedChunks = episode.chunks.map((chunk) => {
-      const baseSlug = slugify(chunk.title) || `chunk-${chunk.position}`;
-      const chunkSlug = `${baseSlug}-${episodeSlug}-${chunk.position}`;
-      return {
-        ...chunk,
-        slug: chunkSlug,
-        richContent: chunk.richContent.map((block) => ({
-          ...block,
-          chunkSlug,
-          chunkTitle: chunk.title,
-          chunkPosition: chunk.position,
-        })),
-      };
-    });
-    const episodeRichContent = storedChunks.flatMap((chunk) => chunk.richContent);
+    const episodeSlug = episode.slug;
+    const storedChunks = episode.storedChunks;
+    const episodeRichContent = episode.richContent;
     const episodeResult = await db.prepare(
       `INSERT INTO episodes (source_id, slug, title, published_date, year, month, day, chunk_count, format, content_markdown, rich_content_json, links_json)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
@@ -414,7 +511,7 @@ export async function ingestEpisodesOnly(
         episode.parsedDate.getUTCFullYear(),
         episode.parsedDate.getUTCMonth() + 1,
         episode.parsedDate.getUTCDate(),
-        episode.chunks.length, episode.format,
+        storedChunks.length, episode.format,
         null,
         null,
         null,
@@ -475,7 +572,7 @@ export async function ingestEpisodesOnly(
         formattingHints: collectFormattingHints(storedChunks.find((chunk) => chunk.slug === row.slug)?.richContent || []),
       })),
     });
-    chunksAdded += episode.chunks.length;
+    chunksAdded += storedChunks.length;
   }
 
   return { episodesAdded, chunksAdded, insertedEpisodes };
@@ -494,21 +591,42 @@ export async function backfillExistingEpisodes(
     "SELECT id, slug, title, published_date FROM episodes WHERE source_id = ? ORDER BY published_date ASC"
   ).bind(sourceId).all<{ id: number; slug: string; title: string; published_date: string }>();
   const byDate = new Map(existing.results.map((row) => [row.published_date, row]));
+  const existingEpisodeIds = existing.results.map((row) => row.id);
+  const existingChunkRowsByEpisodeId = new Map<number, Array<{ id: number; slug: string; position: number }>>();
+  const BATCH = 90;
+  for (let i = 0; i < existingEpisodeIds.length; i += BATCH) {
+    const batch = existingEpisodeIds.slice(i, i + BATCH);
+    if (batch.length === 0) continue;
+    const placeholders = batch.map(() => "?").join(",");
+    const chunkRows = await db.prepare(
+      `SELECT id, episode_id, slug, position FROM chunks WHERE episode_id IN (${placeholders}) ORDER BY episode_id, position`
+    ).bind(...batch).all<{ id: number; episode_id: number; slug: string; position: number }>();
+    for (const row of chunkRows.results) {
+      const current = existingChunkRowsByEpisodeId.get(row.episode_id) || [];
+      current.push({ id: row.id, slug: row.slug, position: row.position });
+      existingChunkRowsByEpisodeId.set(row.episode_id, current);
+    }
+  }
 
-  for (const episode of episodes) {
+  const storedEpisodes = buildStoredEpisodes(
+    episodes.filter((episode) => byDate.has(formatDate(episode.parsedDate))),
+    (episode) => byDate.get(formatDate(episode.parsedDate))!.slug,
+    (episode, episodeSlug, chunk) => {
+      const existingEpisode = byDate.get(formatDate(episode.parsedDate));
+      const existingChunk = existingEpisode
+        ? (existingChunkRowsByEpisodeId.get(existingEpisode.id) || []).find((row) => row.position === chunk.position)
+        : null;
+      return existingChunk?.slug || `${slugify(chunk.title) || `chunk-${chunk.position}`}-${episodeSlug}-${chunk.position}`;
+    },
+  );
+
+  for (const episode of storedEpisodes) {
     const dateStr = formatDate(episode.parsedDate);
     const existingEpisode = byDate.get(dateStr);
     if (!existingEpisode) continue;
 
-    const storedChunks = episode.chunks.map((chunk) => ({
-      ...chunk,
-      richContent: chunk.richContent.map((block) => ({
-        ...block,
-        chunkTitle: chunk.title,
-        chunkPosition: chunk.position,
-      })),
-    }));
-    const episodeRichContent = storedChunks.flatMap((chunk) => chunk.richContent);
+    const storedChunks = episode.storedChunks;
+    const episodeRichContent = episode.richContent;
 
     await db.prepare(
       `UPDATE episodes
@@ -529,10 +647,8 @@ export async function backfillExistingEpisodes(
       links_json: JSON.stringify(episode.links),
     });
 
-    const chunkRows = await db.prepare(
-      "SELECT id, slug, position FROM chunks WHERE episode_id = ? ORDER BY position"
-    ).bind(existingEpisode.id).all<{ id: number; slug: string; position: number }>();
-    const chunkByPosition = new Map(chunkRows.results.map((row) => [row.position, row]));
+    const chunkRows = existingChunkRowsByEpisodeId.get(existingEpisode.id) || [];
+    const chunkByPosition = new Map(chunkRows.map((row) => [row.position, row]));
     const parsedChunkByPosition = new Map(storedChunks.map((chunk) => [chunk.position, chunk]));
     const updatedChunks: number[] = [];
 
@@ -576,11 +692,11 @@ export async function backfillExistingEpisodes(
       id: existingEpisode.id,
       slug: existingEpisode.slug,
       title: episode.title,
-      chunks: chunkRows.results
-        .filter((row) => updatedChunks.includes(row.id))
-        .map((row) => {
-          const parsedChunk = parsedChunkByPosition.get(row.position);
-          return {
+       chunks: chunkRows
+         .filter((row) => updatedChunks.includes(row.id))
+         .map((row) => {
+           const parsedChunk = parsedChunkByPosition.get(row.position);
+           return {
             id: row.id,
             slug: row.slug,
             title: parsedChunk?.title || row.slug,

@@ -10,6 +10,7 @@ interface RichParseResult {
   markdown: string;
   links: RichLink[];
   images: RichImage[];
+  anchorIds: string[];
 }
 
 interface SequenceItem {
@@ -171,6 +172,7 @@ function parseRichInline(html: string): RichParseResult {
   const nodes: RichTextNode[] = [];
   const links: RichLink[] = [];
   const images: RichImage[] = [];
+  const anchorIds: string[] = [];
   const stack: Array<{ tag: string; state: FormattingState }> = [{ tag: "root", state: {} }];
   const tokens = html.match(/<[^>]+>|[^<]+/g) || [];
 
@@ -234,7 +236,9 @@ function parseRichInline(html: string): RichParseResult {
 
     if (tag === "a") {
       const href = getAttr(token, "href");
+      const anchorId = getAttr(token, "id");
       if (href) next.href = resolveGoogleRedirectUrl(href);
+      if (anchorId) anchorIds.push(anchorId);
     }
     if (tag === "b" || tag === "strong") next.bold = true;
     if (tag === "i" || tag === "em") next.italic = true;
@@ -262,6 +266,7 @@ function parseRichInline(html: string): RichParseResult {
     markdown: renderNodesToMarkdown(nodes),
     links,
     images,
+    anchorIds: [...new Set(anchorIds)],
   };
 }
 
@@ -322,6 +327,7 @@ function blockFromSequenceItem(item: SequenceItem): { block: RichBlock; markdown
     listStyle: item.listStyle || "unordered",
     plainText: rich.plainText,
     nodes: rich.nodes,
+    ...(rich.anchorIds.length > 0 ? { anchorIds: rich.anchorIds } : {}),
   };
   return {
     block,
@@ -346,17 +352,18 @@ function splitEpisodeContent(html: string): { chunks: ObservationChunk[]; episod
       listStyle: "paragraph",
       plainText: rich.plainText,
       nodes: rich.nodes,
+      ...(rich.anchorIds.length > 0 ? { anchorIds: rich.anchorIds } : {}),
     };
     return {
       chunks: [{
         mainText: rich.plainText,
         fullText: rich.plainText,
-      markdown: rich.markdown,
-      richBlocks: [block],
-      links: rich.links,
-      images: rich.images,
-      footnotes: [],
-    }],
+        markdown: rich.markdown,
+        richBlocks: [block],
+        links: rich.links,
+        images: rich.images,
+        footnotes: [],
+      }],
       episodeRichContent: [block],
       episodeMarkdown: rich.markdown,
       episodeLinks: rich.links,
@@ -407,7 +414,7 @@ function splitEpisodeContent(html: string): { chunks: ObservationChunk[]; episod
     const parsed = blockFromSequenceItem(item);
     if (!parsed) continue;
     if (pendingAnchorIds.length > 0) {
-      parsed.block.anchorIds = [...pendingAnchorIds];
+      parsed.block.anchorIds = [...new Set([...(parsed.block.anchorIds || []), ...pendingAnchorIds])];
       pendingAnchorIds = [];
     }
     episodeRichContent.push(parsed.block);

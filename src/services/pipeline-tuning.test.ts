@@ -35,6 +35,13 @@ describe("pipeline tuning rules", () => {
     )).toBeNull();
   });
 
+  it("lets repeated fidelity-supported phrases clear both support thresholds", () => {
+    expect(getCandidatePromotionReason(
+      { kind: "phrase", normalizedCandidate: "ambient agents" },
+      { chunkSupport: 3, episodeSupport: 1, existingUsageCount: 0, wordDistinctiveness: 0, llmSupportCount: 0, fidelitySupportCount: 2 }
+    )).toBeNull();
+  });
+
   it("rejects weak singleton concepts from corpus priors", () => {
     expect(getCorpusPriorRejectionReason(
       { kind: "concept", normalizedCandidate: "learned" },
@@ -60,6 +67,33 @@ describe("pipeline tuning rules", () => {
             { chunkSupport, episodeSupport, existingUsageCount: 0, wordDistinctiveness: 100, llmSupportCount: 0, fidelitySupportCount: 0 }
           );
           expect(reason).toBeTruthy();
+        }
+      )
+    );
+  });
+
+  it("adding fidelity support never turns an accepted non-entity back into a rejection (PBT)", () => {
+    fc.assert(
+      fc.property(
+        fc.constantFrom("concept", "phrase"),
+        fc.stringMatching(/^[a-z]{5,12}( [a-z]{5,12})?$/),
+        fc.integer({ min: 0, max: 8 }),
+        fc.integer({ min: 0, max: 4 }),
+        fc.integer({ min: 0, max: 12 }),
+        fc.integer({ min: 0, max: 3 }),
+        (kind, normalizedCandidate, chunkSupport, episodeSupport, wordDistinctiveness, fidelitySupportCount) => {
+          const base = getCandidatePromotionReason(
+            { kind, normalizedCandidate },
+            { chunkSupport, episodeSupport, existingUsageCount: 0, wordDistinctiveness, llmSupportCount: 0, fidelitySupportCount }
+          );
+          const boosted = getCandidatePromotionReason(
+            { kind, normalizedCandidate },
+            { chunkSupport, episodeSupport, existingUsageCount: 0, wordDistinctiveness, llmSupportCount: 0, fidelitySupportCount: fidelitySupportCount + 1 }
+          );
+
+          if (base === null) {
+            expect(boosted).toBeNull();
+          }
         }
       )
     );
