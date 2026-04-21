@@ -77,38 +77,12 @@ chunks.get("/:slug", async (c) => {
 
           <div class="chunk-content">
             {richBlocks.length > 0 ? (
-              <div class="para-with-margin">
-                <>
-                  <RichContent blocks={richBlocks} />
-                  <RichFootnotes footnotes={footnotes} />
-                </>
-                {relatedItems[0]?.slug && (
-                  <aside class="margin-note">
-                    <a href={`/chunks/${relatedItems[0].slug}`}>
-                      {relatedItems[0].title}
-                    </a>
-                    <time>{relatedItems[0].rel_date}</time>
-                  </aside>
-                )}
-              </div>
+              <>
+                <RichContent blocks={richBlocks} />
+                <RichFootnotes footnotes={footnotes} />
+              </>
             ) : paragraphs.map((para, i) => (
-              <div key={i} class="para-with-margin">
-                <p>{para}</p>
-                {relatedItems[i]?.slug && (
-                  <aside class="margin-note">
-                    <a href={`/chunks/${relatedItems[i].slug}`}>
-                      {relatedItems[i].title}
-                    </a>
-                    <time>{relatedItems[i].rel_date}</time>
-                  </aside>
-                )}
-              </div>
-            ))}
-            {(richBlocks.length > 0 ? relatedItems.slice(1) : relatedItems.slice(paragraphs.length)).filter((r: any) => r.slug).map((r: any) => (
-              <aside key={r.id} class="margin-note margin-note-trailing">
-                <a href={`/chunks/${r.slug}`}>{r.title}</a>
-                <time>{r.rel_date}</time>
-              </aside>
+              <p key={i}>{para}</p>
             ))}
           </div>
 
@@ -152,6 +126,20 @@ chunks.get("/:slug", async (c) => {
                     </a>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {relatedItems.length > 0 && (
+              <div class="related-inline-list">
+                <h4>Related</h4>
+                <ul>
+                  {relatedItems.slice(0, 4).filter((r: any) => r.slug).map((r: any) => (
+                    <li key={r.id}>
+                      <a href={`/chunks/${r.slug}`}>{r.title}</a>
+                      <time>{r.rel_date}</time>
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
           </aside>

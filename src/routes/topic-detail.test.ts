@@ -72,6 +72,7 @@ describe("Topic detail page — word_stats integration", () => {
     const html = await res.text();
     expect(html).toContain("113.6");
     expect(html).toContain("distinctiveness");
+    expect(html).toContain("everyday baseline English");
   });
 
   it("shows related topics from co-occurrence", async () => {
@@ -80,6 +81,7 @@ describe("Topic detail page — word_stats integration", () => {
     // "agents" co-occurs with "llms" on chunk 1 and 2, so should appear as related
     expect(html).toContain("Related topics");
     expect(html).toContain('href="/topics/agents"');
+    expect(html).toContain("2 shared chunks");
   });
 
   it("adds an on-this-page table of contents and sensemaking sections", async () => {
@@ -103,6 +105,8 @@ describe("Topic detail page — word_stats integration", () => {
 
     expect(html).toContain("kwic-row");
     expect(html).toContain("kwic-body");
+    expect(html).toContain("kwic-meta");
+    expect(html).toContain("Episode 1 · 2024-04-08");
     expect(html).not.toContain("kwic-table");
   });
 
@@ -113,6 +117,9 @@ describe("Topic detail page — word_stats integration", () => {
     expect(html).toContain('<details class="topic-episode-timeline" id="episodes">');
     expect(html).toContain("topic-episode-summary");
     expect(html).not.toContain("<h2>Episodes</h2>");
+    expect(html).toContain("Episode 1");
+    expect(html).toContain("Episode 2");
+    expect(html).not.toContain('title="Episode 1 — 2 chunks mentioning');
   });
 
   it("highlights topic name in chunk excerpts with <mark>", async () => {

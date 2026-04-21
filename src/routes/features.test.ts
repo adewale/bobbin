@@ -52,14 +52,14 @@ beforeEach(async () => {
 
 // Feature 1 (word usage timeline) removed: /word-stats route was deleted as dead code.
 
-// === Feature 2: Related chunks as margin annotations ===
+// === Feature 2: Related chunks in the shared side rail ===
 describe("Margin annotations on /chunks/:slug", () => {
-  it("renders related chunks as margin notes", async () => {
+  it("renders related chunks in the side rail", async () => {
     const res = await SELF.fetch("http://localhost/chunks/eco-jan-0");
     expect(res.status).toBe(200);
     const html = await res.text();
-    // Should use margin-note class instead of sidebar
-    expect(html).toContain("margin-note");
+    expect(html).toContain("related-inline-list");
+    expect(html).toContain("page-rail");
   });
 
   it("includes the chunk-detail-tufte layout class", async () => {

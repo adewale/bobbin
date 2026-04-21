@@ -26,37 +26,52 @@ episodes.get("/", async (c) => {
 
   return c.html(
     <Layout title="Episodes" description="All Bits and Bobs episodes by date" activePath="/episodes" mainClassName="main-wide">
-      <p class="page-count">{allEpisodesList.length} episodes</p>
+      <div class="page-with-rail browse-layout">
+        <div class="page-body browse-main">
+          <p class="page-count">{allEpisodesList.length} episodes</p>
 
-      {years.map((year) => {
-        const months = [...byYear.get(year)!.keys()].sort((a, b) => b - a);
-        return (
-          <section key={year} class="browse-year">
-            <h2>{year}</h2>
-            {months.map((month) => {
-              const eps = byYear.get(year)!.get(month)!;
-              return (
-                <div key={month} class="browse-month">
-                  <h3>{monthName(month)}</h3>
-                  <ul class="browse-episodes">
-                    {eps.map((ep: any) => (
-                      <li key={ep.id}>
-                        <a href={`/episodes/${ep.slug}`}>{ep.title}</a>
-                        <span class="meta">
-                          {ep.chunk_count} chunk{ep.chunk_count !== 1 ? "s" : ""}
-                          {ep.format === "essays" && (
-                            <span class="format-badge essay">essay</span>
-                          )}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              );
-            })}
-          </section>
-        );
-      })}
+          {years.map((year) => {
+            const months = [...byYear.get(year)!.keys()].sort((a, b) => b - a);
+            return (
+              <section key={year} class="browse-year" id={`year-${year}`}>
+                <h2>{year}</h2>
+                {months.map((month) => {
+                  const eps = byYear.get(year)!.get(month)!;
+                  return (
+                    <div key={month} class="browse-month">
+                      <h3>{monthName(month)}</h3>
+                      <ul class="browse-episodes">
+                        {eps.map((ep: any) => (
+                          <li key={ep.id}>
+                            <a href={`/episodes/${ep.slug}`}>{ep.title}</a>
+                            <span class="meta">
+                              {ep.chunk_count} chunk{ep.chunk_count !== 1 ? "s" : ""}
+                              {ep.format === "essays" && (
+                                <span class="format-badge essay">essay</span>
+                              )}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                })}
+              </section>
+            );
+          })}
+        </div>
+
+        <aside class="page-rail browse-rail">
+          <nav class="page-toc" aria-label="Years">
+            <h3>Years</h3>
+            <ol>
+              {years.map((year) => (
+                <li key={year}><a href={`#year-${year}`}>{year}</a></li>
+              ))}
+            </ol>
+          </nav>
+        </aside>
+      </div>
     </Layout>
   );
 });

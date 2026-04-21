@@ -62,6 +62,7 @@ describe("Notes-format chunk page", () => {
     expect(html).not.toContain("page-with-rail");
     expect(html).toContain("chunk-compact");
     expect(html).not.toContain("tufte-layout");
+    expect(html).not.toContain("margin-note");
   });
 
   it("shows prev/next navigation within episode", async () => {
@@ -81,14 +82,16 @@ describe("Essay-format chunk page", () => {
     expect(html).not.toContain("page-with-rail");
     expect(html).toContain("tufte-layout");
     expect(html).not.toContain("chunk-compact");
+    expect(html).not.toContain("margin-note");
   });
 });
 
 describe("Episodes index layout", () => {
-  it("uses the wider canvas without a forced rail", async () => {
+  it("uses the wider canvas with a meaningful year rail", async () => {
     const res = await SELF.fetch("http://localhost/episodes");
     const html = await res.text();
     expect(html).toContain('class="main-wide"');
-    expect(html).not.toContain("page-with-rail");
+    expect(html).toContain("page-with-rail");
+    expect(html).toContain("page-rail");
   });
 });

@@ -19,6 +19,15 @@ describe("Layout CSS invariants", () => {
     expect(styles).not.toMatch(/\.topic-detail-layout\s*\{[^}]*display:\s*grid;/s);
   });
 
+  it("does not use overflow-hiding masks for visible kwic text", () => {
+    expect(styles).toMatch(/\.kwic-line \.kwic-left,\s*\.kwic-line \.kwic-right \{[^}]*white-space:\s*normal;[^}]*overflow:\s*visible;/s);
+    expect(styles).not.toMatch(/\.kwic-line \.kwic-left \{[^}]*mask-image:/s);
+    expect(styles).not.toMatch(/\.kwic-line \.kwic-right \{[^}]*mask-image:/s);
+    expect(styles).not.toContain(".kwic-table {");
+    expect(styles).not.toMatch(/\n\.kwic-left \{/);
+    expect(styles).not.toMatch(/\n\.kwic-right \{/);
+  });
+
   it("shows desktop header search while retaining the page-level search form styles", () => {
     expect(styles).toMatch(/\.header-search\s*\{[^}]*display:\s*flex;/s);
     expect(styles).toMatch(/\.search-form\s*\{[^}]*display:\s*flex;/s);
@@ -26,5 +35,13 @@ describe("Layout CSS invariants", () => {
 
   it("gives topics-margin the same warm-panel chrome as other secondary UI", () => {
     expect(styles).toMatch(/\.topics-margin\s*\{[^}]*background:\s*var\(--bg-warm\);[^}]*border:\s*1px solid var\(--border\);[^}]*border-radius:\s*6px;/s);
+  });
+
+  it("removes dead legacy visualization and rail selectors", () => {
+    expect(styles).not.toContain(".related-chunks {");
+    expect(styles).not.toContain(".diff-view {");
+    expect(styles).not.toContain(".reactive-timeline {");
+    expect(styles).not.toContain(".theme-river {");
+    expect(styles).not.toContain(".topic-slopegraph {");
   });
 });

@@ -106,10 +106,11 @@ topics.get("/:slug", async (c) => {
           </p>
           {wordStats && wordStats.distinctiveness > 0 && (
             <p class="topic-distinctiveness">
-              <span title={`"${topic.name}" appears ${wordStats.distinctiveness.toFixed(1)}× more often in this corpus than in everyday baseline English writing`}>
+              <span>
                 {wordStats.distinctiveness.toFixed(1)}&times; distinctiveness vs baseline
               </span>
               <span class="topic-distinctiveness-gloss"> — {distinctivenessGloss(wordStats.distinctiveness)}</span>
+              <span class="topic-distinctiveness-note"> compared with everyday baseline English.</span>
             </p>
           )}
 
@@ -124,18 +125,20 @@ topics.get("/:slug", async (c) => {
             const h = 80;
             const rugH = 10;
             const labelH = 16;
-            const pad = 4;
+            const topPad = 12;
+            const bottomPad = 4;
             const isSingle = counts.length === 1;
             const points = counts.map((c: number, i: number) => {
-              const x = isSingle ? w / 2 : (i / (counts.length - 1)) * (w - pad * 2) + pad;
-              const y = h - pad - (c / max) * (h - pad * 2);
+              const x = isSingle ? w / 2 : (i / (counts.length - 1)) * (w - bottomPad * 2) + bottomPad;
+              const y = h - bottomPad - (c / max) * (h - topPad - bottomPad);
               return { x, y };
             });
-            const meanY = h - pad - (mean / max) * (h - pad * 2);
+            const meanY = h - bottomPad - (mean / max) * (h - topPad - bottomPad);
+            const meanLabelY = Math.max(meanY - 3, 10);
             const landmarks = [
-              { label: dates[0], x: pad },
+              { label: dates[0], x: bottomPad },
               { label: dates[Math.floor(dates.length / 2)], x: w / 2 },
-              { label: dates[dates.length - 1], x: w - pad },
+              { label: dates[dates.length - 1], x: w - bottomPad },
             ];
 
             return (
@@ -143,11 +146,11 @@ topics.get("/:slug", async (c) => {
                 <svg viewBox={`0 0 ${w} ${h + rugH + labelH}`} class="topic-spark-svg" role="img">
                   {!isSingle && (
                     <>
-                      <line x1={pad} y1={meanY} x2={w - pad} y2={meanY}
+                      <line x1={bottomPad} y1={meanY} x2={w - bottomPad} y2={meanY}
                         stroke="var(--border)" stroke-width="1" stroke-dasharray="4,3">
                         <title>{`Mean ${mean.toFixed(1)} mentions per episode across the full range`}</title>
                       </line>
-                      <text x={w - pad} y={meanY - 3} text-anchor="end"
+                      <text x={w - bottomPad} y={meanLabelY} text-anchor="end"
                         fill="var(--text-light)" font-size="9" font-family="var(--font-ui)">
                         avg {mean.toFixed(1)}
                         <title>{`Mean ${mean.toFixed(1)} mentions per episode across the full range`}</title>
@@ -171,7 +174,7 @@ topics.get("/:slug", async (c) => {
                   ))}
 
                   {dates.map((date: string, i: number) => {
-                    const x = isSingle ? w / 2 : (i / Math.max(dates.length - 1, 1)) * (w - pad * 2) + pad;
+                    const x = isSingle ? w / 2 : (i / Math.max(dates.length - 1, 1)) * (w - bottomPad * 2) + bottomPad;
                     const opacity = 0.2 + (counts[i] / max) * 0.8;
                     return (
                       <rect key={`rug-${i}`} x={x - 1} y={h + 1} width={2} height={rugH - 2}
@@ -200,7 +203,7 @@ topics.get("/:slug", async (c) => {
               const kwic = extractKWIC(r.content_plain || "", topic.name);
               return (
                 <details key={r.id} class="kwic-row">
-                  <summary title={`${r.episode_title} · ${r.published_date}`}>
+                  <summary>
                     <span class="kwic-line">
                       {kwic ? (
                         <>
@@ -212,6 +215,7 @@ topics.get("/:slug", async (c) => {
                         <span class="kwic-word">{topic.name}</span>
                       )}
                     </span>
+                    <span class="kwic-meta">{r.episode_title} · {r.published_date}</span>
                   </summary>
                   <div class="kwic-body">
                     <p
@@ -257,12 +261,14 @@ topics.get("/:slug", async (c) => {
             <div class="topic-episode-list">
               {episodes.map((ep: any) => {
                 const barWidth = Math.round((ep.topic_chunk_count / Math.max(...episodes.map((e: any) => e.topic_chunk_count), 1)) * 100);
-                const tip = `${ep.title} — ${ep.topic_chunk_count} chunk${ep.topic_chunk_count !== 1 ? "s" : ""} mentioning "${topic.name}"`;
                 return (
-                  <a key={ep.id} href={`/episodes/${ep.slug}`} class="ep-density-row" title={tip}>
+                  <a key={ep.id} href={`/episodes/${ep.slug}`} class="ep-density-row">
                     <time datetime={ep.published_date}>{ep.published_date}</time>
-                    <div class="ep-density-bar">
-                      <div class="ep-density-fill" style={`width:${Math.max(barWidth, 2)}%`} />
+                    <div class="ep-density-main">
+                      <span class="ep-density-title">{ep.title}</span>
+                      <div class="ep-density-bar">
+                        <div class="ep-density-fill" style={`width:${Math.max(barWidth, 2)}%`} />
+                      </div>
                     </div>
                     <span class="ep-density-count">{ep.topic_chunk_count}</span>
                   </a>
@@ -291,9 +297,9 @@ topics.get("/:slug", async (c) => {
                     key={rt.slug}
                     href={`/topics/${rt.slug}`}
                     class="topic"
-                    title={`Co-occurs in ${rt.co_count} chunk${rt.co_count !== 1 ? "s" : ""} with "${topic.name}"`}
                   >
-                    {rt.name}
+                    <span>{rt.name}</span>
+                    <span class="topic-related-count">{rt.co_count} shared chunk{rt.co_count !== 1 ? "s" : ""}</span>
                   </a>
                 ))}
               </div>
