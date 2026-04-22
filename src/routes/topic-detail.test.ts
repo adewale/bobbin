@@ -13,8 +13,11 @@ async function seedData() {
     env.DB.prepare(
       "INSERT INTO episodes (source_id, slug, title, published_date, year, month, day, chunk_count, format) VALUES (1, '2024-05-01-ep', 'Episode 2', '2024-05-01', 2024, 5, 1, 1, 'notes')"
     ),
+    env.DB.prepare(
+      "INSERT INTO episodes (source_id, slug, title, published_date, year, month, day, chunk_count, format) VALUES (1, '2025-01-15-ep', 'Episode 3', '2025-01-15', 2025, 1, 15, 2, 'notes')"
+    ),
 
-    // Three chunks — chunk 1 and 2 share topics (for co-occurrence), chunk 3 is in episode 2
+    // Four chunks — topic language changes over time and shares context with related topics.
     env.DB.prepare(
       "INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (1, 'chunk-llms', 'LLMs are transforming', '<p>LLMs content</p>', 'The future of llms is agents that can orchestrate other models to accomplish complex tasks.', 0)"
     ),
@@ -24,25 +27,35 @@ async function seedData() {
     env.DB.prepare(
       "INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (2, 'chunk-claude', 'Claude Code thoughts', '<p>Claude Code</p>', 'Claude code is an interesting product built on llms.', 0)"
     ),
+    env.DB.prepare(
+      "INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (3, 'chunk-security', 'Security and LLMs', '<p>Security</p>', 'Security teams now use llms for agent workflows, eval harnesses, and prompt defense.', 1)"
+    ),
 
-    // Topics: "llms" (single word, has word_stats), "agents" (single word), "claude code" (multi-word, no word_stats)
-    env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('llms', 'llms', 3)"),
+    // Topics: add one higher-ranked neighbor so adjacent-topic comparison has both sides.
+    env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('security', 'security', 5)"),
+    env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('llms', 'llms', 4)"),
     env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('agents', 'agents', 2)"),
     env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('claude code', 'claude-code', 1)"),
 
-    // chunk_topics: llms on all 3 chunks, agents on chunk 1+2 (co-occurs with llms), claude code on chunk 3
-    env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 1)"),
-    env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (2, 1)"),
-    env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (3, 1)"),
+    // chunk_topics: llms on all 4 chunks, agents on chunk 1+2+4, security on chunk 4, claude code on chunk 3.
     env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 2)"),
     env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (2, 2)"),
-    env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (3, 3)"),
+    env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (3, 2)"),
+    env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (4, 2)"),
+    env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 3)"),
+    env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (2, 3)"),
+    env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (4, 3)"),
+    env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (4, 1)"),
+    env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (3, 4)"),
 
     // episode_topics
-    env.DB.prepare("INSERT INTO episode_topics (episode_id, topic_id) VALUES (1, 1)"),
-    env.DB.prepare("INSERT INTO episode_topics (episode_id, topic_id) VALUES (2, 1)"),
+    env.DB.prepare("INSERT INTO episode_topics (episode_id, topic_id) VALUES (3, 1)"),
     env.DB.prepare("INSERT INTO episode_topics (episode_id, topic_id) VALUES (1, 2)"),
-    env.DB.prepare("INSERT INTO episode_topics (episode_id, topic_id) VALUES (2, 3)"),
+    env.DB.prepare("INSERT INTO episode_topics (episode_id, topic_id) VALUES (2, 2)"),
+    env.DB.prepare("INSERT INTO episode_topics (episode_id, topic_id) VALUES (3, 2)"),
+    env.DB.prepare("INSERT INTO episode_topics (episode_id, topic_id) VALUES (1, 3)"),
+    env.DB.prepare("INSERT INTO episode_topics (episode_id, topic_id) VALUES (3, 3)"),
+    env.DB.prepare("INSERT INTO episode_topics (episode_id, topic_id) VALUES (2, 4)"),
 
     // word_stats: entry for "llms" (single word) — none for "claude code"
     env.DB.prepare(
@@ -50,6 +63,9 @@ async function seedData() {
     ),
     env.DB.prepare(
       "INSERT INTO word_stats (word, total_count, doc_count, distinctiveness, in_baseline) VALUES ('agents', 200, 90, 25.3, 0)"
+    ),
+    env.DB.prepare(
+      "INSERT INTO word_stats (word, total_count, doc_count, distinctiveness, in_baseline) VALUES ('security', 320, 150, 11.8, 0)"
     ),
   ]);
 }
@@ -71,63 +87,113 @@ describe("Topic detail page — word_stats integration", () => {
     const res = await SELF.fetch("http://localhost/topics/llms");
     const html = await res.text();
     expect(html).toContain("113.6");
-    expect(html).toContain("distinctiveness");
-    expect(html).toContain("everyday baseline English");
+    expect(html).toContain("distinctiveness vs baseline");
+    expect(html).not.toContain("everyday baseline English");
+    expect(html).not.toContain("highly distinctive");
   });
 
   it("shows related topics from co-occurrence", async () => {
     const res = await SELF.fetch("http://localhost/topics/llms");
     const html = await res.text();
-    // "agents" co-occurs with "llms" on chunk 1 and 2, so should appear as related
-    expect(html).toContain("Related topics");
+    // Live-style related topics live in the header as an inline list.
+    expect(html).toContain("Related:");
     expect(html).toContain('href="/topics/agents"');
-    expect(html).toContain("2 shared chunks");
+    expect(html).toContain('href="/topics/claude-code"');
+    expect(html).not.toContain("topic-related-panel");
   });
 
-  it("adds an on-this-page table of contents and sensemaking sections", async () => {
+  it("adds the expanded tabbed affordance and the main sensemaking sections", async () => {
     const res = await SELF.fetch("http://localhost/topics/llms");
     const html = await res.text();
 
-    expect(html).toContain("page-toc");
-    expect(html).toContain('href="#over-time"');
-    expect(html).toContain('href="#in-context"');
-    expect(html).toContain('href="#evolution"');
-    expect(html).toContain('href="#episodes"');
+    expect(html).toContain('class="topic-summary"');
+    expect(html).toContain("topic-tabs");
+    expect(html).toContain('class="topic-tab-link is-active"');
+    expect(html).toContain('data-topic-tab="observations"');
+    expect(html).toContain('data-topic-tab="drift"');
+    expect(html).toContain('href="#observations"');
+    expect(html).toContain('href="#drift"');
     expect(html).toContain('id="over-time"');
-    expect(html).toContain('id="in-context"');
-    expect(html).toContain('id="evolution"');
-    expect(html).toContain('id="episodes"');
+    expect(html).toContain('id="observations"');
+    expect(html).toContain('id="drift"');
+    expect(html).not.toContain('data-topic-tab="episodes"');
+    expect(html).not.toContain('data-topic-tab="in-context"');
+    expect(html).not.toContain('data-topic-tab="evolution"');
+    expect(html).not.toContain("page-toc");
   });
 
-  it("uses an expandable in-context presentation instead of the old KWIC table", async () => {
+  it("renders right-rail analysis for rank, co-occurrence, and adjacent topics", async () => {
     const res = await SELF.fetch("http://localhost/topics/llms");
     const html = await res.text();
 
-    expect(html).toContain("kwic-row");
-    expect(html).toContain("kwic-body");
-    expect(html).toContain("kwic-meta");
-    expect(html).toContain("Episode 1 · 2024-04-08");
-    expect(html).not.toContain("kwic-table");
+    expect(html).toContain("Rank over time");
+    expect(html).toContain('class="topic-rank-panel"');
+    expect(html).toContain("Adjacent topics");
+    expect(html).toContain('href="/topics/security"');
+    expect(html).toContain('href="/topics/agents"');
+    expect(html).not.toContain("Co-occurrence map");
   });
 
-  it("renders episodes inside a collapsed details timeline", async () => {
+  it("adds explanatory tooltips for topic page blocks", async () => {
     const res = await SELF.fetch("http://localhost/topics/llms");
     const html = await res.text();
 
-    expect(html).toContain('<details class="topic-episode-timeline" id="episodes">');
-    expect(html).toContain("topic-episode-summary");
-    expect(html).not.toContain("<h2>Episodes</h2>");
-    expect(html).toContain("Episode 1");
-    expect(html).toContain("Episode 2");
-    expect(html).not.toContain('title="Episode 1 — 2 chunks mentioning');
+    expect(html).toContain('class="topic-help-tip"');
+    expect(html).toContain('aria-label="Explain topic summary"');
+    expect(html).toContain('aria-label="Explain observations"');
+    expect(html).toContain('aria-label="Explain rank over time"');
+    expect(html).toContain("Raw mentions over time. Use this to see absolute attention, not relative rank among all topics.");
+    expect(html).not.toContain('aria-label="Explain episodes"');
   });
 
-  it("highlights topic name in chunk excerpts with <mark>", async () => {
+  it("removes the episodes panel and related drill-in affordances", async () => {
     const res = await SELF.fetch("http://localhost/topics/llms");
     const html = await res.text();
-    expect(html).toContain("<mark>");
-    // The word "llms" should be wrapped in mark tags (case-insensitive)
-    expect(html).toMatch(/<mark>llms<\/mark>/i);
+
+    expect(html).not.toContain('class="topic-tab-panel topic-episode-panel"');
+    expect(html).not.toContain('data-topic-tab-panel="episodes"');
+    expect(html).not.toContain("<h2>Episodes");
+    expect(html).not.toContain('class="ep-density-spark"');
+    expect(html).not.toContain('Inspect observations');
+  });
+
+  it("restores observations with highlighted excerpts and a terminology drift view", async () => {
+    const res = await SELF.fetch("http://localhost/topics/llms");
+    const html = await res.text();
+
+    expect(html).toContain('class="topic-tab-panel topic-observations"');
+    expect(html).toContain("Observations");
+    expect(html).toContain('class="topic-observation-controls"');
+    expect(html).toContain('data-topic-observation-nav="sort"');
+    expect(html).toContain('data-topic-observation-sort="newest"');
+    expect(html).toContain('data-topic-observation-sort="oldest"');
+    expect(html).toContain("Newest first");
+    expect(html).toContain("Oldest first");
+    expect(html).toContain("<mark>llms</mark>");
+    expect(html).toContain("Earlier focus");
+    expect(html).toContain("Later focus");
+    expect(html).toContain("agents");
+    expect(html).toContain("claude");
+  });
+
+  it("sorts observations chronologically when requested", async () => {
+    const res = await SELF.fetch("http://localhost/topics/llms?sort=oldest");
+    const html = await res.text();
+
+    const observationsStart = html.indexOf('class="topic-observation-list"');
+    const observationsEnd = html.indexOf('</div>', observationsStart);
+    const observationsSection = html.substring(observationsStart, observationsEnd);
+
+    expect(observationsSection.indexOf('href="/chunks/chunk-llms"')).toBeLessThan(observationsSection.indexOf('href="/chunks/chunk-agents"'));
+    expect(observationsSection.indexOf('href="/chunks/chunk-agents"')).toBeLessThan(observationsSection.indexOf('href="/chunks/chunk-claude"'));
+  });
+
+  it("removes the in-context tab and kwic markup", async () => {
+    const res = await SELF.fetch("http://localhost/topics/llms");
+    const html = await res.text();
+    expect(html).not.toContain('data-topic-tab="in-context"');
+    expect(html).not.toContain("kwic-list");
+    expect(html).not.toContain("kwic-row");
   });
 
   it("works when word_stats has no entry for a multi-word topic", async () => {
@@ -136,8 +202,9 @@ describe("Topic detail page — word_stats integration", () => {
     const html = await res.text();
     // Should still show chunk and episode counts without mention count / distinctiveness
     expect(html).toContain("claude code");
-    expect(html).not.toContain("mentions");
-    expect(html).not.toContain("distinctiveness");
+    expect(html).not.toContain('class="topic-mentions"');
+    expect(html).not.toContain('aria-label="Explain distinctiveness"');
+    expect(html).not.toContain("distinctiveness vs baseline");
   });
 
   it("returns 404 for display-suppressed topics", async () => {

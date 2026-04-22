@@ -113,8 +113,10 @@ describe("Homepage margin layout", () => {
     const html = await res.text();
     expect(res.status).toBe(200);
     expect(html).toContain("page-with-rail");
+    expect(html).toContain("page-with-rail--aligned");
     expect(html).toContain("page-rail");
     expect(html).toContain("home-margin");
+    expect(html).toContain("page-preamble");
     expect(html).toContain("Recent Episodes");
   });
 

@@ -74,9 +74,11 @@ describe("Topic page layout safety", () => {
 
     expect(res.status).toBe(200);
     expect(html).toContain("page-with-rail");
+    expect(html).toContain("page-with-rail--aligned");
     expect(html).toContain("page-rail");
     expect(html).toContain("topic-detail-layout");
     expect(html).toContain("topic-page-rail");
+    expect(html).toContain("page-preamble");
   });
 });
 

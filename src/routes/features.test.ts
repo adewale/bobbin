@@ -79,30 +79,27 @@ describe("Ladder of abstraction on /topics/:slug", () => {
     expect(html).toContain('id="over-time"');
   });
 
-  it("shows episode-level timeline", async () => {
+  it("does not show the removed episodes overview panel", async () => {
     const res = await SELF.fetch("http://localhost/topics/ecosystem");
     const html = await res.text();
-    expect(html).toContain("topic-episode-timeline");
-    expect(html).toContain('id="episodes"');
-    // Should list all 3 episodes that have this topic
-    expect(html).toContain("2024-01-15");
-    expect(html).toContain("2024-02-12");
-    expect(html).toContain("2024-03-18");
+    expect(html).not.toContain("topic-episode-panel");
+    expect(html).not.toContain('id="episodes"');
   });
 
   it("shows chunk-level list", async () => {
     const res = await SELF.fetch("http://localhost/topics/ecosystem");
     const html = await res.text();
-    expect(html).toContain("topic-chunks");
+    expect(html).toContain("topic-observations");
     expect(html).toContain("Ecosystem dynamics");
     expect(html).toContain("More ecosystems");
     expect(html).toContain("Ecosystem collapse");
   });
 
-  it("shows collapsible evolution section", async () => {
+  it("uses observation sorting instead of a separate evolution section", async () => {
     const res = await SELF.fetch("http://localhost/topics/ecosystem");
     const html = await res.text();
-    expect(html).toContain("topic-evolution");
-    expect(html).toContain('id="evolution"');
+    expect(html).toContain("Oldest first");
+    expect(html).not.toContain("topic-evolution");
+    expect(html).not.toContain('id="evolution"');
   });
 });

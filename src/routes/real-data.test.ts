@@ -10,7 +10,7 @@ describe("Layout CSS invariants", () => {
   });
 
   it("provides an opt-in page-with-rail grid for pages that need side content", () => {
-    expect(styles).toMatch(/\.page-with-rail\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s*var\(--sidebar-width\);/s);
+    expect(styles).toMatch(/\.page-with-rail\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*var\(--page-grid-columns,\s*minmax\(0,\s*1fr\)\s*var\(--sidebar-width\)\);/s);
     expect(styles).toMatch(/\.page-rail\s*\{[^}]*font-family:\s*var\(--font-ui\);/s);
   });
 
@@ -19,13 +19,21 @@ describe("Layout CSS invariants", () => {
     expect(styles).not.toMatch(/\.topic-detail-layout\s*\{[^}]*display:\s*grid;/s);
   });
 
-  it("does not use overflow-hiding masks for visible kwic text", () => {
-    expect(styles).toMatch(/\.kwic-line \.kwic-left,\s*\.kwic-line \.kwic-right \{[^}]*white-space:\s*normal;[^}]*overflow:\s*visible;/s);
-    expect(styles).not.toMatch(/\.kwic-line \.kwic-left \{[^}]*mask-image:/s);
-    expect(styles).not.toMatch(/\.kwic-line \.kwic-right \{[^}]*mask-image:/s);
-    expect(styles).not.toContain(".kwic-table {");
-    expect(styles).not.toMatch(/\n\.kwic-left \{/);
-    expect(styles).not.toMatch(/\n\.kwic-right \{/);
+  it("lets topic detail tune the shared grid with page-level tokens", () => {
+    expect(styles).toMatch(/\.topic-detail-layout\s*\{[^}]*--page-grid-columns:\s*minmax\(0,\s*1\.75fr\)\s*minmax\(14rem,\s*17rem\);/s);
+    expect(styles).toMatch(/\.topic-detail-layout\s*\{[^}]*--page-grid-gap:\s*1\.5rem;/s);
+    expect(styles).toMatch(/@media \(max-width:\s*1024px\)\s*\{[^}]*\.topic-detail-layout\s*\{[^}]*--page-grid-columns:\s*minmax\(0,\s*1\.55fr\)\s*minmax\(13rem,\s*15rem\);/s);
+  });
+
+  it("provides a shared preamble slot for aligned rail pages", () => {
+    expect(styles).toMatch(/\.page-with-rail--aligned\s*\{[^}]*--rail-start-offset:\s*2\.75rem;/s);
+    expect(styles).toMatch(/\.page-with-rail--aligned > \.page-body > \.page-preamble\s*\{[^}]*min-height:\s*var\(--rail-start-offset\);/s);
+    expect(styles).toMatch(/\.page-with-rail--aligned > \.page-rail\s*\{[^}]*margin-top:\s*var\(--rail-start-offset\);/s);
+  });
+
+  it("provides a reusable topic help-tip pattern", () => {
+    expect(styles).toMatch(/\.topic-help-tip\s*\{[^}]*position:\s*relative;/s);
+    expect(styles).toMatch(/\.topic-help-tip-bubble\s*\{[^}]*position:\s*absolute;[^}]*z-index:\s*20;/s);
   });
 
   it("shows desktop header search while retaining the page-level search form styles", () => {

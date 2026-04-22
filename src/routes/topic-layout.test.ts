@@ -30,7 +30,9 @@ describe("Topic layout on chunk pages", () => {
     const res = await SELF.fetch("http://localhost/chunks/essay-chunk");
     const html = await res.text();
     expect(html).toContain("page-with-rail");
+    expect(html).toContain("page-with-rail--aligned");
     expect(html).toContain("page-rail");
+    expect(html).toContain("page-preamble");
     expect(html).toContain("topics-margin");
   });
 
@@ -51,7 +53,9 @@ describe("Topic layout on episode pages", () => {
     const res = await SELF.fetch("http://localhost/episodes/2024-04-08-t");
     const html = await res.text();
     expect(html).toContain("page-with-rail");
+    expect(html).toContain("page-with-rail--aligned");
     expect(html).toContain("page-rail");
+    expect(html).toContain("page-preamble");
     expect(html).toContain("topics-margin");
   });
 });

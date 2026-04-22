@@ -24,11 +24,13 @@ episodes.get("/", async (c) => {
 
   const years = [...byYear.keys()].sort((a, b) => b - a);
 
-  return c.html(
-    <Layout title="Episodes" description="All Bits and Bobs episodes by date" activePath="/episodes" mainClassName="main-wide">
-      <div class="page-with-rail browse-layout">
+    return c.html(
+      <Layout title="Episodes" description="All Bits and Bobs episodes by date" activePath="/episodes" mainClassName="main-wide">
+      <div class="page-with-rail page-with-rail--aligned browse-layout">
         <div class="page-body browse-main">
-          <p class="page-count">{allEpisodesList.length} episodes</p>
+          <div class="page-preamble">
+            <p class="page-count">{allEpisodesList.length} episodes</p>
+          </div>
 
           {years.map((year) => {
             const months = [...byYear.get(year)!.keys()].sort((a, b) => b - a);
@@ -89,14 +91,17 @@ episodes.get("/:slug", async (c) => {
 
   return c.html(
     <Layout title={episode.title} description={`Bits and Bobs from ${episode.published_date} — ${episode.chunk_count} chunks`} activePath="/episodes" mainClassName="main-wide">
-      <Breadcrumbs
-        crumbs={[
-          { label: "Episodes", href: "/episodes" },
-          { label: episode.title },
-        ]}
-      />
-      <div class={(blendedTopics.main.length > 0 || blendedTopics.distinctive.length > 0) ? "page-with-rail episode-detail-layout" : "episode-detail-layout"}>
+      <div class={(blendedTopics.main.length > 0 || blendedTopics.distinctive.length > 0) ? "page-with-rail page-with-rail--aligned episode-detail-layout" : "episode-detail-layout"}>
         <article class="page-body episode-detail">
+          <div class="page-preamble">
+            <Breadcrumbs
+              crumbs={[
+                { label: "Episodes", href: "/episodes" },
+                { label: episode.title },
+              ]}
+            />
+          </div>
+
           <h1>{episode.title}</h1>
           <time datetime={episode.published_date}>{episode.published_date}</time>
 

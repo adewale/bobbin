@@ -79,25 +79,43 @@ describe("Topic detail page — dispersion plot", () => {
   });
 });
 
-describe("Topic detail page — in-context rows", () => {
-  it("contains expandable kwic-row elements", async () => {
+describe("Topic detail page — observation cards and help tips", () => {
+  it("contains observation cards linked to chunk detail pages", async () => {
     const res = await SELF.fetch("http://localhost/topics/llms");
     expect(res.status).toBe(200);
     const html = await res.text();
-    expect(html).toContain("kwic-row");
-  });
-
-  it("shows the topic name centered between left and right context", async () => {
-    const res = await SELF.fetch("http://localhost/topics/llms");
-    const html = await res.text();
-    expect(html).toContain('class="kwic-left"');
-    expect(html).toContain('class="kwic-word"');
-    expect(html).toContain('class="kwic-right"');
-  });
-
-  it("links KWIC entries to chunk detail pages", async () => {
-    const res = await SELF.fetch("http://localhost/topics/llms");
-    const html = await res.text();
+    expect(html).toContain("topic-observation-card");
     expect(html).toContain('href="/chunks/chunk-llms-1"');
+  });
+
+  it("supports chronological observation sorting instead of a separate evolution list", async () => {
+    const res = await SELF.fetch("http://localhost/topics/llms?sort=oldest");
+    const html = await res.text();
+    expect(html).toContain("Oldest first");
+    expect(html).not.toContain('data-topic-tab="evolution"');
+    expect(html).not.toContain("evolution-timeline");
+  });
+
+  it("renders section help tips alongside topic detail blocks", async () => {
+    const res = await SELF.fetch("http://localhost/topics/llms");
+    const html = await res.text();
+    expect(html).toContain('class="topic-help-tip"');
+    expect(html).toContain('aria-label="Explain observations"');
+    expect(html).toContain('aria-label="Explain topic summary"');
+  });
+
+  it("no longer renders the in-context kwic block", async () => {
+    const res = await SELF.fetch("http://localhost/topics/llms");
+    const html = await res.text();
+    expect(html).not.toContain("kwic-row");
+    expect(html).not.toContain('data-topic-tab="in-context"');
+  });
+
+  it("does not render the removed episodes overview affordances", async () => {
+    const res = await SELF.fetch("http://localhost/topics/llms");
+    const html = await res.text();
+    expect(html).not.toContain('data-topic-tab="episodes"');
+    expect(html).not.toContain("Inspect observations");
+    expect(html).not.toContain('class="ep-density-spark"');
   });
 });

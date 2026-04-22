@@ -1,20 +1,33 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../types";
 import { Layout } from "../components/Layout";
-import { getTopicBySlug, getTopicChunkCount, getTopicChunks, getTopicSparkline, getTopicEpisodes, getTopicDiffChunks, getRelatedTopics, getTopicWordStats, getTopTopicsWithSparklines } from "../db/topics";
+import { getAdjacentTopics, getRelatedTopics, getTopTopicsWithSparklines, getTopicBySlug, getTopicChunkCount, getTopicChunks, getTopicDriftChunks, getTopicEpisodes, getTopicRankHistory, getTopicSparkline, getTopicWordStats } from "../db/topics";
 import { safeParseInt } from "../lib/html";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { Pagination } from "../components/Pagination";
-import { highlightInExcerpt, extractKWIC } from "../lib/highlight";
+import { highlightInExcerpt } from "../lib/highlight";
+import { buildTerminologyDrift, buildTopicSummary } from "../lib/topic-detail";
 
 const topics = new Hono<AppEnv>();
 const PAGE_SIZE = 20;
 
-function distinctivenessGloss(d: number): string {
-  if (d >= 50) return "exceptionally distinctive — among the signature concepts of the corpus";
-  if (d >= 10) return "highly distinctive — appears far more often here than in everyday writing";
-  if (d >= 3) return "moderately distinctive — clearly more present than in baseline language";
-  return "near baseline frequency";
+function buildTopicPath(slug: string, params: { sort?: string; page?: number }) {
+  const search = new URLSearchParams();
+
+  if (params.sort && params.sort !== "newest") search.set("sort", params.sort);
+  if (params.page && params.page > 1) search.set("page", String(params.page));
+
+  const query = search.toString();
+  return query ? `/topics/${slug}?${query}` : `/topics/${slug}`;
+}
+
+function HelpTip(props: { label: string; text: string }) {
+  return (
+    <details class="topic-help-tip">
+      <summary aria-label={props.label} title={props.label}>?</summary>
+      <div class="topic-help-tip-bubble" role="note">{props.text}</div>
+    </details>
+  );
 }
 
 topics.get("/", async (c) => {
@@ -63,25 +76,57 @@ topics.get("/", async (c) => {
 
 topics.get("/:slug", async (c) => {
   const slug = c.req.param("slug");
-  const page = Math.max(1, safeParseInt(c.req.query("page"), 1));
-  const offset = (page - 1) * PAGE_SIZE;
+  const requestedPage = Math.max(1, safeParseInt(c.req.query("page"), 1));
+  const observationSort = c.req.query("sort") === "oldest" ? "oldest" : "newest";
 
   const topic = await getTopicBySlug(c.env.DB, slug);
   if (!topic) return c.notFound();
 
-  const [total, chunksList, episodes, sparkline, diffChunks, relatedTopics, wordStats] = await Promise.all([
+  const [total, driftChunks, episodes, sparkline, relatedTopics, wordStats, rankHistory, adjacentTopics] = await Promise.all([
     getTopicChunkCount(c.env.DB, topic.id),
-    getTopicChunks(c.env.DB, topic.id, PAGE_SIZE, offset),
+    getTopicDriftChunks(c.env.DB, topic.id),
     getTopicEpisodes(c.env.DB, topic.id),
     getTopicSparkline(c.env.DB, topic.id),
-    getTopicDiffChunks(c.env.DB, topic.id),
     getRelatedTopics(c.env.DB, topic.id),
     getTopicWordStats(c.env.DB, topic.name),
+    getTopicRankHistory(c.env.DB, topic.id),
+    getAdjacentTopics(c.env.DB, topic.id),
   ]);
 
-  const totalPages = Math.ceil(total / PAGE_SIZE);
+  const totalObservationCount = total;
+  const totalPages = Math.max(1, Math.ceil(totalObservationCount / PAGE_SIZE));
+  const page = Math.min(requestedPage, totalPages);
+  const offset = (page - 1) * PAGE_SIZE;
+  const observationsPage = await getTopicChunks(c.env.DB, topic.id, PAGE_SIZE, offset, observationSort);
   const maxSparkCount = Math.max(...sparkline.map((s: any) => s.count), 1);
-  const topicPageRailClass = relatedTopics.length > 0 ? "page-rail topic-page-rail" : "page-rail topic-page-rail topic-page-rail--toc-only";
+  const topicPageRailClass = "page-rail topic-page-rail";
+  const peakEpisode = episodes.reduce((best: any | null, episode: any) => {
+    if (!best || episode.topic_chunk_count > best.topic_chunk_count) return episode;
+    return best;
+  }, null);
+  const editorialSummary = buildTopicSummary({
+    topicName: topic.name,
+    totalChunks: total,
+    totalEpisodes: episodes.length,
+    firstPublishedDate: episodes[0]?.published_date,
+    lastPublishedDate: episodes[episodes.length - 1]?.published_date,
+    peakEpisode,
+    relatedTopics,
+    rankHistory,
+    aboveTopic: adjacentTopics.above,
+    belowTopic: adjacentTopics.below,
+  });
+  const terminologyDrift = buildTerminologyDrift(driftChunks, topic.name);
+  const hasDrift = terminologyDrift.earlier.length > 0 || terminologyDrift.later.length > 0;
+
+  const topicTabs = [
+    { id: "observations", label: "Observations" },
+    ...(hasDrift ? [{ id: "drift", label: "Drift" }] : []),
+  ];
+  const hasRailPanels = rankHistory.length > 0 || adjacentTopics.above || adjacentTopics.below;
+  const observationBaseUrl = buildTopicPath(slug, {
+    sort: observationSort,
+  });
 
   return c.html(
     <Layout
@@ -90,14 +135,17 @@ topics.get("/:slug", async (c) => {
       activePath="/topics"
       mainClassName="main-wide"
     >
-      <div class="page-with-rail topic-detail-layout">
+      <div class="page-with-rail page-with-rail--aligned topic-detail-layout">
         <div class="page-body topic-detail-main">
-          <Breadcrumbs
-            crumbs={[
-              { label: "Topics", href: "/topics" },
-              { label: topic.name },
-            ]}
-          />
+          <div class="page-preamble">
+            <Breadcrumbs
+              crumbs={[
+                { label: "Topics", href: "/topics" },
+                { label: topic.name },
+              ]}
+            />
+          </div>
+
           <h1>Topic: {topic.name}</h1>
           <p class="topic-header-stats">
             {wordStats && (<><span class="topic-mentions">{wordStats.total_count.toLocaleString()} mentions</span> &middot; </>)}
@@ -105,16 +153,51 @@ topics.get("/:slug", async (c) => {
             {episodes.length !== 1 ? "s" : ""}
           </p>
           {wordStats && wordStats.distinctiveness > 0 && (
-            <p class="topic-distinctiveness">
-              <span>
-                {wordStats.distinctiveness.toFixed(1)}&times; distinctiveness vs baseline
-              </span>
-              <span class="topic-distinctiveness-gloss"> — {distinctivenessGloss(wordStats.distinctiveness)}</span>
-              <span class="topic-distinctiveness-note"> compared with everyday baseline English.</span>
-            </p>
+            <div class="topic-distinctiveness topic-inline-heading-row">
+              {wordStats.distinctiveness.toFixed(1)}&times; distinctiveness vs baseline
+              <HelpTip
+                label="Explain distinctiveness"
+                text="How much more common this term is here than in ordinary English. Higher values mean the topic is more characteristic of this corpus."
+              />
+            </div>
           )}
 
-          <script src="/scripts/toc-scrollspy.js" defer></script>
+          {relatedTopics.length > 0 && (
+            <div class="topic-related topic-related-inline">
+              <span class="topic-inline-heading-row">
+                <span class="topic-related-label">Related:</span>
+                <HelpTip
+                  label="Explain related topics"
+                  text="Topics that appear in the same chunks as this one. Use this to find semantic neighbors, not ranking neighbors."
+                />
+              </span>{" "}
+              {relatedTopics.map((rt, index) => (
+                <span key={rt.slug}>
+                  {index > 0 ? " · " : ""}
+                  <a href={`/topics/${rt.slug}`}>{rt.name}</a>
+                </span>
+              ))}
+            </div>
+          )}
+
+          {editorialSummary.length > 0 && (
+            <section class="topic-summary" aria-labelledby="topic-summary-heading">
+              <div class="topic-section-heading-row">
+                <h2 id="topic-summary-heading">Topic summary</h2>
+                <HelpTip
+                  label="Explain topic summary"
+                  text="A short read on the topic's time range, peak episode, and strongest associations. Use it as the quick orientation before drilling into examples."
+                />
+              </div>
+              <ul class="topic-summary-list">
+                {editorialSummary.map((line, index) => (
+                  <li key={`${topic.slug}-summary-${index}`}>{line}</li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          <script src="/scripts/topic-detail-tabs.js" defer></script>
 
           {sparkline.length > 0 && (() => {
             const counts = sparkline.map((s: any) => s.count as number);
@@ -143,6 +226,13 @@ topics.get("/:slug", async (c) => {
 
             return (
               <section class="topic-sparkline" id="over-time" aria-label="Mentions over time">
+                <div class="topic-section-heading-row">
+                  <h2>Over time</h2>
+                  <HelpTip
+                    label="Explain mentions over time"
+                    text="Raw mentions over time. Use this to see absolute attention, not relative rank among all topics."
+                  />
+                </div>
                 <svg viewBox={`0 0 ${w} ${h + rugH + labelH}`} class="topic-spark-svg" role="img">
                   {!isSingle && (
                     <>
@@ -150,11 +240,6 @@ topics.get("/:slug", async (c) => {
                         stroke="var(--border)" stroke-width="1" stroke-dasharray="4,3">
                         <title>{`Mean ${mean.toFixed(1)} mentions per episode across the full range`}</title>
                       </line>
-                      <text x={w - bottomPad} y={meanLabelY} text-anchor="end"
-                        fill="var(--text-light)" font-size="9" font-family="var(--font-ui)">
-                        avg {mean.toFixed(1)}
-                        <title>{`Mean ${mean.toFixed(1)} mentions per episode across the full range`}</title>
-                      </text>
                     </>
                   )}
 
@@ -197,115 +282,202 @@ topics.get("/:slug", async (c) => {
             );
           })()}
 
-          <section class="topic-chunks" id="in-context">
-            <h2>In context</h2>
-            {chunksList.map((r: any) => {
-              const kwic = extractKWIC(r.content_plain || "", topic.name);
-              return (
-                <details key={r.id} class="kwic-row">
-                  <summary>
-                    <span class="kwic-line">
-                      {kwic ? (
-                        <>
-                          <span class="kwic-left">{kwic.left}</span>
-                          <span class="kwic-word">{topic.name}</span>
-                          <span class="kwic-right">{kwic.right}</span>
-                        </>
-                      ) : (
-                        <span class="kwic-word">{topic.name}</span>
-                      )}
-                    </span>
-                    <span class="kwic-meta">{r.episode_title} · {r.published_date}</span>
-                  </summary>
-                  <div class="kwic-body">
-                    <p
-                      class="excerpt"
-                      dangerouslySetInnerHTML={{
-                        __html: highlightInExcerpt(r.content_plain || "", topic.name),
-                      }}
-                    />
-                    <p class="kwic-source">
-                      <a href={`/chunks/${r.slug}`}>{r.title}</a>
-                      {" · from "}
-                      <a href={`/episodes/${r.episode_slug}`}>{r.episode_title}</a>
-                    </p>
-                  </div>
-                </details>
-              );
-            })}
+          <nav class="topic-tabs" aria-label="Topic sections" data-topic-tab-list role="tablist">
+            {topicTabs.map((tab, index) => (
+              <a
+                key={tab.id}
+                href={`#${tab.id}`}
+                class={`topic-tab-link${index === 0 ? " is-active" : ""}`}
+                id={`tab-${tab.id}`}
+                data-topic-tab={tab.id}
+                role="tab"
+                aria-controls={tab.id}
+                aria-selected={index === 0 ? "true" : "false"}
+                {...(index === 0 ? { "aria-current": "page" } : {})}
+              >
+                {tab.label}
+              </a>
+            ))}
+          </nav>
+
+          <section class="topic-tab-panel topic-observations" id="observations" data-topic-tab-panel="observations" role="tabpanel" aria-labelledby="tab-observations">
+            <div class="topic-section-heading-row">
+              <h2>Observations</h2>
+              <HelpTip
+                label="Explain observations"
+                text="The primary evidence view for this topic. Sort it chronologically when you want concrete examples behind the larger pattern."
+              />
+            </div>
+            <div class="topic-observation-controls" aria-label="Observation controls">
+              <div class="topic-control-group">
+                <span class="topic-control-label">Order</span>
+                <a
+                  href={`${buildTopicPath(slug, { sort: "newest" })}#observations`}
+                  data-topic-observation-nav="sort"
+                  data-topic-observation-sort="newest"
+                  class={`topic-control-chip${observationSort === "newest" ? " is-active" : ""}`}
+                  {...(observationSort === "newest" ? { "aria-current": "page" } : {})}
+                >
+                  Newest first
+                </a>
+                <a
+                  href={`${buildTopicPath(slug, { sort: "oldest" })}#observations`}
+                  data-topic-observation-nav="sort"
+                  data-topic-observation-sort="oldest"
+                  class={`topic-control-chip${observationSort === "oldest" ? " is-active" : ""}`}
+                  {...(observationSort === "oldest" ? { "aria-current": "page" } : {})}
+                >
+                  Oldest first
+                </a>
+              </div>
+            </div>
+            <p class="topic-observation-note">
+              {`Showing ${totalObservationCount} observation${totalObservationCount === 1 ? "" : "s"} sorted ${observationSort === "oldest" ? "from earliest to latest" : "from latest to earliest"}.`}
+            </p>
+            <div class="topic-observation-list">
+              {observationsPage.map((r: any) => (
+                <article key={r.id} class="topic-observation-card">
+                  <h3><a href={`/chunks/${r.slug}`}>{r.title}</a></h3>
+                  <p class="topic-observation-meta">
+                    from <a href={`/episodes/${r.episode_slug}`}>{r.episode_title}</a> &middot; <time datetime={r.published_date}>{r.published_date}</time>
+                  </p>
+                  <p
+                    class="topic-observation-excerpt"
+                    dangerouslySetInnerHTML={{
+                      __html: highlightInExcerpt(r.content_plain || "", topic.name),
+                    }}
+                  />
+                </article>
+              ))}
+            </div>
             <Pagination
               currentPage={page}
               totalPages={totalPages}
-              baseUrl={`/topics/${slug}`}
+              baseUrl={observationBaseUrl}
             />
           </section>
 
-          {diffChunks.length > 0 && (
-            <section class="topic-evolution" id="evolution">
-              <h2>Evolution over time</h2>
-              <ol class="evolution-timeline">
-                {diffChunks.map((r: any) => (
-                  <li key={r.id} class="evolution-entry">
-                    <time datetime={r.published_date}>{r.published_date}</time>
-                    <a href={`/chunks/${r.slug}`} title={`From ${r.episode_title}`}>{r.title}</a>
-                  </li>
-                ))}
-              </ol>
-            </section>
-          )}
-
-          <details class="topic-episode-timeline" id="episodes">
-            <summary>
-              <span class="topic-episode-summary">Episodes <span class="topic-episode-count">({episodes.length})</span></span>
-            </summary>
-            <div class="topic-episode-list">
-              {episodes.map((ep: any) => {
-                const barWidth = Math.round((ep.topic_chunk_count / Math.max(...episodes.map((e: any) => e.topic_chunk_count), 1)) * 100);
-                return (
-                  <a key={ep.id} href={`/episodes/${ep.slug}`} class="ep-density-row">
-                    <time datetime={ep.published_date}>{ep.published_date}</time>
-                    <div class="ep-density-main">
-                      <span class="ep-density-title">{ep.title}</span>
-                      <div class="ep-density-bar">
-                        <div class="ep-density-fill" style={`width:${Math.max(barWidth, 2)}%`} />
-                      </div>
-                    </div>
-                    <span class="ep-density-count">{ep.topic_chunk_count}</span>
-                  </a>
-                );
-              })}
-            </div>
-          </details>
-        </div>
-
-        <aside class={topicPageRailClass}>
-          <nav class="page-toc" aria-label="On this page">
-            <h3>On this page</h3>
-            <ol>
-              {sparkline.length > 0 && <li><a href="#over-time">Over time</a></li>}
-              <li><a href="#in-context">In context</a></li>
-              {diffChunks.length > 0 && <li><a href="#evolution">Evolution</a></li>}
-              <li><a href="#episodes">Episodes</a></li>
-            </ol>
-          </nav>
-          {relatedTopics.length > 0 && (
-            <section class="topic-related-panel">
-              <h3>Related topics</h3>
-              <div class="topics">
-                {relatedTopics.map((rt) => (
-                  <a
-                    key={rt.slug}
-                    href={`/topics/${rt.slug}`}
-                    class="topic"
-                  >
-                    <span>{rt.name}</span>
-                    <span class="topic-related-count">{rt.co_count} shared chunk{rt.co_count !== 1 ? "s" : ""}</span>
-                  </a>
-                ))}
+          {hasDrift && (
+            <section class="topic-tab-panel topic-drift" id="drift" data-topic-tab-panel="drift" role="tabpanel" aria-labelledby="tab-drift">
+              <div class="topic-section-heading-row">
+                <h2>Terminology drift</h2>
+                <HelpTip
+                  label="Explain terminology drift"
+                  text="Vocabulary that becomes less or more associated with the topic over time. Use this to spot framing changes rather than individual examples."
+                />
+              </div>
+              <p class="topic-drift-note">Comparing the first half of matching observations with the second half.</p>
+              <div class="topic-drift-columns">
+                <section>
+                  <h3>Earlier focus</h3>
+                  <ul class="topic-drift-list">
+                    {terminologyDrift.earlier.map((term) => (
+                      <li key={`earlier-${term.word}`}>
+                        <span class="topic-drift-word">{term.word}</span>
+                        <span class="topic-drift-shift">{term.earlyCount} &rarr; {term.lateCount}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+                <section>
+                  <h3>Later focus</h3>
+                  <ul class="topic-drift-list">
+                    {terminologyDrift.later.map((term) => (
+                      <li key={`later-${term.word}`}>
+                        <span class="topic-drift-word">{term.word}</span>
+                        <span class="topic-drift-shift">{term.earlyCount} &rarr; {term.lateCount}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
               </div>
             </section>
           )}
-        </aside>
+        </div>
+
+        {hasRailPanels && (
+          <aside class={topicPageRailClass}>
+            {rankHistory.length > 0 && (() => {
+              const width = 180;
+              const height = 72;
+              const pad = 10;
+              const maxRank = Math.max(...rankHistory.map((point) => point.rank), 1);
+              const isSingle = rankHistory.length === 1;
+              const points = rankHistory.map((point, index) => {
+                const x = isSingle ? width / 2 : pad + (index / Math.max(rankHistory.length - 1, 1)) * (width - pad * 2);
+                const y = maxRank === 1
+                  ? height / 2
+                  : pad + ((point.rank - 1) / Math.max(maxRank - 1, 1)) * (height - pad * 2);
+
+                return { ...point, x, y };
+              });
+
+              return (
+                <section class="topic-rank-panel">
+                  <div class="topic-rail-heading-row">
+                    <h3>Rank over time</h3>
+                    <HelpTip
+                      label="Explain rank over time"
+                      text="Relative position among all topics by year. Unlike the chart above, this shows rank, not raw mentions."
+                    />
+                  </div>
+                  <svg viewBox={`0 0 ${width} ${height + 16}`} class="topic-rank-svg" role="img" aria-label={`Rank over time for ${topic.name}`}>
+                    {!isSingle && (
+                      <polyline
+                        points={points.map((point) => `${point.x},${point.y}`).join(" ")}
+                        fill="none"
+                        stroke="var(--accent)"
+                        stroke-width="2"
+                      />
+                    )}
+                    {points.map((point) => (
+                      <g key={`rank-${point.year}`}>
+                        <circle cx={point.x} cy={point.y} r="3.5" fill="var(--accent)">
+                          <title>{`${point.year}: #${point.rank} (${point.count} chunks)`}</title>
+                        </circle>
+                        <text x={point.x} y={height + 12} text-anchor="middle" fill="var(--text-light)" font-size="9" font-family="var(--font-ui)">
+                          {point.year}
+                        </text>
+                      </g>
+                    ))}
+                  </svg>
+                  <p class="topic-rank-caption">
+                    #{rankHistory[0].rank} in {rankHistory[0].year}
+                    {rankHistory.length > 1 ? ` · #${rankHistory[rankHistory.length - 1].rank} in ${rankHistory[rankHistory.length - 1].year}` : ""}
+                  </p>
+                </section>
+              );
+            })()}
+
+            {(adjacentTopics.above || adjacentTopics.below) && (
+              <section>
+                <div class="topic-rail-heading-row">
+                  <h3>Adjacent topics</h3>
+                  <HelpTip
+                    label="Explain adjacent topics"
+                    text="Topics just above or below this one by overall chunk volume. These are ranking neighbors, not semantic neighbors."
+                  />
+                </div>
+                <div class="topic-adjacent-list">
+                  {adjacentTopics.above && (
+                    <p>
+                      <span class="topic-adjacent-label">Above</span>
+                      <a href={`/topics/${adjacentTopics.above.slug}`}>{adjacentTopics.above.name}</a>
+                      <span class="topic-adjacent-meta">{adjacentTopics.above.usage_count} chunks</span>
+                    </p>
+                  )}
+                  {adjacentTopics.below && (
+                    <p>
+                      <span class="topic-adjacent-label">Below</span>
+                      <a href={`/topics/${adjacentTopics.below.slug}`}>{adjacentTopics.below.name}</a>
+                      <span class="topic-adjacent-meta">{adjacentTopics.below.usage_count} chunks</span>
+                    </p>
+                  )}
+                </div>
+              </section>
+            )}
+          </aside>
+        )}
       </div>
     </Layout>
   );

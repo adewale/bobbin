@@ -57,15 +57,18 @@ chunks.get("/:slug", async (c) => {
       activePath="/episodes"
       mainClassName="main-wide"
     >
-      <Breadcrumbs
-        crumbs={[
-          { label: "Episodes", href: "/episodes" },
-          { label: chunk.episode_title, href: `/episodes/${chunk.episode_slug}` },
-          { label: chunk.title },
-        ]}
-      />
-      <div class={(topics.length > 0 || episodeBlend.distinctive.length > 0) ? `page-with-rail ${isNotes ? "chunk-compact" : "tufte-layout"}` : (isNotes ? "chunk-compact" : "tufte-layout")}>
+      <div class={(topics.length > 0 || episodeBlend.distinctive.length > 0) ? `page-with-rail page-with-rail--aligned ${isNotes ? "chunk-compact" : "tufte-layout"}` : (isNotes ? "chunk-compact" : "tufte-layout")}>
         <article class="page-body chunk-detail">
+          <div class="page-preamble">
+            <Breadcrumbs
+              crumbs={[
+                { label: "Episodes", href: "/episodes" },
+                { label: chunk.episode_title, href: `/episodes/${chunk.episode_slug}` },
+                { label: chunk.title },
+              ]}
+            />
+          </div>
+
           <h1>{chunk.title}</h1>
           <div class="chunk-meta">
             <time datetime={chunk.published_date}>{chunk.published_date}</time>

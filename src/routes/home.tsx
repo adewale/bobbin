@@ -32,15 +32,15 @@ home.get("/", async (c) => {
       description="An archive of Alex Komoroske's Bits and Bobs weekly newsletter"
       mainClassName="main-wide"
     >
-      <section class="hero">
-        <p>
-          A searchable archive of Alex Komoroske's{" "}
-          <em>Bits and Bobs</em> weekly newsletter.
-        </p>
-      </section>
-
-      <div class="page-with-rail home-with-margin">
+      <div class="page-with-rail page-with-rail--aligned home-with-margin">
         <div class="page-body home-main">
+          <section class="page-preamble hero">
+            <p>
+              A searchable archive of Alex Komoroske's{" "}
+              <em>Bits and Bobs</em> weekly newsletter.
+            </p>
+          </section>
+
           {latestEp && (
             <section class="latest-episode-panel">
               <h2>

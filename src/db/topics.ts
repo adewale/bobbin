@@ -1,5 +1,18 @@
 import type { TopicRow, WordStatsRow } from "../types";
 
+export interface TopicAdjacent {
+  name: string;
+  slug: string;
+  usage_count: number;
+  distinctiveness: number;
+}
+
+export interface TopicRankHistoryPoint {
+  year: number;
+  count: number;
+  rank: number;
+}
+
 export interface TrendingTopic {
   name: string;
   slug: string;
@@ -59,17 +72,65 @@ export async function getTopicChunkCount(db: D1Database, topicId: number): Promi
   return result?.count || 0;
 }
 
-export async function getTopicChunks(db: D1Database, topicId: number, limit: number, offset: number) {
+export async function getTopicChunks(
+  db: D1Database,
+  topicId: number,
+  limit: number,
+  offset: number,
+  sort: "newest" | "oldest" = "newest",
+) {
+  const orderClause = sort === "oldest"
+    ? "ORDER BY e.published_date ASC, c.position ASC, c.id ASC"
+    : "ORDER BY e.published_date DESC, c.position ASC, c.id ASC";
   const result = await db.prepare(
-    `SELECT c.*, e.slug as episode_slug, e.title as episode_title, e.published_date
+    `SELECT c.id, c.episode_id, c.slug, c.title, c.content_plain, c.position,
+            e.slug as episode_slug, e.title as episode_title, e.published_date
      FROM chunks c
      JOIN chunk_topics ct ON c.id = ct.chunk_id
      JOIN episodes e ON c.episode_id = e.id
      WHERE ct.topic_id = ?
-     ORDER BY e.published_date DESC
+     ${orderClause}
      LIMIT ? OFFSET ?`
   ).bind(topicId, limit, offset).all();
   return result.results;
+}
+
+export async function getTopicAllChunks(db: D1Database, topicId: number) {
+  const result = await db.prepare(
+    `SELECT c.id, c.episode_id, c.slug, c.title, c.content_plain, c.position,
+            e.slug as episode_slug, e.title as episode_title, e.published_date
+     FROM chunks c
+     JOIN chunk_topics ct ON c.id = ct.chunk_id
+     JOIN episodes e ON c.episode_id = e.id
+     WHERE ct.topic_id = ?
+     ORDER BY e.published_date ASC, c.position ASC, c.id ASC`
+  ).bind(topicId).all();
+  return result.results as any[];
+}
+
+export async function getTopicDriftChunks(db: D1Database, topicId: number, sampleSize = 30) {
+  const result = await db.prepare(
+    `WITH ordered AS (
+       SELECT c.id, c.content_plain, e.published_date, c.position
+       FROM chunks c
+       JOIN chunk_topics ct ON c.id = ct.chunk_id
+       JOIN episodes e ON c.episode_id = e.id
+       WHERE ct.topic_id = ?
+       ORDER BY e.published_date ASC, c.position ASC, c.id ASC
+     ), early AS (
+       SELECT * FROM ordered LIMIT ?
+     ), late AS (
+       SELECT * FROM ordered
+       ORDER BY published_date DESC, position DESC, id DESC
+       LIMIT ?
+     )
+     SELECT * FROM early
+     UNION ALL
+     SELECT * FROM late WHERE id NOT IN (SELECT id FROM early)
+     ORDER BY published_date ASC, position ASC, id ASC`
+  ).bind(topicId, sampleSize, sampleSize).all();
+
+  return result.results as Array<{ id: number; content_plain: string; published_date: string; position: number }>;
 }
 
 export async function getTopicSparkline(db: D1Database, topicId: number) {
@@ -92,7 +153,7 @@ export async function getTopicDiffChunks(db: D1Database, topicId: number) {
      JOIN chunk_topics ct ON c.id = ct.chunk_id
      JOIN episodes e ON c.episode_id = e.id
      WHERE ct.topic_id = ?
-     ORDER BY e.published_date ASC`
+     ORDER BY e.published_date ASC, c.position ASC, c.id ASC`
   ).bind(topicId).all();
   return result.results as any[];
 }
@@ -100,14 +161,13 @@ export async function getTopicDiffChunks(db: D1Database, topicId: number) {
 export async function getTopicEpisodes(db: D1Database, topicId: number) {
   const result = await db.prepare(
     `SELECT e.*, COUNT(ct.chunk_id) as topic_chunk_count
-     FROM episodes e
-     JOIN episode_topics et ON e.id = et.episode_id
-     JOIN chunk_topics ct ON ct.topic_id = et.topic_id AND ct.topic_id = ?
-     JOIN chunks c ON c.id = ct.chunk_id AND c.episode_id = e.id
-     WHERE et.topic_id = ?
-     GROUP BY e.id
-     ORDER BY e.published_date ASC`
-  ).bind(topicId, topicId).all();
+      FROM episodes e
+      JOIN chunks c ON c.episode_id = e.id
+      JOIN chunk_topics ct ON c.id = ct.chunk_id
+      WHERE ct.topic_id = ?
+      GROUP BY e.id
+      ORDER BY e.published_date ASC`
+  ).bind(topicId).all();
   return result.results as any[];
 }
 
@@ -166,6 +226,56 @@ export async function getTopicRanksByYear(db: D1Database) {
     topics.forEach((t, i) => t.rank = i + 1);
   }
   return byYear;
+}
+
+export async function getTopicRankHistory(db: D1Database, topicId: number): Promise<TopicRankHistoryPoint[]> {
+  const result = await db.prepare(
+    `WITH yearly_counts AS (
+       SELECT ct.topic_id, e.year, COUNT(*) as year_count
+       FROM chunk_topics ct
+       JOIN chunks c ON ct.chunk_id = c.id
+       JOIN episodes e ON c.episode_id = e.id
+       JOIN topics t ON ct.topic_id = t.id
+       WHERE t.hidden = 0 AND t.display_suppressed = 0
+       GROUP BY ct.topic_id, e.year
+     ), ranked AS (
+       SELECT topic_id, year, year_count,
+              ROW_NUMBER() OVER (PARTITION BY year ORDER BY year_count DESC, topic_id ASC) as rank
+       FROM yearly_counts
+     )
+     SELECT year, year_count as count, rank
+     FROM ranked
+     WHERE topic_id = ?
+     ORDER BY year ASC`
+  ).bind(topicId).all();
+
+  return (result.results as any[]).map((row) => ({
+    year: Number(row.year),
+    count: Number(row.count),
+    rank: Number(row.rank),
+  }));
+}
+
+export async function getAdjacentTopics(db: D1Database, topicId: number) {
+  const result = await db.prepare(
+    `SELECT id, name, slug, usage_count, distinctiveness
+     FROM topics
+     WHERE hidden = 0 AND display_suppressed = 0
+     ORDER BY usage_count DESC, distinctiveness DESC, name ASC`
+  ).all();
+
+  const topics = result.results as (TopicAdjacent & { id: number })[];
+  const index = topics.findIndex((topic) => topic.id === topicId);
+
+  if (index === -1) {
+    return { rank: null, above: null, below: null };
+  }
+
+  return {
+    rank: index + 1,
+    above: index > 0 ? topics[index - 1] : null,
+    below: index < topics.length - 1 ? topics[index + 1] : null,
+  };
 }
 
 export async function getTopTopicsWithSparklines(db: D1Database, limit = 20) {
