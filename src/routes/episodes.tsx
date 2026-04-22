@@ -4,8 +4,8 @@ import { Layout } from "../components/Layout";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { RichContent, RichFootnotes, parseFootnotesJson, parseRichContentJson } from "../components/RichContent";
 import { monthName } from "../lib/date";
-import { getAllEpisodesGrouped, getEpisodeBySlug, getChunksByEpisode, getEpisodeTopicsBlended, getAdjacentEpisodes } from "../db/episodes";
-import { getTrendingTopicsForEpisode } from "../db/topics";
+import { collectExternalLinks } from "../lib/episode-rail";
+import { getAdjacentEpisodes, getAllEpisodesGrouped, getChunksByEpisode, getEpisodeBySlug, getEpisodeRailInsights, getEpisodeTopicsBlended } from "../db/episodes";
 
 const episodes = new Hono<AppEnv>();
 
@@ -83,15 +83,28 @@ episodes.get("/:slug", async (c) => {
   const episode = await getEpisodeBySlug(c.env.DB, slug);
   if (!episode) return c.notFound();
 
-  const [chunksList, blendedTopics, adjacent] = await Promise.all([
+  const [chunksList, blendedTopics, adjacent, railInsights] = await Promise.all([
     getChunksByEpisode(c.env.DB, episode.id),
     getEpisodeTopicsBlended(c.env.DB, episode.id, 5, 5),
     getAdjacentEpisodes(c.env.DB, episode.published_date),
+    getEpisodeRailInsights(c.env.DB, episode.id, episode.published_date),
   ]);
+  const externalLinks = collectExternalLinks(chunksList);
+  const hasEpisodeRail = blendedTopics.main.length > 0
+    || blendedTopics.distinctive.length > 0
+    || railInsights.unexpectedPairings.length > 0
+    || railInsights.mostNovelChunks.length > 0
+    || railInsights.archiveContrast.length > 0
+    || externalLinks.length > 0
+    || (railInsights.sinceLast.previousEpisode !== null && (
+      railInsights.sinceLast.intensified.length > 0
+      || railInsights.sinceLast.downshifted.length > 0
+      || railInsights.sinceLast.newTopics.length > 0
+    ));
 
   return c.html(
     <Layout title={episode.title} description={`Bits and Bobs from ${episode.published_date} — ${episode.chunk_count} chunks`} activePath="/episodes" mainClassName="main-wide">
-      <div class={(blendedTopics.main.length > 0 || blendedTopics.distinctive.length > 0) ? "page-with-rail page-with-rail--aligned episode-detail-layout" : "episode-detail-layout"}>
+      <div class={hasEpisodeRail ? "page-with-rail page-with-rail--aligned episode-detail-layout" : "episode-detail-layout"}>
         <article class="page-body episode-detail">
           <div class="page-preamble">
             <Breadcrumbs
@@ -139,7 +152,7 @@ episodes.get("/:slug", async (c) => {
                 const hasBody = richBlocks.length > 0 || bodyLines.length > 0;
 
                 return hasBody ? (
-                  <details key={chunk.id} class="chunk-row">
+                  <details key={chunk.id} class="chunk-row" id={chunk.slug}>
                     <summary>
                       <a href={`/chunks/${chunk.slug}`} class="chunk-num" onclick="event.stopPropagation()">{idx + 1}</a>
                       <span class="chunk-title">{chunk.title}</span>
@@ -156,7 +169,7 @@ episodes.get("/:slug", async (c) => {
                     </div>
                   </details>
                 ) : (
-                  <div key={chunk.id} class="chunk-row chunk-row-single">
+                  <div key={chunk.id} class="chunk-row chunk-row-single" id={chunk.slug}>
                     <a href={`/chunks/${chunk.slug}`} class="chunk-num">{idx + 1}</a>
                     <span class="chunk-title">{chunk.title}</span>
                   </div>
@@ -166,10 +179,10 @@ episodes.get("/:slug", async (c) => {
           )}
         </article>
 
-        {(blendedTopics.main.length > 0 || blendedTopics.distinctive.length > 0) && (
-          <aside class="page-rail topics-margin">
+        {hasEpisodeRail && (
+          <aside class="page-rail topics-margin rail-stack episode-analysis-rail">
             {blendedTopics.main.length > 0 && (
-              <div class="topic-tier-main">
+              <section class="topic-tier-main rail-panel">
                 <h3>Topics</h3>
                 <div class="topics">
                   {blendedTopics.main.map((topic) => (
@@ -178,11 +191,11 @@ episodes.get("/:slug", async (c) => {
                     </a>
                   ))}
                 </div>
-              </div>
+              </section>
             )}
             {blendedTopics.distinctive.length > 0 && (
-              <div class="distinctive-topics">
-                <h4>Distinctive</h4>
+              <section class="distinctive-topics rail-panel">
+                <h3>Distinctive</h3>
                 <div class="topics">
                   {blendedTopics.distinctive.map((topic) => (
                     <a key={topic.id} href={`/topics/${topic.slug}`} class="topic topic-distinctive">
@@ -190,7 +203,100 @@ episodes.get("/:slug", async (c) => {
                     </a>
                   ))}
                 </div>
-              </div>
+              </section>
+            )}
+
+            {railInsights.unexpectedPairings.length > 0 && (
+              <section class="episode-insight-panel rail-panel">
+                <h4>Unexpected Pairings</h4>
+                <ul class="episode-insight-list">
+                  {railInsights.unexpectedPairings.map((pairing) => (
+                    <li key={`${pairing.leftSlug}-${pairing.rightSlug}`}>
+                      <span>
+                        <a href={`/topics/${pairing.leftSlug}`}>{pairing.leftName}</a>
+                        {" + "}
+                        <a href={`/topics/${pairing.rightSlug}`}>{pairing.rightName}</a>
+                      </span>
+                      <span class="insight-meta">{pairing.corpusCount === 0 ? "No earlier chunk overlap" : `${pairing.corpusCount} earlier shared chunk${pairing.corpusCount === 1 ? "" : "s"}`}</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+
+            {railInsights.mostNovelChunks.length > 0 && (
+              <section class="episode-insight-panel rail-panel">
+                <h4>Most Novel Chunks</h4>
+                <p class="episode-insight-kicker">Specific chunks that feel least like the existing archive. Start here for the freshest material.</p>
+                <ul class="episode-insight-list">
+                  {railInsights.mostNovelChunks.map((chunk) => (
+                    <li key={chunk.slug}>
+                      <a href={`/chunks/${chunk.slug}`}>{chunk.title}</a>
+                      {chunk.topicNames.length > 0 && <span class="insight-meta">via {chunk.topicNames.slice(0, 2).join(" + ")}</span>}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+
+            {railInsights.sinceLast.previousEpisode && (
+              railInsights.sinceLast.intensified.length > 0
+              || railInsights.sinceLast.downshifted.length > 0
+              || railInsights.sinceLast.newTopics.length > 0
+            ) && (
+              <section class="episode-insight-panel rail-panel">
+                <h4>Since Last Episode</h4>
+                <p class="episode-insight-kicker">Compared with <a href={`/episodes/${railInsights.sinceLast.previousEpisode.slug}`}>{railInsights.sinceLast.previousEpisode.title}</a>. Ranked by salience-weighted change, not just raw counts.</p>
+                <ul class="episode-insight-list episode-insight-list-compact">
+                  {railInsights.sinceLast.intensified.length > 0 && (
+                    <li>
+                      <span class="insight-label">Up</span>
+                      <span>{railInsights.sinceLast.intensified.map((topic) => `${topic.name} (+${topic.delta})`).join(", ")}</span>
+                    </li>
+                  )}
+                  {railInsights.sinceLast.downshifted.length > 0 && (
+                    <li>
+                      <span class="insight-label">Down</span>
+                      <span>{railInsights.sinceLast.downshifted.map((topic) => `${topic.name} (${topic.delta})`).join(", ")}</span>
+                    </li>
+                  )}
+                  {railInsights.sinceLast.newTopics.length > 0 && (
+                    <li>
+                      <span class="insight-label">New</span>
+                      <span>{railInsights.sinceLast.newTopics.map((topic) => topic.name).join(", ")}</span>
+                    </li>
+                  )}
+                </ul>
+              </section>
+            )}
+
+            {railInsights.archiveContrast.length > 0 && (
+              <section class="episode-insight-panel rail-panel">
+                <h4>Archive Contrast</h4>
+                <p class="episode-insight-kicker">Topic-level over-indexing relative to Bobbin overall, not chunk-level novelty.</p>
+                <ul class="episode-insight-list">
+                  {railInsights.archiveContrast.map((topic) => (
+                    <li key={topic.slug}>
+                      <a href={`/topics/${topic.slug}`}>{topic.name}</a>
+                      <span class="insight-meta">{topic.spikeRatio.toFixed(1)}x typical rate</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+
+            {externalLinks.length > 0 && (
+              <section class="episode-insight-panel rail-panel">
+                <h4>External Links</h4>
+                <ul class="episode-insight-list">
+                  {externalLinks.map((link) => (
+                    <li key={link.href}>
+                      <a href={link.href} target="_blank" rel="noreferrer">{link.label}</a>
+                      <span class="insight-meta">from <a href={`#${link.chunkSlug}`}>{link.chunkTitle}</a></span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
             )}
           </aside>
         )}

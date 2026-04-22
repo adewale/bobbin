@@ -127,6 +127,22 @@ describe("Topics index - unified grid", () => {
     expect(html).toContain("simon willison");
     expect(html).toContain("claude code");
   });
+
+  it("shows all eligible topics instead of truncating the grid at 20", async () => {
+    const extraTopics = Array.from({ length: 24 }, (_, index) => {
+      const n = index + 1;
+      return env.DB.prepare(`INSERT INTO topics (name, slug, usage_count) VALUES ('extra topic ${n}', 'extra-topic-${n}', 5)`);
+    });
+
+    await env.DB.batch(extraTopics);
+
+    const res = await SELF.fetch("http://localhost/topics");
+    const html = await res.text();
+
+    expect(html).toContain("extra topic 1");
+    expect(html).toContain("extra topic 24");
+    expect(html).toContain('href="/topics/extra-topic-24"');
+  });
 });
 
 describe("Topics index - search", () => {

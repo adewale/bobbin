@@ -51,6 +51,8 @@ describe("Episode page topic marginalia", () => {
     expect(res.status).toBe(200);
     // Has the marginalia wrapper
     expect(html).toContain("topics-margin");
+    expect(html).toContain("rail-stack");
+    expect(html).toContain("rail-panel");
     // Does NOT have a details/summary accordion for topics
     // Extract the topics-margin aside element (up to its closing tag)
     const marginStart = html.indexOf("topics-margin");
@@ -77,6 +79,8 @@ describe("Chunk page topic marginalia", () => {
     expect(res.status).toBe(200);
     // Has the marginalia wrapper
     expect(html).toContain("topics-margin");
+    expect(html).toContain("rail-stack");
+    expect(html).toContain("rail-panel");
     // Does NOT have a details/summary accordion for topics
     const marginStart = html.indexOf("topics-margin");
     const marginEnd = html.indexOf("</aside>", marginStart);

@@ -116,6 +116,8 @@ describe("Homepage margin layout", () => {
     expect(html).toContain("page-with-rail--aligned");
     expect(html).toContain("page-rail");
     expect(html).toContain("home-margin");
+    expect(html).toContain("rail-stack");
+    expect(html).toContain("rail-panel");
     expect(html).toContain("page-preamble");
     expect(html).toContain("Recent Episodes");
   });

@@ -37,7 +37,7 @@ export interface TopicSummaryInput {
 }
 
 export interface DriftTerm {
-  word: string;
+  phrase: string;
   earlyCount: number;
   lateCount: number;
   delta: number;
@@ -45,6 +45,7 @@ export interface DriftTerm {
 
 export function buildTopicSummary(input: TopicSummaryInput): string[] {
   const summary: string[] = [];
+  const relatedNames = input.relatedTopics.slice(0, 3).map((topic) => topic.name);
 
   if (input.firstPublishedDate && input.lastPublishedDate) {
     if (input.firstPublishedDate === input.lastPublishedDate) {
@@ -64,22 +65,27 @@ export function buildTopicSummary(input: TopicSummaryInput): string[] {
     );
   }
 
-  if (input.relatedTopics.length > 0) {
-    summary.push(`It most often travels with ${formatList(input.relatedTopics.slice(0, 3).map((topic) => topic.name))}.`);
-  }
-
   const rankStart = input.rankHistory[0];
   const rankEnd = input.rankHistory[input.rankHistory.length - 1];
   const neighbors = [input.aboveTopic?.name, input.belowTopic?.name].filter(Boolean) as string[];
+  const rankClause = rankStart && rankEnd && rankStart.year !== rankEnd.year
+    ? `its yearly rank moved from #${rankStart.rank} in ${rankStart.year} to #${rankEnd.rank} in ${rankEnd.year}`
+    : null;
 
-  if (rankStart && rankEnd && rankStart.year !== rankEnd.year && neighbors.length > 0) {
+  if (relatedNames.length > 0 && neighbors.length > 0) {
     summary.push(
-      `By chunk count it sits near ${formatList(neighbors)}; its yearly rank moved from #${rankStart.rank} in ${rankStart.year} to #${rankEnd.rank} in ${rankEnd.year}.`
+      `Semantically it travels with ${formatList(relatedNames)}, while by chunk count it sits between ${formatList(neighbors)}${rankClause ? `; ${rankClause}` : ""}.`
     );
-  } else if (rankStart && rankEnd && rankStart.year !== rankEnd.year) {
-    summary.push(`Its yearly rank moved from #${rankStart.rank} in ${rankStart.year} to #${rankEnd.rank} in ${rankEnd.year}.`);
+  } else if (relatedNames.length > 0 && rankClause) {
+    summary.push(`It most often travels with ${formatList(relatedNames)}; ${rankClause}.`);
+  } else if (relatedNames.length > 0) {
+    summary.push(`It most often travels with ${formatList(relatedNames)}.`);
+  } else if (rankClause && neighbors.length > 0) {
+    summary.push(`By chunk count it sits between ${formatList(neighbors)}; ${rankClause}.`);
+  } else if (rankClause) {
+    summary.push(`${rankClause.charAt(0).toUpperCase()}${rankClause.slice(1)}.`);
   } else if (neighbors.length > 0) {
-    summary.push(`By chunk count it sits near ${formatList(neighbors)}.`);
+    summary.push(`By chunk count it sits between ${formatList(neighbors)}.`);
   }
 
   return summary.slice(0, 3);
@@ -99,61 +105,72 @@ export function buildTerminologyDrift(chunks: Array<{ content_plain: string }>, 
   }
 
   const topicTokens = extractTopicTokens(topicName);
-  const earlyCounts = countTerms(early, topicTokens);
-  const lateCounts = countTerms(late, topicTokens);
-  const allWords = new Set([...earlyCounts.keys(), ...lateCounts.keys()]);
+  const earlyCounts = countPhrases(early, topicTokens);
+  const lateCounts = countPhrases(late, topicTokens);
+  const allPhrases = new Set([...earlyCounts.keys(), ...lateCounts.keys()]);
   const earlyTotal = totalCounts(earlyCounts);
   const lateTotal = totalCounts(lateCounts);
 
-  const changes = [...allWords]
-    .map((word) => {
-      const earlyCount = earlyCounts.get(word) ?? 0;
-      const lateCount = lateCounts.get(word) ?? 0;
+  const changes = [...allPhrases]
+    .map((phrase) => {
+      const earlyCount = earlyCounts.get(phrase) ?? 0;
+      const lateCount = lateCounts.get(phrase) ?? 0;
       const earlyShare = earlyCount / Math.max(earlyTotal, 1);
       const lateShare = lateCount / Math.max(lateTotal, 1);
 
       return {
-        word,
+        phrase,
         earlyCount,
         lateCount,
         delta: lateShare - earlyShare,
       };
     })
-    .filter((term) => term.earlyCount > 0 || term.lateCount > 0);
+    .filter((term) => term.earlyCount > 0 || term.lateCount > 0)
+    .filter((term) => Math.abs(term.delta) >= 0.05);
 
   const earlier = changes
     .filter((term) => term.earlyCount > 0 && term.delta < 0)
-    .sort((left, right) => (left.delta - right.delta) || (right.earlyCount - left.earlyCount) || left.word.localeCompare(right.word))
+    .sort((left, right) => (left.delta - right.delta) || (right.earlyCount - left.earlyCount) || left.phrase.localeCompare(right.phrase))
     .slice(0, limit);
 
   const later = changes
     .filter((term) => term.lateCount > 0 && term.delta > 0)
-    .sort((left, right) => (right.delta - left.delta) || (right.lateCount - left.lateCount) || left.word.localeCompare(right.word))
+    .sort((left, right) => (right.delta - left.delta) || (right.lateCount - left.lateCount) || left.phrase.localeCompare(right.phrase))
     .slice(0, limit);
 
   return { earlier, later };
 }
 
-function countTerms(chunks: Array<{ content_plain: string }>, topicTokens: Set<string>) {
+function countPhrases(chunks: Array<{ content_plain: string }>, topicTokens: Set<string>) {
   const counts = new Map<string, number>();
 
   for (const chunk of chunks) {
-    for (const word of tokenizeDriftText(chunk.content_plain, topicTokens)) {
-      counts.set(word, (counts.get(word) ?? 0) + 1);
+    for (const phrase of tokenizeDriftPhrases(chunk.content_plain, topicTokens)) {
+      counts.set(phrase, (counts.get(phrase) ?? 0) + 1);
     }
   }
 
   return counts;
 }
 
-function tokenizeDriftText(text: string, topicTokens: Set<string>) {
-  return text
+function tokenizeDriftPhrases(text: string, topicTokens: Set<string>) {
+  const tokens = text
     .toLowerCase()
     .replace(/[^a-z0-9\s'-]/g, " ")
     .split(/\s+/)
     .filter((word) => word.length > 3)
     .filter((word) => !STOPWORDS.has(word))
     .filter((word) => !topicTokens.has(word));
+
+  const phrases: string[] = [];
+  for (let i = 0; i < tokens.length - 1; i += 1) {
+    const left = tokens[i];
+    const right = tokens[i + 1];
+    if (!left || !right) continue;
+    phrases.push(`${left} ${right}`);
+  }
+
+  return phrases;
 }
 
 function extractTopicTokens(topicName: string) {

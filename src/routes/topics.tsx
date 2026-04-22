@@ -31,7 +31,7 @@ function HelpTip(props: { label: string; text: string }) {
 }
 
 topics.get("/", async (c) => {
-  const topicsWithSparklines = await getTopTopicsWithSparklines(c.env.DB, 20);
+  const topicsWithSparklines = await getTopTopicsWithSparklines(c.env.DB);
 
   return c.html(
     <Layout title="Topics" description="Browse Bits and Bobs by topic" activePath="/topics" mainClassName="main-wide">
@@ -99,7 +99,7 @@ topics.get("/:slug", async (c) => {
   const offset = (page - 1) * PAGE_SIZE;
   const observationsPage = await getTopicChunks(c.env.DB, topic.id, PAGE_SIZE, offset, observationSort);
   const maxSparkCount = Math.max(...sparkline.map((s: any) => s.count), 1);
-  const topicPageRailClass = "page-rail topic-page-rail";
+  const topicPageRailClass = "page-rail topic-page-rail rail-stack";
   const peakEpisode = episodes.reduce((best: any | null, episode: any) => {
     if (!best || episode.topic_chunk_count > best.topic_chunk_count) return episode;
     return best;
@@ -150,20 +150,22 @@ topics.get("/:slug", async (c) => {
           </div>
 
           <h1>Topic: {topic.name}</h1>
-          <p class="topic-header-stats">
-            {wordStats && (<><span class="topic-mentions">{wordStats.total_count.toLocaleString()} mentions</span> &middot; </>)}
-            {total} chunk{total !== 1 ? "s" : ""} &middot; {episodes.length} episode
-            {episodes.length !== 1 ? "s" : ""}
-          </p>
-          {wordStats && wordStats.distinctiveness > 0 && (
-            <div class="topic-distinctiveness topic-inline-heading-row">
-              {wordStats.distinctiveness.toFixed(1)}&times; distinctiveness vs baseline
-              <HelpTip
-                label="Explain distinctiveness"
-                text="How much more common this term is here than in ordinary English. Higher values mean the topic is more characteristic of this corpus."
-              />
-            </div>
-          )}
+          <div class="topic-stats-row">
+            <p class="topic-header-stats">
+              {wordStats && (<><span class="topic-mentions">{wordStats.total_count.toLocaleString()} mentions</span> &middot; </>)}
+              {total} chunk{total !== 1 ? "s" : ""} &middot; {episodes.length} episode
+              {episodes.length !== 1 ? "s" : ""}
+            </p>
+            {wordStats && wordStats.distinctiveness > 0 && (
+              <div class="topic-distinctiveness topic-inline-heading-row">
+                <span>{wordStats.distinctiveness.toFixed(1)}&times; distinctiveness vs baseline</span>
+                <HelpTip
+                  label="Explain distinctiveness"
+                  text="How much more common this term is here than in ordinary English. Higher values mean the topic is more characteristic of this corpus."
+                />
+              </div>
+            )}
+          </div>
 
           {relatedTopics.length > 0 && (
             <div class="topic-related topic-related-inline">
@@ -208,24 +210,32 @@ topics.get("/:slug", async (c) => {
             const mean = counts.reduce((a: number, b: number) => a + b, 0) / counts.length;
             const max = maxSparkCount;
             const w = 500;
-            const h = 80;
-            const rugH = 10;
-            const labelH = 16;
-            const topPad = 12;
+            const h = 68;
+            const rugH = 8;
+            const labelH = 14;
+            const topPad = 10;
             const bottomPad = 4;
             const isSingle = counts.length === 1;
+            const peakPoint = counts.reduce((best, count, index) => {
+              if (count > best.count) return { count, date: dates[index] };
+              return best;
+            }, { count: counts[0], date: dates[0] });
             const points = counts.map((c: number, i: number) => {
               const x = isSingle ? w / 2 : (i / (counts.length - 1)) * (w - bottomPad * 2) + bottomPad;
               const y = h - bottomPad - (c / max) * (h - topPad - bottomPad);
               return { x, y };
             });
             const meanY = h - bottomPad - (mean / max) * (h - topPad - bottomPad);
-            const meanLabelY = Math.max(meanY - 3, 10);
-            const landmarks = [
-              { label: dates[0], x: bottomPad },
-              { label: dates[Math.floor(dates.length / 2)], x: w / 2 },
-              { label: dates[dates.length - 1], x: w - bottomPad },
-            ];
+            const landmarks = dates.length > 18
+              ? [
+                  { label: dates[0], x: bottomPad },
+                  { label: dates[dates.length - 1], x: w - bottomPad },
+                ]
+              : [
+                  { label: dates[0], x: bottomPad },
+                  { label: dates[Math.floor(dates.length / 2)], x: w / 2 },
+                  { label: dates[dates.length - 1], x: w - bottomPad },
+                ];
 
             return (
               <section class="topic-sparkline" id="over-time" aria-label="Mentions over time">
@@ -235,6 +245,11 @@ topics.get("/:slug", async (c) => {
                     label="Explain mentions over time"
                     text="Raw mentions over time. Use this to see absolute attention, not relative rank among all topics."
                   />
+                </div>
+                <div class="topic-sparkline-meta">
+                  <span><strong>Range</strong>{dates[0]} to {dates[dates.length - 1]}</span>
+                  {!isSingle && <span><strong>Mean</strong>{mean.toFixed(1)} per episode</span>}
+                  <span><strong>Peak</strong>{peakPoint.count} on {peakPoint.date}</span>
                 </div>
                 <svg viewBox={`0 0 ${w} ${h + rugH + labelH}`} class="topic-spark-svg" role="img">
                   {!isSingle && (
@@ -369,25 +384,25 @@ topics.get("/:slug", async (c) => {
                   text="Vocabulary that becomes less or more associated with the topic over time. Use this to spot framing changes rather than individual examples."
                 />
               </div>
-              <p class="topic-drift-note">Comparing the first half of matching observations with the second half.</p>
+              <p class="topic-drift-note">Comparing recurring two-word phrases in the first half of matching observations with the second half.</p>
               <div class="topic-drift-columns">
                 <section>
-                  <h3>Earlier focus</h3>
+                  <h3>Earlier framing</h3>
                   <ul class="topic-drift-list">
                     {terminologyDrift.earlier.map((term) => (
-                      <li key={`earlier-${term.word}`}>
-                        <span class="topic-drift-word">{term.word}</span>
+                      <li key={`earlier-${term.phrase}`}>
+                        <span class="topic-drift-word">{term.phrase}</span>
                         <span class="topic-drift-shift">{term.earlyCount} &rarr; {term.lateCount}</span>
                       </li>
                     ))}
                   </ul>
                 </section>
                 <section>
-                  <h3>Later focus</h3>
+                  <h3>Later framing</h3>
                   <ul class="topic-drift-list">
                     {terminologyDrift.later.map((term) => (
-                      <li key={`later-${term.word}`}>
-                        <span class="topic-drift-word">{term.word}</span>
+                      <li key={`later-${term.phrase}`}>
+                        <span class="topic-drift-word">{term.phrase}</span>
                         <span class="topic-drift-shift">{term.earlyCount} &rarr; {term.lateCount}</span>
                       </li>
                     ))}
@@ -416,7 +431,7 @@ topics.get("/:slug", async (c) => {
               });
 
               return (
-                <section class="topic-rank-panel">
+                <section class="topic-rank-panel rail-panel">
                   <div class="topic-rail-heading-row">
                     <h3>Rank over time</h3>
                     <HelpTip
@@ -453,7 +468,7 @@ topics.get("/:slug", async (c) => {
             })()}
 
             {(adjacentTopics.above || adjacentTopics.below) && (
-              <section>
+              <section class="rail-panel">
                 <div class="topic-rail-heading-row">
                   <h3>Adjacent topics</h3>
                   <HelpTip

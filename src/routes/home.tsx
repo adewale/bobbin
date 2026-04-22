@@ -86,8 +86,8 @@ home.get("/", async (c) => {
           )}
         </div>
 
-        <aside class="page-rail home-margin">
-          <section class="recent-episodes">
+        <aside class="page-rail home-margin rail-stack">
+          <section class="recent-episodes rail-panel rail-panel-list">
             <h3>Recent Episodes</h3>
             {episodes.slice(0, 8).map((ep) => (
               <a key={ep.id} href={`/episodes/${ep.slug}`} class="recent-ep-link">
@@ -99,7 +99,7 @@ home.get("/", async (c) => {
           </section>
 
           {topics.length > 0 && (
-            <section class="margin-topics">
+            <section class="margin-topics rail-panel">
               <h3>Popular Topics</h3>
               <TopicCloud topics={topics} />
             </section>

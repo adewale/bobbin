@@ -3,29 +3,31 @@ import fc from "fast-check";
 import { buildTerminologyDrift } from "./topic-detail";
 
 describe("buildTerminologyDrift", () => {
-  it("separates earlier and later vocabulary while excluding the topic token itself", () => {
+  it("separates earlier and later framing phrases while excluding the topic token itself", () => {
     const drift = buildTerminologyDrift(
       [
-        { content_plain: "LLMs use orchestration and agents for complex tasks." },
-        { content_plain: "LLMs and agent loops benefit from eval harnesses." },
-        { content_plain: "Claude code and security workflows now shape llms in practice." },
-        { content_plain: "Security reviews and claude usage became the later pattern for llms." },
+        { content_plain: "LLMs use agent loops for complex tasks. Agent loops create planning pressure." },
+        { content_plain: "LLMs and agent loops benefit from eval harnesses. Agent loops help tool orchestration." },
+        { content_plain: "Security workflows now shape llms in practice. Security workflows require prompt defense." },
+        { content_plain: "Security workflows became the later pattern for llms. Security workflows changed team habits." },
       ],
       "llms"
     );
 
     expect(drift.earlier.length).toBeGreaterThan(0);
     expect(drift.later.length).toBeGreaterThan(0);
-    expect(drift.earlier.map((term) => term.word)).toContain("agents");
-    expect(drift.later.map((term) => term.word)).toContain("security");
-    expect(drift.earlier.map((term) => term.word)).not.toContain("llms");
-    expect(drift.later.map((term) => term.word)).not.toContain("llms");
+    expect(drift.earlier.map((term) => term.phrase)).toContain("agent loops");
+    expect(drift.later.map((term) => term.phrase)).toContain("security workflows");
+    expect(drift.earlier.map((term) => term.phrase)).not.toContain("llms");
+    expect(drift.later.map((term) => term.phrase)).not.toContain("llms");
     expect(drift.earlier.every((term) => term.delta < 0)).toBe(true);
     expect(drift.later.every((term) => term.delta > 0)).toBe(true);
-    expect(drift.earlier.some((term) => drift.later.some((later) => later.word === term.word))).toBe(false);
+    expect(drift.earlier.every((term) => term.phrase.includes(" "))).toBe(true);
+    expect(drift.later.every((term) => term.phrase.includes(" "))).toBe(true);
+    expect(drift.earlier.some((term) => drift.later.some((later) => later.phrase === term.phrase))).toBe(false);
   });
 
-  it("never emits the topic token for arbitrary chunk text", () => {
+  it("never emits the topic token as part of any phrase for arbitrary chunk text", () => {
     fc.assert(
       fc.property(
         fc.array(fc.string(), { minLength: 2, maxLength: 8 }),
@@ -36,8 +38,8 @@ describe("buildTerminologyDrift", () => {
           );
 
           for (const term of [...drift.earlier, ...drift.later]) {
-            expect(term.word).not.toBe("claude");
-            expect(term.word.length).toBeGreaterThan(0);
+            expect(term.phrase.toLowerCase()).not.toContain("claude");
+            expect(term.phrase.split(" ").length).toBeGreaterThan(1);
           }
         }
       )

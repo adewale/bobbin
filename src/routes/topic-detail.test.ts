@@ -86,6 +86,7 @@ describe("Topic detail page — word_stats integration", () => {
   it("shows distinctiveness when available", async () => {
     const res = await SELF.fetch("http://localhost/topics/llms");
     const html = await res.text();
+    expect(html).toContain('class="topic-stats-row"');
     expect(html).toContain("113.6");
     expect(html).toContain("distinctiveness vs baseline");
     expect(html).not.toContain("everyday baseline English");
@@ -127,7 +128,7 @@ describe("Topic detail page — word_stats integration", () => {
     const html = await res.text();
 
     expect(html).toContain("Rank over time");
-    expect(html).toContain('class="topic-rank-panel"');
+    expect(html).toContain("topic-rank-panel");
     expect(html).toContain("Adjacent topics");
     expect(html).toContain('href="/topics/security"');
     expect(html).toContain('href="/topics/agents"');
@@ -144,6 +145,18 @@ describe("Topic detail page — word_stats integration", () => {
     expect(html).toContain('aria-label="Explain rank over time"');
     expect(html).toContain("Raw mentions over time. Use this to see absolute attention, not relative rank among all topics.");
     expect(html).not.toContain('aria-label="Explain episodes"');
+  });
+
+  it("adds a compact top-chart meta row and a contrastive summary line", async () => {
+    const res = await SELF.fetch("http://localhost/topics/llms");
+    const html = await res.text();
+
+    expect(html).toContain('class="topic-sparkline-meta"');
+    expect(html).toContain("Range");
+    expect(html).toContain("Mean");
+    expect(html).toContain("Peak");
+    expect(html).toContain("Semantically it travels with");
+    expect(html).toContain("while by chunk count it sits between");
   });
 
   it("removes the episodes panel and related drill-in affordances", async () => {
@@ -170,10 +183,10 @@ describe("Topic detail page — word_stats integration", () => {
     expect(html).toContain("Newest first");
     expect(html).toContain("Oldest first");
     expect(html).toContain("<mark>llms</mark>");
-    expect(html).toContain("Earlier focus");
-    expect(html).toContain("Later focus");
-    expect(html).toContain("agents");
-    expect(html).toContain("claude");
+    expect(html).toContain("Earlier framing");
+    expect(html).toContain("Later framing");
+    expect(html).not.toContain("Earlier focus");
+    expect(html).not.toContain("Later focus");
   });
 
   it("sorts observations chronologically when requested", async () => {

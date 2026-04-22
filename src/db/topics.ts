@@ -278,18 +278,30 @@ export async function getAdjacentTopics(db: D1Database, topicId: number) {
   };
 }
 
-export async function getTopTopicsWithSparklines(db: D1Database, limit = 20) {
-  // Fetch a wide pool of candidates — we'll rank by temporal interest after computing sparklines
-  const candidates = await db.prepare(
-    `SELECT id, name, slug, usage_count, distinctiveness FROM topics
-     WHERE usage_count >= 5 AND hidden = 0 AND display_suppressed = 0
-     ORDER BY usage_count * CASE
-          WHEN distinctiveness > 0 THEN distinctiveness
-          WHEN name LIKE '% %' THEN 20
-         ELSE 1
-       END DESC
-     LIMIT ?`
-  ).bind(limit * 4).all<TopicRow>();
+export async function getTopTopicsWithSparklines(db: D1Database, limit?: number) {
+  // Fetch a wide pool of candidates — we'll rank by temporal interest after computing sparklines.
+  const candidateQuery = limit
+    ? db.prepare(
+        `SELECT id, name, slug, usage_count, distinctiveness FROM topics
+         WHERE usage_count >= 5 AND hidden = 0 AND display_suppressed = 0
+         ORDER BY usage_count * CASE
+              WHEN distinctiveness > 0 THEN distinctiveness
+              WHEN name LIKE '% %' THEN 20
+             ELSE 1
+           END DESC
+         LIMIT ?`
+      ).bind(limit * 4)
+    : db.prepare(
+        `SELECT id, name, slug, usage_count, distinctiveness FROM topics
+         WHERE usage_count >= 5 AND hidden = 0 AND display_suppressed = 0
+         ORDER BY usage_count * CASE
+              WHEN distinctiveness > 0 THEN distinctiveness
+              WHEN name LIKE '% %' THEN 20
+             ELSE 1
+           END DESC`
+      );
+
+  const candidates = await candidateQuery.all<TopicRow>();
 
   if (!candidates.results.length) return [];
 
@@ -335,5 +347,5 @@ export async function getTopTopicsWithSparklines(db: D1Database, limit = 20) {
   });
 
   ranked.sort((a, b) => b.interest - a.interest);
-  return ranked.slice(0, limit);
+  return typeof limit === "number" ? ranked.slice(0, limit) : ranked;
 }
