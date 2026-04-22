@@ -58,52 +58,86 @@ chunks.get("/:slug", async (c) => {
       mainClassName="main-wide"
     >
       <div class={(topics.length > 0 || episodeBlend.distinctive.length > 0) ? `page-with-rail page-with-rail--aligned ${isNotes ? "chunk-compact" : "tufte-layout"}` : (isNotes ? "chunk-compact" : "tufte-layout")}>
-        <article class="page-body chunk-detail">
-          <div class="page-preamble">
-            <Breadcrumbs
-              crumbs={[
-                { label: "Episodes", href: "/episodes" },
-                { label: chunk.episode_title, href: `/episodes/${chunk.episode_slug}` },
-                { label: chunk.title },
-              ]}
+        <div class="page-body chunk-detail-column">
+          <article class="chunk-detail">
+            <div class="page-preamble">
+              <Breadcrumbs
+                crumbs={[
+                  { label: "Episodes", href: "/episodes" },
+                  { label: chunk.episode_title, href: `/episodes/${chunk.episode_slug}` },
+                  { label: chunk.title },
+                ]}
+              />
+            </div>
+
+            <h1>{chunk.title}</h1>
+            <div class="chunk-meta">
+              <time datetime={chunk.published_date}>{chunk.published_date}</time>
+              <span> &middot; </span>
+              <a href={`/episodes/${chunk.episode_slug}`}>
+                {chunk.episode_title}
+              </a>
+            </div>
+
+            <div class="chunk-content">
+              {richBlocks.length > 0 ? (
+                <>
+                  <RichContent blocks={richBlocks} />
+                  <RichFootnotes footnotes={footnotes} />
+                </>
+              ) : paragraphs.map((para, i) => (
+                <p key={i}>{para}</p>
+              ))}
+            </div>
+
+            <script
+              type="application/ld+json"
+              dangerouslySetInnerHTML={{
+                __html: safeJsonForHtml({
+                  "@context": "https://schema.org",
+                  "@type": "Article",
+                  headline: chunk.title,
+                  author: { "@type": "Person", name: "Alex Komoroske" },
+                  datePublished: chunk.published_date,
+                  description: chunk.content_plain.substring(0, 160),
+                  isPartOf: { "@type": "Periodical", name: "Bits and Bobs" },
+                }),
+              }}
             />
-          </div>
+          </article>
 
-          <h1>{chunk.title}</h1>
-          <div class="chunk-meta">
-            <time datetime={chunk.published_date}>{chunk.published_date}</time>
-            <span> &middot; </span>
-            <a href={`/episodes/${chunk.episode_slug}`}>
-              {chunk.episode_title}
-            </a>
-          </div>
+          {(thread as any[]).length > 0 && (
+            <section class="more-on-this">
+              <h2>More on this topic</h2>
+              <p class="section-subtitle">From other episodes</p>
+              <ul>
+                {(thread as any[]).map((r: any) => (
+                  <li key={r.id}>
+                    <a href={`/chunks/${r.slug}`}>{r.title}</a>
+                    <span class="meta">
+                      <a href={`/episodes/${r.episode_slug}`}>{r.published_date}</a>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
 
-          <div class="chunk-content">
-            {richBlocks.length > 0 ? (
-              <>
-                <RichContent blocks={richBlocks} />
-                <RichFootnotes footnotes={footnotes} />
-              </>
-            ) : paragraphs.map((para, i) => (
-              <p key={i}>{para}</p>
-            ))}
-          </div>
-
-          <script
-            type="application/ld+json"
-            dangerouslySetInnerHTML={{
-              __html: safeJsonForHtml({
-                "@context": "https://schema.org",
-                "@type": "Article",
-                headline: chunk.title,
-                author: { "@type": "Person", name: "Alex Komoroske" },
-                datePublished: chunk.published_date,
-                description: chunk.content_plain.substring(0, 160),
-                isPartOf: { "@type": "Periodical", name: "Bits and Bobs" },
-              }),
-            }}
-          />
-        </article>
+          {(prevChunk || nextChunk) && (
+            <nav class="chunk-nav">
+              {prevChunk && (
+                <a href={`/chunks/${prevChunk.slug}`} class="nav-prev">
+                  &larr; {prevChunk.title}
+                </a>
+              )}
+              {nextChunk && (
+                <a href={`/chunks/${nextChunk.slug}`} class="nav-next">
+                  {nextChunk.title} &rarr;
+                </a>
+              )}
+            </nav>
+          )}
+        </div>
 
         {(topics.length > 0 || episodeBlend.distinctive.length > 0) && (
           <aside class="page-rail topics-margin">
@@ -148,37 +182,6 @@ chunks.get("/:slug", async (c) => {
           </aside>
         )}
 
-        {(thread as any[]).length > 0 && (
-          <section class="more-on-this">
-            <h2>More on this topic</h2>
-            <p class="section-subtitle">From other episodes</p>
-            <ul>
-              {(thread as any[]).map((r: any) => (
-                <li key={r.id}>
-                  <a href={`/chunks/${r.slug}`}>{r.title}</a>
-                  <span class="meta">
-                    <a href={`/episodes/${r.episode_slug}`}>{r.published_date}</a>
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
-
-        {(prevChunk || nextChunk) && (
-          <nav class="chunk-nav">
-            {prevChunk && (
-              <a href={`/chunks/${prevChunk.slug}`} class="nav-prev">
-                &larr; {prevChunk.title}
-              </a>
-            )}
-            {nextChunk && (
-              <a href={`/chunks/${nextChunk.slug}`} class="nav-next">
-                {nextChunk.title} &rarr;
-              </a>
-            )}
-          </nav>
-        )}
       </div>
     </Layout>
   );

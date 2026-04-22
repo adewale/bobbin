@@ -207,6 +207,22 @@ describe("Topic detail page — word_stats integration", () => {
     expect(html).not.toContain("distinctiveness vs baseline");
   });
 
+  it("falls back to a solo topic layout when no rail panels are available", async () => {
+    await applyTestMigrations(env.DB);
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO sources (google_doc_id, title) VALUES ('solo-source', 'Solo Source')"),
+      env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('orphan topic', 'orphan-topic', 0)"),
+    ]);
+
+    const res = await SELF.fetch("http://localhost/topics/orphan-topic");
+    expect(res.status).toBe(200);
+    const html = await res.text();
+
+    expect(html).toContain("topic-detail-layout--solo");
+    expect(html).not.toContain('page-with-rail page-with-rail--aligned topic-detail-layout');
+    expect(html).not.toContain("topic-page-rail");
+  });
+
   it("returns 404 for display-suppressed topics", async () => {
     await env.DB.prepare(
       "INSERT INTO topics (name, slug, usage_count, display_suppressed, display_reason) VALUES ('hidden concept', 'hidden-concept', 12, 1, 'subsumed_by_phrase')"

@@ -33,6 +33,7 @@ describe("Topic layout on chunk pages", () => {
     expect(html).toContain("page-with-rail--aligned");
     expect(html).toContain("page-rail");
     expect(html).toContain("page-preamble");
+    expect(html).toContain("chunk-detail-column");
     expect(html).toContain("topics-margin");
   });
 

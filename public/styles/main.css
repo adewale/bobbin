@@ -16,6 +16,7 @@
   --font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   --font-mono: 'SF Mono', 'Fira Code', monospace;
   --max-width: 44rem;
+  --max-width-wide: 62rem;
   /* Modular type scale: 1.25 ratio (Major Third) at 18px base */
   --text-display: 1.95rem;   /* 35px — page titles */
   --text-heading: 1.56rem;   /* 28px — section headings */
@@ -96,14 +97,23 @@ header .search-icon:hover { color: var(--accent); }
 }
 
 main { max-width: var(--max-width); margin: 1.5rem auto 2.5rem; padding: 0 1.5rem; }
-.main-wide { max-width: 60rem; }
+.main-wide { max-width: var(--max-width-wide); }
+
+.page-shell {
+  max-width: var(--page-shell-max, var(--max-width-wide));
+  margin: 0 auto;
+}
+.page-body-single {
+  max-width: var(--page-content-max, var(--max-width));
+  min-width: 0;
+}
 
 .page-with-rail {
   display: grid;
   grid-template-columns: var(--page-grid-columns, minmax(0, 1fr) var(--sidebar-width));
   gap: var(--page-grid-gap, 2rem);
   align-items: start;
-  max-width: var(--page-grid-max, 57rem);
+  max-width: var(--page-grid-max, var(--max-width-wide));
   margin: 0 auto;
 }
 .page-with-rail--aligned {
@@ -127,7 +137,14 @@ main { max-width: var(--max-width); margin: 1.5rem auto 2.5rem; padding: 0 1.5re
 .topic-detail-layout {
   --page-grid-columns: minmax(0, 1.75fr) minmax(14rem, 17rem);
   --page-grid-gap: 1.5rem;
-  --page-grid-max: 62rem;
+  --page-grid-max: var(--max-width-wide);
+}
+.topic-detail-layout--solo {
+  max-width: var(--max-width-wide);
+  margin: 0 auto;
+}
+.topic-detail-layout--solo .topic-detail-main {
+  max-width: var(--max-width);
 }
 @media (max-width: 1024px) {
   .topic-detail-layout {
@@ -358,6 +375,7 @@ details.topic-tier .topic-cloud { margin-top: var(--space-sm); }
 
 /* === Search Results === */
 .search-results > p:first-child { color: var(--text-light); font-size: var(--text-secondary); font-family: var(--font-ui); margin-bottom: var(--space-md); }
+.search-layout { --page-content-max: var(--max-width); }
 .see-all { display: inline-block; margin-top: var(--space-md); font-size: var(--text-secondary); font-family: var(--font-ui); }
 .page-count { font-family: var(--font-ui); font-size: var(--text-secondary); color: var(--text-light); margin-bottom: var(--space-md); }
 mark { background: color-mix(in srgb, var(--accent-light) 60%, transparent); color: var(--text); padding: 0.05rem 0.15rem; border-radius: 2px; }
@@ -405,6 +423,7 @@ mark { background: color-mix(in srgb, var(--accent-light) 60%, transparent); col
 
 /* === Compact chunk layout (notes format) === */
 .chunk-compact { max-width: none; }
+.chunk-detail-column { min-width: 0; }
 .chunk-compact .chunk-content p { font-size: var(--text-body); line-height: 1.7; }
 
 /* === Chunk prev/next navigation === */

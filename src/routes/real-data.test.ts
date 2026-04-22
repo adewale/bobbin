@@ -11,6 +11,7 @@ describe("Layout CSS invariants", () => {
 
   it("provides an opt-in page-with-rail grid for pages that need side content", () => {
     expect(styles).toMatch(/\.page-with-rail\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*var\(--page-grid-columns,\s*minmax\(0,\s*1fr\)\s*var\(--sidebar-width\)\);/s);
+    expect(styles).toMatch(/\.page-with-rail\s*\{[^}]*max-width:\s*var\(--page-grid-max,\s*var\(--max-width-wide\)\);/s);
     expect(styles).toMatch(/\.page-rail\s*\{[^}]*font-family:\s*var\(--font-ui\);/s);
   });
 
@@ -29,6 +30,13 @@ describe("Layout CSS invariants", () => {
     expect(styles).toMatch(/\.page-with-rail--aligned\s*\{[^}]*--rail-start-offset:\s*2\.75rem;/s);
     expect(styles).toMatch(/\.page-with-rail--aligned > \.page-body > \.page-preamble\s*\{[^}]*min-height:\s*var\(--rail-start-offset\);/s);
     expect(styles).toMatch(/\.page-with-rail--aligned > \.page-rail\s*\{[^}]*margin-top:\s*var\(--rail-start-offset\);/s);
+  });
+
+  it("defines a shared wide container and a single-column page shell", () => {
+    expect(styles).toMatch(/:root\s*\{[^}]*--max-width-wide:\s*62rem;/s);
+    expect(styles).toMatch(/\.main-wide\s*\{[^}]*max-width:\s*var\(--max-width-wide\);/s);
+    expect(styles).toMatch(/\.page-shell\s*\{[^}]*max-width:\s*var\(--page-shell-max,\s*var\(--max-width-wide\)\);/s);
+    expect(styles).toMatch(/\.page-body-single\s*\{[^}]*max-width:\s*var\(--page-content-max,\s*var\(--max-width\)\);/s);
   });
 
   it("provides a reusable topic help-tip pattern", () => {

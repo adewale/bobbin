@@ -127,6 +127,9 @@ topics.get("/:slug", async (c) => {
   const observationBaseUrl = buildTopicPath(slug, {
     sort: observationSort,
   });
+  const topicLayoutClass = hasRailPanels
+    ? "page-with-rail page-with-rail--aligned topic-detail-layout"
+    : "topic-detail-layout topic-detail-layout--solo";
 
   return c.html(
     <Layout
@@ -135,7 +138,7 @@ topics.get("/:slug", async (c) => {
       activePath="/topics"
       mainClassName="main-wide"
     >
-      <div class="page-with-rail page-with-rail--aligned topic-detail-layout">
+      <div class={topicLayoutClass}>
         <div class="page-body topic-detail-main">
           <div class="page-preamble">
             <Breadcrumbs

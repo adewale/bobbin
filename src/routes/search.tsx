@@ -121,26 +121,30 @@ search.get("/", async (c) => {
       searchQuery={query}
       mainClassName="main-wide"
     >
-      <SearchForm query={query} autofocus />
+      <div class="page-shell search-layout">
+        <div class="page-body page-body-single search-main">
+          <SearchForm query={query} autofocus />
 
-      {query && (
-        <section class="search-results">
-          <p>
-            {results.length} result{results.length !== 1 ? "s" : ""} for &ldquo;{query}&rdquo;
-          </p>
-          {results.map((r) => (
-            <ChunkCard
-              key={r.id}
-              chunk={{ id: r.id, slug: r.slug, title: r.title || "", summary: r.summary || null, content_plain: r.contentPlain || "" } as ChunkRow}
-              episodeSlug={r.episodeSlug}
-              episodeTitle={r.episodeTitle}
-              showEpisodeLink
-              query={query}
-            />
-          ))}
-        </section>
-      )}
-      <script src="/scripts/search.js" defer></script>
+          {query && (
+            <section class="search-results">
+              <p>
+                {results.length} result{results.length !== 1 ? "s" : ""} for &ldquo;{query}&rdquo;
+              </p>
+              {results.map((r) => (
+                <ChunkCard
+                  key={r.id}
+                  chunk={{ id: r.id, slug: r.slug, title: r.title || "", summary: r.summary || null, content_plain: r.contentPlain || "" } as ChunkRow}
+                  episodeSlug={r.episodeSlug}
+                  episodeTitle={r.episodeTitle}
+                  showEpisodeLink
+                  query={query}
+                />
+              ))}
+            </section>
+          )}
+          <script src="/scripts/search.js" defer></script>
+        </div>
+      </div>
     </Layout>
   );
 });

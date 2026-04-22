@@ -64,6 +64,8 @@ describe("Wider canvas adoption", () => {
     expect(res.status).toBe(200);
     expect(html).toContain('class="main-wide"');
     expect(html).not.toContain("page-with-rail");
+    expect(html).toContain("page-shell");
+    expect(html).toContain("page-body-single");
   });
 });
 
