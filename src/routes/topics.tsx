@@ -326,29 +326,26 @@ topics.get("/:slug", async (c) => {
                 text="The primary evidence view for this topic. Sort it chronologically when you want concrete examples behind the larger pattern."
               />
             </div>
-            <div class="topic-observation-controls" aria-label="Observation controls">
-              <div class="topic-control-group">
-                <span class="topic-control-label">Order</span>
-                <a
-                  href={`${buildTopicPath(slug, { sort: "newest" })}#observations`}
-                  data-topic-observation-nav="sort"
-                  data-topic-observation-sort="newest"
-                  class={`topic-control-chip${observationSort === "newest" ? " is-active" : ""}`}
-                  {...(observationSort === "newest" ? { "aria-current": "page" } : {})}
-                >
-                  Newest first
-                </a>
-                <a
-                  href={`${buildTopicPath(slug, { sort: "oldest" })}#observations`}
-                  data-topic-observation-nav="sort"
-                  data-topic-observation-sort="oldest"
-                  class={`topic-control-chip${observationSort === "oldest" ? " is-active" : ""}`}
-                  {...(observationSort === "oldest" ? { "aria-current": "page" } : {})}
-                >
-                  Oldest first
-                </a>
-              </div>
-            </div>
+            <nav class="topic-observation-controls topic-tabs topic-tabs--controls" aria-label="Observation order">
+              <a
+                href={`${buildTopicPath(slug, { sort: "newest" })}#observations`}
+                data-topic-observation-nav="sort"
+                data-topic-observation-sort="newest"
+                class={`topic-tab-link${observationSort === "newest" ? " is-active" : ""}`}
+                {...(observationSort === "newest" ? { "aria-current": "page" } : {})}
+              >
+                Newest first
+              </a>
+              <a
+                href={`${buildTopicPath(slug, { sort: "oldest" })}#observations`}
+                data-topic-observation-nav="sort"
+                data-topic-observation-sort="oldest"
+                class={`topic-tab-link${observationSort === "oldest" ? " is-active" : ""}`}
+                {...(observationSort === "oldest" ? { "aria-current": "page" } : {})}
+              >
+                Oldest first
+              </a>
+            </nav>
             <p class="topic-observation-note">
               {`Showing ${totalObservationCount} observation${totalObservationCount === 1 ? "" : "s"} sorted ${observationSort === "oldest" ? "from earliest to latest" : "from latest to earliest"}.`}
             </p>

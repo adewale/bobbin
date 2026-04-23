@@ -178,10 +178,12 @@ describe("Topic detail page — word_stats integration", () => {
 
     expect(html).toContain('class="topic-tab-panel topic-observations"');
     expect(html).toContain("Observations");
-    expect(html).toContain('class="topic-observation-controls"');
+    expect(html).toContain('topic-observation-controls');
+    expect(html).toContain('topic-tabs--controls');
     expect(html).toContain('data-topic-observation-nav="sort"');
     expect(html).toContain('data-topic-observation-sort="newest"');
     expect(html).toContain('data-topic-observation-sort="oldest"');
+    expect(html).not.toContain('topic-control-chip');
     expect(html).toContain("Newest first");
     expect(html).toContain("Oldest first");
     expect(html).toContain("<mark>llms</mark>");

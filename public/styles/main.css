@@ -839,49 +839,15 @@ mark { background: color-mix(in srgb, var(--accent-light) 60%, transparent); col
 .topic-observations.is-loading { opacity: 0.72; transition: opacity 0.15s ease; }
 
 .topic-observation-controls {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
   margin-bottom: 0.5rem;
-  align-items: center;
 }
-.topic-control-group {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.45rem;
+.topic-tabs--controls {
+  margin: 0;
+  gap: 0.75rem;
+  padding-bottom: 0.15rem;
 }
 .topic-observations .pagination {
   min-height: 2.25rem;
-}
-.topic-control-label {
-  font-family: var(--font-ui);
-  font-size: var(--text-caption);
-  color: var(--text-light);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-.topic-control-chip {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.2rem 0.55rem;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--bg-card);
-  color: var(--text-muted);
-  font-family: var(--font-ui);
-  font-size: var(--text-caption);
-  text-decoration: none;
-}
-.topic-control-chip:hover {
-  color: var(--accent);
-  border-color: var(--accent-light);
-}
-.topic-control-chip.is-active,
-.topic-control-chip[aria-current="page"] {
-  background: var(--bg-warm);
-  color: var(--accent-dark);
-  border-color: var(--accent-light);
 }
 .topic-observation-list { display: grid; gap: 0.85rem; }
 .topic-observation-card { padding: 0.9rem 0; border-bottom: 1px solid var(--border); }
@@ -970,7 +936,6 @@ mark { background: color-mix(in srgb, var(--accent-light) 60%, transparent); col
 .browse-layout { align-items: start; }
 .browse-main { min-width: 0; }
 .browse-rail { position: sticky; top: 1rem; }
-.browse-rail > nav { padding: 1rem; background: var(--bg-warm); border: 1px solid var(--border); border-radius: 6px; }
 
 /* === Latest episode panel === */
 .latest-episode-panel { padding: 1rem; margin-bottom: var(--space-lg); background: var(--bg-warm); border: 1px solid var(--border); border-radius: 6px; }

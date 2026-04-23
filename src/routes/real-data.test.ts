@@ -52,6 +52,7 @@ describe("Layout CSS invariants", () => {
   it("gives individual rail panels the warm-panel chrome instead of the rail wrapper", () => {
     expect(styles).toMatch(/\.rail-panel\s*\{[^}]*background:\s*var\(--bg-warm\);[^}]*border:\s*1px solid var\(--border\);[^}]*border-radius:\s*6px;[^}]*padding:\s*0\.9rem 1rem;/s);
     expect(styles).not.toMatch(/\.topics-margin\s*\{[^}]*background:\s*var\(--bg-warm\);/s);
+    expect(styles).not.toContain(".browse-rail > nav {");
   });
 
   it("defines a shared color system for rail panels", () => {
@@ -60,6 +61,11 @@ describe("Layout CSS invariants", () => {
     expect(styles).toMatch(/\.rail-stack\s*\{[^}]*--rail-link-hover:\s*var\(--accent-dark\);/s);
     expect(styles).toMatch(/\.rail-stack\s*\{[^}]*--rail-meta-color:\s*var\(--text-light\);/s);
     expect(styles).toMatch(/\.rail-stack\s*\{[^}]*--rail-signal-color:\s*var\(--viz\);/s);
+  });
+
+  it("reuses the underline navigation treatment for topic controls", () => {
+    expect(styles).toMatch(/\.topic-tabs--controls\s*\{[^}]*margin:\s*0;[^}]*gap:\s*0\.75rem;/s);
+    expect(styles).not.toContain(".topic-control-chip {");
   });
 
   it("removes dead legacy visualization and rail selectors", () => {
