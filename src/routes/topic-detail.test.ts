@@ -107,7 +107,7 @@ describe("Topic detail page — word_stats integration", () => {
     const res = await SELF.fetch("http://localhost/topics/llms");
     const html = await res.text();
 
-    expect(html).toContain('class="topic-summary"');
+    expect(html).toContain('class="topic-summary body-panel"');
     expect(html).toContain("topic-tabs");
     expect(html).toContain('class="topic-tab-link is-active"');
     expect(html).toContain('data-topic-tab="observations"');
@@ -129,6 +129,8 @@ describe("Topic detail page — word_stats integration", () => {
 
     expect(html).toContain("Rank over time");
     expect(html).toContain("topic-rank-panel");
+    expect(html).toContain("rail-panel-heading-row");
+    expect(html).not.toContain("topic-rail-heading-row");
     expect(html).toContain("Adjacent topics");
     expect(html).toContain('href="/topics/security"');
     expect(html).toContain('href="/topics/agents"');

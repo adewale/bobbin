@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { AppEnv, EpisodeRow, ChunkRow, TopicRow } from "../types";
+import { BrowseRow, BrowseRowList, BrowseSection, BrowseSubsection } from "../components/BrowseIndex";
 import { Layout } from "../components/Layout";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { RichContent, RichFootnotes, parseFootnotesJson, parseRichContentJson } from "../components/RichContent";
@@ -44,40 +45,48 @@ episodes.get("/", async (c) => {
           {years.map((year) => {
             const months = [...byYear.get(year)!.keys()].sort((a, b) => b - a);
             return (
-              <section key={year} class="browse-year" id={`year-${year}`}>
-                <h2>{year}</h2>
+              <BrowseSection key={year} id={`year-${year}`} title={year}>
                 {months.map((month) => {
                   const eps = byYear.get(year)!.get(month)!;
                   return (
-                    <div key={month} class="browse-month">
-                      <h3>{monthName(month)}</h3>
-                      <ul class="browse-episodes">
+                    <BrowseSubsection key={month} title={monthName(month)}>
+                      <BrowseRowList>
                         {eps.map((ep: any) => (
-                          <li key={ep.id}>
-                            <a href={`/episodes/${ep.slug}`}>{ep.title}</a>
-                            <span class="meta">
-                              {ep.chunk_count} chunk{ep.chunk_count !== 1 ? "s" : ""}
-                              {ep.format === "essays" && (
-                                <span class="format-badge essay">essay</span>
-                              )}
-                            </span>
-                          </li>
+                          <BrowseRow
+                            key={ep.id}
+                            href={`/episodes/${ep.slug}`}
+                            title={ep.title}
+                            meta={
+                              <>
+                                {ep.chunk_count} chunk{ep.chunk_count !== 1 ? "s" : ""}
+                                {ep.format === "essays" && (
+                                  <span class="format-badge essay">essay</span>
+                                )}
+                              </>
+                            }
+                          />
                         ))}
-                      </ul>
-                    </div>
+                      </BrowseRowList>
+                    </BrowseSubsection>
                   );
                 })}
-              </section>
+              </BrowseSection>
             );
           })}
         </div>
 
-        <aside class="page-rail browse-rail">
-          <nav class="page-toc" aria-label="Years">
-            <h3>Years</h3>
+        <aside class="page-rail browse-rail rail-stack">
+          <nav class="page-toc rail-panel" aria-label="Years">
+            <div class="rail-panel-heading-row">
+              <h3>Years</h3>
+              <HelpTip
+                label="Explain years navigation"
+                text="Jump through the archive by publication year."
+              />
+            </div>
             <ol>
-              {years.map((year) => (
-                <li key={year}><a href={`#year-${year}`}>{year}</a></li>
+              {years.map((year, index) => (
+                <li key={year}><a href={`#year-${year}`} {...(index === 0 ? { "aria-current": "true" } : {})}>{year}</a></li>
               ))}
             </ol>
           </nav>

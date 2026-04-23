@@ -44,8 +44,9 @@ describe("Topic layout on chunk pages", () => {
     const marginEnd = html.indexOf("</aside>", marginStart);
     const marginSection = html.substring(marginStart, marginEnd);
     expect(marginSection).toContain("<h3>Topics</h3>");
-    expect(marginSection).not.toContain("<details");
-    expect(marginSection).not.toContain("<summary");
+    expect(marginSection).toContain("rail-panel-heading-row");
+    expect(marginSection).not.toContain('class="chunk-row"');
+    expect(marginSection).not.toContain('class="topic-panel"');
   });
 });
 

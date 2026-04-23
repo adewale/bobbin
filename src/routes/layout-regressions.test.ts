@@ -67,6 +67,39 @@ describe("Wider canvas adoption", () => {
     expect(html).toContain("page-shell");
     expect(html).toContain("page-body-single");
   });
+
+  it("offers an alternate browse mode on search while keeping chunk cards as the default", async () => {
+    const cardRes = await SELF.fetch("http://localhost/search?q=ranking");
+    const cardHtml = await cardRes.text();
+    const browseRes = await SELF.fetch("http://localhost/search?q=ranking&view=browse");
+    const browseHtml = await browseRes.text();
+
+    expect(cardRes.status).toBe(200);
+    expect(cardHtml).toContain('class="chunk-card"');
+    expect(cardHtml).toContain('href="/search?q=ranking&amp;view=browse"');
+    expect(cardHtml).not.toContain('class="search-browse-results"');
+
+    expect(browseRes.status).toBe(200);
+    expect(browseHtml).toContain('class="search-browse-results"');
+    expect(browseHtml).toContain('href="/search?q=ranking"');
+    expect(browseHtml).toContain('class="browse-year"');
+    expect(browseHtml).toContain('class="browse-episodes"');
+    expect(browseHtml).toContain('class="list-row-meta list-row-meta-link"');
+    expect(browseHtml).toContain('/episodes/2026-04-14-layout');
+    expect(browseHtml).not.toContain('class="chunk-card"');
+  });
+
+  it("uses the shared rail-panel system on the episodes index", async () => {
+    const res = await SELF.fetch("http://localhost/episodes");
+    const html = await res.text();
+
+    expect(res.status).toBe(200);
+    expect(html).toContain("browse-rail");
+    expect(html).toContain("rail-stack");
+    expect(html).toContain("rail-panel");
+    expect(html).toContain('class="page-toc rail-panel"');
+    expect(html).toContain('aria-current="true"');
+  });
 });
 
 describe("Topic page layout safety", () => {

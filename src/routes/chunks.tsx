@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../types";
+import { BrowseRow } from "../components/BrowseIndex";
 import { Layout } from "../components/Layout";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { RichContent, RichFootnotes, parseFootnotesJson, parseRichContentJson } from "../components/RichContent";
@@ -9,6 +10,15 @@ import { getChunkBySlug, getChunkTopics, getRelatedByTopics, getThreadChunks, ge
 import { getEpisodeTopicsBlended } from "../db/episodes";
 
 const chunks = new Hono<AppEnv>();
+
+function HelpTip(props: { label: string; text: string }) {
+  return (
+    <details class="topic-help-tip">
+      <summary aria-label={props.label} title={props.label}>?</summary>
+      <div class="topic-help-tip-bubble" role="note">{props.text}</div>
+    </details>
+  );
+}
 
 chunks.get("/:slug", async (c) => {
   const slug = c.req.param("slug");
@@ -107,17 +117,18 @@ chunks.get("/:slug", async (c) => {
           </article>
 
           {(thread as any[]).length > 0 && (
-            <section class="more-on-this">
+            <section class="more-on-this body-panel body-panel-list">
               <h2>More on this topic</h2>
               <p class="section-subtitle">From other episodes</p>
               <ul>
                 {(thread as any[]).map((r: any) => (
-                  <li key={r.id}>
-                    <a href={`/chunks/${r.slug}`}>{r.title}</a>
-                    <span class="meta">
-                      <a href={`/episodes/${r.episode_slug}`}>{r.published_date}</a>
-                    </span>
-                  </li>
+                  <BrowseRow
+                    key={r.id}
+                    href={`/chunks/${r.slug}`}
+                    title={r.title}
+                    meta={r.published_date}
+                    metaHref={`/episodes/${r.episode_slug}`}
+                  />
                 ))}
               </ul>
             </section>
@@ -143,7 +154,13 @@ chunks.get("/:slug", async (c) => {
           <aside class="page-rail topics-margin rail-stack">
             {topics.length > 0 && (
               <section class="topic-tier-main rail-panel">
-                <h3>Topics</h3>
+                <div class="rail-panel-heading-row">
+                  <h3>Topics</h3>
+                  <HelpTip
+                    label="Explain chunk topics"
+                    text="The main themes in this chunk."
+                  />
+                </div>
                 <div class="rail-panel-list topics-list">
                   <ul>
                     {topics.map((topic) => (
@@ -157,7 +174,13 @@ chunks.get("/:slug", async (c) => {
             )}
             {episodeBlend.distinctive.length > 0 && (
               <section class="distinctive-topics rail-panel">
-                <h3>Distinctive</h3>
+                <div class="rail-panel-heading-row">
+                  <h3>Distinctive</h3>
+                  <HelpTip
+                    label="Explain distinctive topics"
+                    text="Topics that stand out more in this episode than they usually do across Bobbin."
+                  />
+                </div>
                 <div class="rail-panel-list distinctive-list">
                   <ul>
                     {episodeBlend.distinctive.map((topic) => (
@@ -172,7 +195,13 @@ chunks.get("/:slug", async (c) => {
 
             {relatedItems.length > 0 && (
               <section class="related-inline-list rail-panel rail-panel-list">
-                <h3>Related</h3>
+                <div class="rail-panel-heading-row">
+                  <h3>Related</h3>
+                  <HelpTip
+                    label="Explain related chunks"
+                    text="Nearby or semantically related chunks worth branching to next."
+                  />
+                </div>
                 <ul>
                   {relatedItems.slice(0, 4).filter((r: any) => r.slug).map((r: any) => (
                     <li key={r.id}>

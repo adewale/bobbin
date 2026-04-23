@@ -186,7 +186,7 @@ topics.get("/:slug", async (c) => {
           )}
 
           {editorialSummary.length > 0 && (
-            <section class="topic-summary" aria-labelledby="topic-summary-heading">
+            <section class="topic-summary body-panel" aria-labelledby="topic-summary-heading">
               <div class="topic-section-heading-row">
                 <h2 id="topic-summary-heading">Topic summary</h2>
                 <HelpTip
@@ -431,14 +431,14 @@ topics.get("/:slug", async (c) => {
 
               return (
                 <section class="topic-rank-panel rail-panel">
-                  <div class="topic-rail-heading-row">
+                  <div class="rail-panel-heading-row">
                     <h3>Rank over time</h3>
                     <HelpTip
                       label="Explain rank over time"
                       text="Relative position among all topics by year. Unlike the chart above, this shows rank, not raw mentions."
                     />
                   </div>
-                  <svg viewBox={`0 0 ${width} ${height + 16}`} class="topic-rank-svg" role="img" aria-label={`Rank over time for ${topic.name}`}>
+                  <svg viewBox={`0 0 ${width} ${height + 16}`} class="topic-rank-svg rail-sparkline" role="img" aria-label={`Rank over time for ${topic.name}`}>
                     {!isSingle && (
                       <polyline
                         points={points.map((point) => `${point.x},${point.y}`).join(" ")}
@@ -468,7 +468,7 @@ topics.get("/:slug", async (c) => {
 
             {(adjacentTopics.above || adjacentTopics.below) && (
               <section class="rail-panel">
-                <div class="topic-rail-heading-row">
+                <div class="rail-panel-heading-row">
                   <h3>Adjacent topics</h3>
                   <HelpTip
                     label="Explain adjacent topics"

@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../types";
+import { BrowseRow } from "../components/BrowseIndex";
 import { Layout } from "../components/Layout";
 import { EpisodeCard } from "../components/EpisodeCard";
 import { getRecentEpisodes, getChunksByEpisode, getEpisodeTopics, getNovelTopicHistory } from "../db/episodes";
@@ -51,7 +52,7 @@ home.get("/", async (c) => {
           </section>
 
           {latestEp && (
-            <section class="latest-episode-panel">
+            <section class="latest-episode-panel body-panel">
               <h2>
                 <a href={`/episodes/${latestEp.slug}`}>
                   Latest: {latestEp.title}
@@ -79,16 +80,17 @@ home.get("/", async (c) => {
           )}
 
           {connected.length > 0 && (
-            <section class="most-connected">
+            <section class="most-connected body-panel body-panel-list">
               <h2>Most Connected</h2>
               <ul>
                 {connected.map((r: any) => (
-                  <li key={r.id}>
-                    <a href={`/chunks/${r.slug}`}>{r.title}</a>
-                    <span class="meta">
-                      <a href={`/episodes/${r.episode_slug}`}>{r.published_date}</a>
-                    </span>
-                  </li>
+                  <BrowseRow
+                    key={r.id}
+                    href={`/chunks/${r.slug}`}
+                    title={r.title}
+                    meta={r.published_date}
+                    metaHref={`/episodes/${r.episode_slug}`}
+                  />
                 ))}
               </ul>
             </section>
@@ -109,7 +111,13 @@ home.get("/", async (c) => {
 
           {topics.length > 0 && (
             <section class="margin-topics rail-panel">
-              <h3>Popular Topics</h3>
+              <div class="rail-panel-heading-row">
+                <h3>Popular Topics</h3>
+                <HelpTip
+                  label="Explain popular topics"
+                  text="Frequently recurring themes across the archive."
+                />
+              </div>
               <div class="rail-panel-list topics-list">
                 <ul>
                   {topics.map((topic) => (

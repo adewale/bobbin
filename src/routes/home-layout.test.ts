@@ -59,6 +59,7 @@ describe("Homepage latest episode panel", () => {
     const html = await res.text();
     expect(res.status).toBe(200);
     expect(html).toContain("latest-episode-panel");
+    expect(html).toContain("body-panel");
   });
 
   it("shows episode title and chunk titles in the latest panel", async () => {
@@ -73,6 +74,8 @@ describe("Homepage latest episode panel", () => {
     expect(panelHtml).toContain("An insightful HackerNews comment about code generation");
     expect(panelHtml).toContain("I feel like the mama bird feeding my little Claude Codes");
     expect(panelHtml).toContain("LLMs are great at things that are expensive to generate");
+    expect(panelHtml).not.toContain('href="/chunks/insightful-comment-2026-04-06"');
+    expect(panelHtml).not.toContain('class="list-row-link"');
     expect(panelHtml).toContain("See all");
   });
 
