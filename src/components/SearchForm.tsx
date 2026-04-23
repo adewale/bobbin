@@ -1,6 +1,6 @@
 import type { FC } from "hono/jsx";
 
-export const SearchForm: FC<{ query?: string; autofocus?: boolean; view?: string }> = ({ query, autofocus, view }) => (
+export const SearchForm: FC<{ query?: string; autofocus?: boolean }> = ({ query, autofocus }) => (
   <form action="/search" method="get" class="search-form">
     <input
       type="search"
@@ -10,7 +10,6 @@ export const SearchForm: FC<{ query?: string; autofocus?: boolean; view?: string
       aria-label="Search"
       autofocus={autofocus}
     />
-    {view === "browse" && <input type="hidden" name="view" value="browse" />}
     <button type="submit">Search</button>
   </form>
 );

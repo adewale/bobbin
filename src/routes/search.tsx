@@ -1,6 +1,5 @@
 import { Hono } from "hono";
 import type { AppEnv, ChunkRow } from "../types";
-import { BrowseRow, BrowseRowList, BrowseSection, BrowseSubsection } from "../components/BrowseIndex";
 import { Layout } from "../components/Layout";
 import { SearchForm } from "../components/SearchForm";
 import { ChunkCard } from "../components/ChunkCard";
@@ -10,13 +9,11 @@ import { keywordSearch } from "../db/search";
 import { applyTopicBoost } from "../services/search-topics";
 import { expandEntityAliases } from "../lib/entity-aliases";
 import { KNOWN_ENTITIES } from "../data/known-entities";
-import { monthName } from "../lib/date";
 
 const search = new Hono<AppEnv>();
 
 search.get("/", async (c) => {
   const query = c.req.query("q")?.trim() || "";
-  const view = c.req.query("view") === "browse" ? "browse" : "cards";
 
   let results: ScoredResult[] = [];
 
@@ -125,59 +122,14 @@ search.get("/", async (c) => {
     >
       <div class="page-shell search-layout">
         <div class="page-body page-body-single search-main">
-          <SearchForm query={query} autofocus view={view} />
+          <SearchForm query={query} autofocus />
 
           {query && (
             <section class="search-results">
               <p>
                 {results.length} result{results.length !== 1 ? "s" : ""} for &ldquo;{query}&rdquo;
               </p>
-              <nav class="search-view-switch" aria-label="Search result views">
-                <a href={`/search?q=${encodeURIComponent(query)}`} class={view === "cards" ? "is-active" : ""}>Cards</a>
-                <a href={`/search?q=${encodeURIComponent(query)}&view=browse`} class={view === "browse" ? "is-active" : ""}>Browse</a>
-              </nav>
-              {view === "browse" ? (() => {
-                const byYear = new Map<number, Map<number, ScoredResult[]>>();
-                for (const result of results) {
-                  const year = Number(result.publishedDate?.slice(0, 4) || 0);
-                  const month = Number(result.publishedDate?.slice(5, 7) || 0);
-                  if (!byYear.has(year)) byYear.set(year, new Map());
-                  const yearMap = byYear.get(year)!;
-                  if (!yearMap.has(month)) yearMap.set(month, []);
-                  yearMap.get(month)!.push(result);
-                }
-                const years = [...byYear.keys()].sort((a, b) => b - a);
-
-                return (
-                  <div class="search-browse-results">
-                    {years.map((year) => {
-                      const months = [...byYear.get(year)!.keys()].sort((a, b) => b - a);
-                      return (
-                        <BrowseSection key={year} title={year}>
-                          {months.map((month) => (
-                            <BrowseSubsection key={`${year}-${month}`} title={monthName(month)}>
-                              <BrowseRowList>
-                                {byYear.get(year)!.get(month)!.map((r) => (
-                                  <BrowseRow
-                                    key={r.id}
-                                    href={`/chunks/${r.slug}`}
-                                    title={r.title || "Untitled chunk"}
-                                    metaHref={r.episodeSlug ? `/episodes/${r.episodeSlug}` : undefined}
-                                    meta={<>
-                                      {r.episodeTitle}
-                                      {r.publishedDate ? ` · ${r.publishedDate}` : ""}
-                                    </>}
-                                  />
-                                ))}
-                              </BrowseRowList>
-                            </BrowseSubsection>
-                          ))}
-                        </BrowseSection>
-                      );
-                    })}
-                  </div>
-                );
-              })() : results.map((r) => (
+              {results.map((r) => (
                 <ChunkCard
                   key={r.id}
                   chunk={{ id: r.id, slug: r.slug, title: r.title || "", summary: r.summary || null, content_plain: r.contentPlain || "" } as ChunkRow}
