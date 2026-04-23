@@ -9,6 +9,15 @@ import { getAdjacentEpisodes, getAllEpisodesGrouped, getChunksByEpisode, getEpis
 
 const episodes = new Hono<AppEnv>();
 
+function HelpTip(props: { label: string; text: string }) {
+  return (
+    <details class="topic-help-tip">
+      <summary aria-label={props.label} title={props.label}>?</summary>
+      <div class="topic-help-tip-bubble" role="note">{props.text}</div>
+    </details>
+  );
+}
+
 // Unified browse: timeline + episode list in one page
 episodes.get("/", async (c) => {
   const allEpisodesList = await getAllEpisodesGrouped(c.env.DB);
@@ -183,32 +192,54 @@ episodes.get("/:slug", async (c) => {
           <aside class="page-rail topics-margin rail-stack episode-analysis-rail">
             {blendedTopics.main.length > 0 && (
               <section class="topic-tier-main rail-panel">
-                <h3>Topics</h3>
-                <div class="topics">
-                  {blendedTopics.main.map((topic) => (
-                    <a key={topic.id} href={`/topics/${topic.slug}`} class="topic">
-                      {topic.name}
-                    </a>
-                  ))}
+                <div class="rail-panel-heading-row">
+                  <h3>Topics</h3>
+                  <HelpTip
+                    label="Explain episode topics"
+                    text="The main themes that recur across this episode."
+                  />
+                </div>
+                <div class="rail-panel-list topics-list">
+                  <ul>
+                    {blendedTopics.main.map((topic) => (
+                      <li key={topic.id}>
+                        <a href={`/topics/${topic.slug}`}>{topic.name}</a>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               </section>
             )}
             {blendedTopics.distinctive.length > 0 && (
               <section class="distinctive-topics rail-panel">
-                <h3>Distinctive</h3>
-                <div class="topics">
-                  {blendedTopics.distinctive.map((topic) => (
-                    <a key={topic.id} href={`/topics/${topic.slug}`} class="topic topic-distinctive">
-                      {topic.name}
-                    </a>
-                  ))}
+                <div class="rail-panel-heading-row">
+                  <h3>Distinctive</h3>
+                  <HelpTip
+                    label="Explain distinctive topics"
+                    text="Topics that are unusually salient in this episode compared with ordinary language and the rest of the archive."
+                  />
+                </div>
+                <div class="rail-panel-list distinctive-list">
+                  <ul>
+                    {blendedTopics.distinctive.map((topic) => (
+                      <li key={topic.id}>
+                        <a href={`/topics/${topic.slug}`}>{topic.name}</a>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               </section>
             )}
 
             {railInsights.unexpectedPairings.length > 0 && (
               <section class="episode-insight-panel rail-panel">
-                <h4>Unexpected Pairings</h4>
+                <div class="rail-panel-heading-row">
+                  <h4>Unexpected Pairings</h4>
+                  <HelpTip
+                    label="Explain unexpected pairings"
+                    text="Topic pairs that recur together in this episode more than you would expect from the archive."
+                  />
+                </div>
                 <ul class="episode-insight-list">
                   {railInsights.unexpectedPairings.map((pairing) => (
                     <li key={`${pairing.leftSlug}-${pairing.rightSlug}`}>
@@ -226,8 +257,13 @@ episodes.get("/:slug", async (c) => {
 
             {railInsights.mostNovelChunks.length > 0 && (
               <section class="episode-insight-panel rail-panel">
-                <h4>Most Novel Chunks</h4>
-                <p class="episode-insight-kicker">Specific chunks that feel least like the existing archive. Start here for the freshest material.</p>
+                <div class="rail-panel-heading-row">
+                  <h4>Most Novel Chunks</h4>
+                  <HelpTip
+                    label="Explain most novel chunks"
+                    text="Specific chunks that feel least like the existing archive. Use this as a jump list for the freshest material."
+                  />
+                </div>
                 <ul class="episode-insight-list">
                   {railInsights.mostNovelChunks.map((chunk) => (
                     <li key={chunk.slug}>
@@ -245,25 +281,31 @@ episodes.get("/:slug", async (c) => {
               || railInsights.sinceLast.newTopics.length > 0
             ) && (
               <section class="episode-insight-panel rail-panel">
-                <h4>Since Last Episode</h4>
-                <p class="episode-insight-kicker">Compared with <a href={`/episodes/${railInsights.sinceLast.previousEpisode.slug}`}>{railInsights.sinceLast.previousEpisode.title}</a>. Ranked by salience-weighted change, not just raw counts.</p>
-                <ul class="episode-insight-list episode-insight-list-compact">
+                <div class="rail-panel-heading-row">
+                  <h4>Since Last Episode</h4>
+                  <HelpTip
+                    label="Explain since last episode"
+                    text="Changes compared with the previous episode. Up and Down are salience-weighted deltas; New means new to the corpus, not just new this week."
+                  />
+                </div>
+                <p class="episode-insight-context">Compared with <a href={`/episodes/${railInsights.sinceLast.previousEpisode.slug}`}>{railInsights.sinceLast.previousEpisode.title}</a>.</p>
+                <ul class="episode-insight-list">
                   {railInsights.sinceLast.intensified.length > 0 && (
                     <li>
-                      <span class="insight-label">Up</span>
-                      <span>{railInsights.sinceLast.intensified.map((topic) => `${topic.name} (+${topic.delta})`).join(", ")}</span>
+                      <span class="rail-item-title">Up</span>
+                      <span class="insight-meta">{railInsights.sinceLast.intensified.map((topic) => `${topic.name} (+${topic.delta})`).join(", ")}</span>
                     </li>
                   )}
                   {railInsights.sinceLast.downshifted.length > 0 && (
                     <li>
-                      <span class="insight-label">Down</span>
-                      <span>{railInsights.sinceLast.downshifted.map((topic) => `${topic.name} (${topic.delta})`).join(", ")}</span>
+                      <span class="rail-item-title">Down</span>
+                      <span class="insight-meta">{railInsights.sinceLast.downshifted.map((topic) => `${topic.name} (${topic.delta})`).join(", ")}</span>
                     </li>
                   )}
                   {railInsights.sinceLast.newTopics.length > 0 && (
                     <li>
-                      <span class="insight-label">New</span>
-                      <span>{railInsights.sinceLast.newTopics.map((topic) => topic.name).join(", ")}</span>
+                      <span class="rail-item-title">New</span>
+                      <span class="insight-meta">{railInsights.sinceLast.newTopics.map((topic) => topic.name).join(", ")}</span>
                     </li>
                   )}
                 </ul>
@@ -272,8 +314,13 @@ episodes.get("/:slug", async (c) => {
 
             {railInsights.archiveContrast.length > 0 && (
               <section class="episode-insight-panel rail-panel">
-                <h4>Archive Contrast</h4>
-                <p class="episode-insight-kicker">Topic-level over-indexing relative to Bobbin overall, not chunk-level novelty.</p>
+                <div class="rail-panel-heading-row">
+                  <h4>Archive Contrast</h4>
+                  <HelpTip
+                    label="Explain archive contrast"
+                    text="Topic-level over-indexing relative to Bobbin overall. This explains what the episode is unusually about, not which chunk is newest."
+                  />
+                </div>
                 <ul class="episode-insight-list">
                   {railInsights.archiveContrast.map((topic) => (
                     <li key={topic.slug}>
@@ -287,12 +334,17 @@ episodes.get("/:slug", async (c) => {
 
             {externalLinks.length > 0 && (
               <section class="episode-insight-panel rail-panel">
-                <h4>External Links</h4>
+                <div class="rail-panel-heading-row">
+                  <h4>External Links</h4>
+                  <HelpTip
+                    label="Explain external links"
+                    text="Deduplicated external URLs referenced in this episode, with links back to the chunk that mentioned them."
+                  />
+                </div>
                 <ul class="episode-insight-list">
                   {externalLinks.map((link) => (
                     <li key={link.href}>
                       <a href={link.href} target="_blank" rel="noreferrer">{link.label}</a>
-                      <span class="insight-meta">from <a href={`#${link.chunkSlug}`}>{link.chunkTitle}</a></span>
                     </li>
                   ))}
                 </ul>

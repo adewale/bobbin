@@ -2,18 +2,27 @@ import { Hono } from "hono";
 import type { AppEnv } from "../types";
 import { Layout } from "../components/Layout";
 import { EpisodeCard } from "../components/EpisodeCard";
-import { TopicCloud } from "../components/TopicCloud";
-import { getRecentEpisodes, getChunksByEpisode, getEpisodeTopics } from "../db/episodes";
+import { getRecentEpisodes, getChunksByEpisode, getEpisodeTopics, getNovelTopicHistory } from "../db/episodes";
 import { getTopTopics } from "../db/topics";
 import { getMostConnected } from "../db/word-stats";
 
 const home = new Hono<AppEnv>();
 
+function HelpTip(props: { label: string; text: string }) {
+  return (
+    <details class="topic-help-tip">
+      <summary aria-label={props.label} title={props.label}>?</summary>
+      <div class="topic-help-tip-bubble" role="note">{props.text}</div>
+    </details>
+  );
+}
+
 home.get("/", async (c) => {
-  const [episodes, topics, connected] = await Promise.all([
+  const [episodes, topics, connected, novelTopicHistory] = await Promise.all([
     getRecentEpisodes(c.env.DB, 10),
     getTopTopics(c.env.DB, 20),
     getMostConnected(c.env.DB, 5),
+    getNovelTopicHistory(c.env.DB, 16),
   ]);
 
   const latestEp = episodes[0];
@@ -101,9 +110,63 @@ home.get("/", async (c) => {
           {topics.length > 0 && (
             <section class="margin-topics rail-panel">
               <h3>Popular Topics</h3>
-              <TopicCloud topics={topics} />
+              <div class="rail-panel-list topics-list">
+                <ul>
+                  {topics.map((topic) => (
+                    <li key={topic.id}>
+                      <a href={`/topics/${topic.slug}`}>{topic.name}</a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </section>
           )}
+
+          {novelTopicHistory.length > 1 && (() => {
+            const width = 180;
+            const height = 42;
+            const pad = 8;
+            const maxNovel = Math.max(...novelTopicHistory.map((point) => point.novel_topics), 1);
+            const points = novelTopicHistory.map((point, index) => ({
+              ...point,
+              x: novelTopicHistory.length === 1
+                ? width / 2
+                : pad + (index / Math.max(novelTopicHistory.length - 1, 1)) * (width - pad * 2),
+              y: height - pad - (point.novel_topics / maxNovel) * (height - pad * 2),
+            }));
+
+            return (
+              <section class="rail-panel home-novel-topic-history">
+                <div class="rail-panel-heading-row">
+                  <h3>Novel Topic History</h3>
+                  <HelpTip
+                    label="Explain novel topic history"
+                    text="New-to-corpus topics per episode. Higher points mean more topics appeared for the first time in Bobbin in that episode."
+                  />
+                </div>
+                <svg viewBox={`0 0 ${width} ${height + 14}`} class="rail-sparkline" role="img" aria-label="Novel topics per episode">
+                  <polyline
+                    points={points.map((point) => `${point.x},${point.y}`).join(" ")}
+                    fill="none"
+                    stroke="var(--rail-signal-color)"
+                    stroke-width="2"
+                  />
+                  {points.map((point, index) => (
+                    <g key={`novel-topic-${point.slug}`}>
+                      <circle cx={point.x} cy={point.y} r="2.5" fill="var(--rail-signal-color)">
+                        <title>{`${point.title}: ${point.novel_topics} new topic${point.novel_topics === 1 ? "" : "s"}`}</title>
+                      </circle>
+                      {(index === 0 || index === points.length - 1) && (
+                        <text x={point.x} y={height + 11} text-anchor="middle" fill="var(--rail-meta-color)" font-size="8" font-family="var(--font-ui)">
+                          {point.published_date.slice(5)}
+                        </text>
+                      )}
+                    </g>
+                  ))}
+                </svg>
+              </section>
+            );
+          })()}
         </aside>
       </div>
     </Layout>

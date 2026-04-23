@@ -67,10 +67,15 @@ describe("Episode detail rail insights", () => {
     expect(html).toContain("Since Last Episode");
     expect(html).toContain("Archive Contrast");
     expect(html).toContain("External Links");
+    expect(html).toContain('class="topic-help-tip"');
+    expect(html).toContain('class="rail-panel-heading-row"');
+    expect(html).toContain('class="rail-panel-list topics-list"');
     expect(html).not.toContain("Generativity Sparkline");
+    expect(html).not.toContain("Novelty Sparkline");
     expect(html).not.toContain("Reference Density Map");
     expect(html).not.toContain("Question Pressure");
     expect(html).not.toContain("Gone");
+    expect(html).not.toContain("rail-topic-inline");
     expect(html).not.toContain("Biggest Callbacks");
     expect(html).not.toContain("Bridge Ideas");
     expect(html).not.toContain("Thread Continuations");
@@ -101,9 +106,11 @@ describe("Episode detail rail insights", () => {
     expect(html).toContain("Up");
     expect(html).not.toContain("Gone");
     expect(html).toContain("typical rate");
+    expect(html).not.toContain('class="episode-insight-kicker"');
+    expect(html).toContain('class="rail-item-title"');
     expect(html).toContain('href="https://c.example"');
     expect(html).toContain('href="https://f.example"');
-    expect(html).toContain('from <a href="#curr-4">Link roundup</a>');
+    expect(html).not.toContain('from <a href="#curr-4">Link roundup</a>');
     expect(html).not.toContain('href="/topics/agents" target="_blank"');
     expect(html).not.toContain('href="#curr-1" target="_blank"');
     expect(html).not.toContain('href="mailto:test@example.com" target="_blank"');

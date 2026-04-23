@@ -31,11 +31,44 @@ export interface EpisodeRailInsights {
   archiveContrast: TrendingTopic[];
 }
 
+export interface EpisodeNovelTopicHistoryPoint {
+  id: number;
+  slug: string;
+  title: string;
+  published_date: string;
+  novel_topics: number;
+}
+
 export async function getRecentEpisodes(db: D1Database, limit: number): Promise<EpisodeRow[]> {
   const result = await db.prepare(
     "SELECT * FROM episodes ORDER BY published_date DESC LIMIT ?"
   ).bind(limit).all<EpisodeRow>();
   return result.results;
+}
+
+export async function getNovelTopicHistory(db: D1Database, limit: number): Promise<EpisodeNovelTopicHistoryPoint[]> {
+  const result = await db.prepare(
+    `SELECT e.id, e.slug, e.title, e.published_date,
+            COUNT(DISTINCT CASE
+              WHEN NOT EXISTS (
+                SELECT 1
+                FROM episode_topics et2
+                JOIN episodes prev ON et2.episode_id = prev.id
+                WHERE et2.topic_id = et.topic_id
+                  AND (
+                    prev.published_date < e.published_date
+                    OR (prev.published_date = e.published_date AND prev.id < e.id)
+                  )
+              ) THEN et.topic_id
+            END) as novel_topics
+     FROM episodes e
+     LEFT JOIN episode_topics et ON e.id = et.episode_id
+     GROUP BY e.id
+     ORDER BY e.published_date DESC, e.id DESC
+     LIMIT ?`
+  ).bind(limit).all<EpisodeNovelTopicHistoryPoint>();
+
+  return [...result.results].reverse();
 }
 
 export async function getEpisodeBySlug(db: D1Database, slug: string): Promise<EpisodeRow | null> {
@@ -332,12 +365,13 @@ export async function getEpisodeRailInsights(
     .slice(0, 4)
     .map(({ slug, title, score, topicNames }) => ({ slug, title, score, topicNames }));
 
-  const previousTopics = new Map<number, { name: string; slug: string; chunkCount: number }>();
+  const previousTopics = new Map<number, { name: string; slug: string; chunkCount: number; distinctiveness: number }>();
   for (const row of previousTopicCountsResult.results as any[]) {
     previousTopics.set(Number(row.id), {
       name: String(row.name),
       slug: String(row.slug),
       chunkCount: Number(row.chunk_count),
+      distinctiveness: Number(row.distinctiveness ?? 0),
     });
   }
 
@@ -389,7 +423,7 @@ export async function getEpisodeRailInsights(
       name: topic.name,
       slug: topic.slug,
       delta: -topic.chunkCount,
-      score: weightedDeltaScore(-topic.chunkCount, 0, topic.chunkCount, currentTopicDistinctiveness.get(topicId) ?? 0),
+      score: weightedDeltaScore(-topic.chunkCount, 0, topic.chunkCount, topic.distinctiveness),
     }));
 
   const downshifted = [...downshiftedCurrent, ...disappeared]

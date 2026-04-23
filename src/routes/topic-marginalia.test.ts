@@ -53,13 +53,14 @@ describe("Episode page topic marginalia", () => {
     expect(html).toContain("topics-margin");
     expect(html).toContain("rail-stack");
     expect(html).toContain("rail-panel");
+    expect(html).toContain("rail-panel-list");
     // Does NOT have a details/summary accordion for topics
     // Extract the topics-margin aside element (up to its closing tag)
     const marginStart = html.indexOf("topics-margin");
     const marginEnd = html.indexOf("</aside>", marginStart);
     const marginSection = html.substring(marginStart, marginEnd);
-    expect(marginSection).not.toContain("<details");
-    expect(marginSection).not.toContain("<summary");
+    expect(marginSection).not.toContain('class="chunk-row"');
+    expect(marginSection).not.toContain('class="topic-panel"');
     // Has a visible heading instead
     expect(marginSection).toContain("<h3>Topics</h3>");
   });
@@ -81,12 +82,13 @@ describe("Chunk page topic marginalia", () => {
     expect(html).toContain("topics-margin");
     expect(html).toContain("rail-stack");
     expect(html).toContain("rail-panel");
+    expect(html).toContain("rail-panel-list");
     // Does NOT have a details/summary accordion for topics
     const marginStart = html.indexOf("topics-margin");
     const marginEnd = html.indexOf("</aside>", marginStart);
     const marginSection = html.substring(marginStart, marginEnd);
-    expect(marginSection).not.toContain("<details");
-    expect(marginSection).not.toContain("<summary");
+    expect(marginSection).not.toContain('class="chunk-row"');
+    expect(marginSection).not.toContain('class="topic-panel"');
     // Has a visible heading instead
     expect(marginSection).toContain("<h3>Topics</h3>");
   });

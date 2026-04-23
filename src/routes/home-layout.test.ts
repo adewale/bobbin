@@ -38,11 +38,13 @@ async function seedHomepageData() {
     env.DB.prepare("INSERT INTO episode_topics (episode_id, topic_id) VALUES (1, 3)"),
     env.DB.prepare("INSERT INTO episode_topics (episode_id, topic_id) VALUES (1, 4)"),
     env.DB.prepare("INSERT INTO episode_topics (episode_id, topic_id) VALUES (1, 5)"),
+    env.DB.prepare("INSERT INTO episode_topics (episode_id, topic_id) VALUES (2, 1)"),
     // Link topics to chunks
     env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 1)"),
     env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 2)"),
     env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (2, 3)"),
     env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (3, 1)"),
+    env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (4, 1)"),
   ]);
 }
 
@@ -118,8 +120,11 @@ describe("Homepage margin layout", () => {
     expect(html).toContain("home-margin");
     expect(html).toContain("rail-stack");
     expect(html).toContain("rail-panel");
+    expect(html).toContain("rail-panel-list");
     expect(html).toContain("page-preamble");
     expect(html).toContain("Recent Episodes");
+    expect(html).toContain("Novel Topic History");
+    expect(html).toContain('class="rail-sparkline"');
   });
 
   it("uses header search as the homepage's primary search affordance", async () => {

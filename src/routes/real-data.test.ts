@@ -29,7 +29,7 @@ describe("Layout CSS invariants", () => {
   it("provides a shared preamble slot for aligned rail pages", () => {
     expect(styles).toMatch(/\.page-with-rail--aligned\s*\{[^}]*--rail-start-offset:\s*2\.75rem;/s);
     expect(styles).toMatch(/\.page-with-rail--aligned > \.page-body > \.page-preamble\s*\{[^}]*min-height:\s*var\(--rail-start-offset\);/s);
-    expect(styles).toMatch(/\.page-with-rail--aligned > \.page-rail\s*\{[^}]*margin-top:\s*var\(--rail-start-offset\);/s);
+    expect(styles).toMatch(/\.page-with-rail--aligned > \.page-rail\s*\{[^}]*margin-top:\s*calc\(var\(--rail-start-offset\) \+ var\(--space-md\)\);/s);
   });
 
   it("defines a shared wide container and a single-column page shell", () => {
@@ -49,8 +49,17 @@ describe("Layout CSS invariants", () => {
     expect(styles).toMatch(/\.search-form\s*\{[^}]*display:\s*flex;/s);
   });
 
-  it("gives topics-margin the same warm-panel chrome as other secondary UI", () => {
-    expect(styles).toMatch(/\.topics-margin\s*\{[^}]*background:\s*var\(--bg-warm\);[^}]*border:\s*1px solid var\(--border\);[^}]*border-radius:\s*6px;/s);
+  it("gives individual rail panels the warm-panel chrome instead of the rail wrapper", () => {
+    expect(styles).toMatch(/\.rail-panel\s*\{[^}]*background:\s*var\(--bg-warm\);[^}]*border:\s*1px solid var\(--border\);[^}]*border-radius:\s*6px;[^}]*padding:\s*0\.9rem 1rem;/s);
+    expect(styles).not.toMatch(/\.topics-margin\s*\{[^}]*background:\s*var\(--bg-warm\);/s);
+  });
+
+  it("defines a shared color system for rail panels", () => {
+    expect(styles).toMatch(/\.rail-stack\s*\{[^}]*--rail-title-color:\s*var\(--text-light\);/s);
+    expect(styles).toMatch(/\.rail-stack\s*\{[^}]*--rail-link-color:\s*var\(--text\);/s);
+    expect(styles).toMatch(/\.rail-stack\s*\{[^}]*--rail-link-hover:\s*var\(--accent-dark\);/s);
+    expect(styles).toMatch(/\.rail-stack\s*\{[^}]*--rail-meta-color:\s*var\(--text-light\);/s);
+    expect(styles).toMatch(/\.rail-stack\s*\{[^}]*--rail-signal-color:\s*var\(--accent-dark\);/s);
   });
 
   it("removes dead legacy visualization and rail selectors", () => {

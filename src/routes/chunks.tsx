@@ -144,24 +144,28 @@ chunks.get("/:slug", async (c) => {
             {topics.length > 0 && (
               <section class="topic-tier-main rail-panel">
                 <h3>Topics</h3>
-                <div class="topics">
-                  {topics.map((topic) => (
-                    <a key={topic.id} href={`/topics/${topic.slug}`} class="topic">
-                      {topic.name}
-                    </a>
-                  ))}
+                <div class="rail-panel-list topics-list">
+                  <ul>
+                    {topics.map((topic) => (
+                      <li key={topic.id}>
+                        <a href={`/topics/${topic.slug}`}>{topic.name}</a>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               </section>
             )}
             {episodeBlend.distinctive.length > 0 && (
               <section class="distinctive-topics rail-panel">
                 <h3>Distinctive</h3>
-                <div class="topics">
-                  {episodeBlend.distinctive.map((topic) => (
-                    <a key={topic.id} href={`/topics/${topic.slug}`} class="topic topic-distinctive">
-                      {topic.name}
-                    </a>
-                  ))}
+                <div class="rail-panel-list distinctive-list">
+                  <ul>
+                    {episodeBlend.distinctive.map((topic) => (
+                      <li key={topic.id}>
+                        <a href={`/topics/${topic.slug}`}>{topic.name}</a>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               </section>
             )}

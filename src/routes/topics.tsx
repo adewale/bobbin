@@ -381,10 +381,9 @@ topics.get("/:slug", async (c) => {
                 <h2>Terminology drift</h2>
                 <HelpTip
                   label="Explain terminology drift"
-                  text="Vocabulary that becomes less or more associated with the topic over time. Use this to spot framing changes rather than individual examples."
+                  text="Recurring two-word phrases that become less or more associated with the topic over time. Use this to spot framing changes rather than individual examples."
                 />
               </div>
-              <p class="topic-drift-note">Comparing recurring two-word phrases in the first half of matching observations with the second half.</p>
               <div class="topic-drift-columns">
                 <section>
                   <h3>Earlier framing</h3>
