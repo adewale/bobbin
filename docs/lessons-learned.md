@@ -540,3 +540,83 @@ The lesson is simple: **if a pipeline has distinct ingest, cache, deterministic 
 45. LLM responses are untrusted external payloads and need sanitization, schema validation, and deterministic evidence checks.
 46. Live audits should target the weirdest real pages in the corpus, because that is where fidelity bugs actually surface.
 47. Once a pipeline has separate ingest, cache, rerun, and repair paths, documentation becomes part of the system, not optional explanation.
+
+## What we learned in the layout cleanup, browse reuse, and summary-spec pass
+
+The next phase of work was less about ingestion or extraction and more about making the product feel coherent. That exposed a different class of failures: not broken data, but broken alignment, unnecessary UI variety, misleading affordances, and route-specific designs that drifted away from the rest of the site.
+
+### Visual layout bugs have to be debugged in a real browser
+
+We were wrong when we tried to reason about homepage alignment from rendered HTML alone. The actual problems only became obvious in the browser:
+
+- the hero/preamble still contributed spacing above the main body
+- `.home-main > .body-panel:first-of-type` did not hit `Latest` because the preamble was also a `section`
+- `.rail-panel-list a` overrode the intended flex layout on recent-episode rows
+
+Playwright-level inspection of bounding boxes and computed styles found the real causes and verified the fix. The lesson is simple: **alignment, wrapping, spacing, and rhythm are browser facts, not markup guesses**.
+
+### Shared layout primitives are only useful when they eliminate real drift
+
+The rail cleanup worked once we stopped tolerating page-by-page variation and extracted the pieces that were already repeating:
+
+- `rail-stack`
+- `rail-panel`
+- a shared heading-row pattern
+- later, `BrowseIndex` row primitives for browse-style bodies
+
+This was useful not because abstraction is inherently good, but because it removed accidental differences between pages. A shared primitive is worthwhile when it deletes variation, not when it creates a new layer to think about.
+
+### Reuse has to be visual as well as functional
+
+The summary-page spec got much better once the rule became: **no summary-only chrome, no summary-only interaction model, no summary-only panel language**. Yearly and monthly summaries should be parameterizations of existing routes and existing UI parts, not a parallel mini-product.
+
+That rule is stricter than "reuse some helper functions." It means the visible page should already feel native to the product before any new code is written.
+
+### Not every technically-valid mode deserves to exist
+
+Search browse mode was implementable and even reusable, but it was still the wrong product choice. Search results work best as chunk cards because they preserve context and scanability. Adding an alternate browse mode increased surface area without improving the core experience.
+
+The lesson is: **a feature can be internally consistent and still be the wrong default, or the wrong feature entirely**. Remove modes that add choice without adding clarity.
+
+### Help affordances should be rare, quiet, and non-duplicative
+
+The `?` help pattern turned into a small but important design lesson. It caused multiple problems at once:
+
+- it visually pulled attention away from the actual heading
+- it pushed basic meaning into an extra interaction instead of clearer labels
+- it often duplicated the browser's own tooltip behavior when `title` was present
+- repeated across panels, it made the rail feel more like an instrument panel than an editorial surface
+
+The broader lesson is: **if the interface needs a help icon everywhere, the labels or concepts are probably not clear enough yet**.
+
+### Preserve the good part of an existing surface when polishing it
+
+The homepage `Latest` panel already had a useful live-newsletter feel. The goal was not to normalize it into the same structure as every other list. The right move was to fix alignment and surrounding rhythm while preserving the part that made it feel current.
+
+Consistency does not mean flattening every page into the same shape. It means keeping the parts that are intentionally distinctive and removing the parts that are accidentally inconsistent.
+
+### CSS regressions often come from selector assumptions, not missing styles
+
+Two of the most visible bugs in this phase were caused by selectors that were reasonable in isolation and wrong in the real DOM:
+
+- a `:first-of-type` rule that matched the wrong section
+- a generic anchor rule with higher practical impact than the page-specific row styles
+
+That is a useful reminder that CSS bugs are often about incorrect assumptions regarding structure and specificity, not about forgetting to set a property.
+
+### Product polish benefits from reversible experiments
+
+Several ideas were tried and then removed after seeing them in context: pill tabs, browse mode in search, extra analytics-style episode panels, novelty sparklines in the rail, hovercard-style directions. That was healthy. The product got better when we treated those as experiments instead of commitments.
+
+The lesson is: **for UX work, fast removal is as valuable as fast addition**. A short-lived experiment that sharpens the product is not wasted work.
+
+### Updated lesson list
+
+48. Visual alignment, wrapping, and spacing bugs must be debugged in a real browser with computed styles and element measurements.
+49. Shared UI primitives are valuable when they remove accidental variation across pages, not when they add abstraction for its own sake.
+50. Route reuse should be visual as well as functional; new summary pages should be parameterizations of existing surfaces, not bespoke mini-products.
+51. A feature can be technically correct and still be the wrong UX. Remove alternate modes that add complexity without adding clarity.
+52. Help affordances should be rare and non-duplicative. If every panel needs a `?`, the labels or concepts are underspecified.
+53. Preserve intentionally distinctive structure when polishing a page; consistency is not the same as flattening everything into one pattern.
+54. Many CSS regressions come from incorrect selector assumptions about real DOM structure and specificity, not from missing declarations.
+55. UX iteration improves when additions and removals are both cheap; reversible experiments are a product-quality tool.

@@ -60,7 +60,7 @@ topics.get("/", async (c) => {
                   <span class="multiple-count">{topic.usage_count}</span>
                   <svg viewBox={`0 0 ${w} ${h}`} class="multiple-spark" role="img" aria-label={`Usage trend for ${topic.name}`}>
                     <title>{`${topic.name}: ${topic.usage_count} chunks`}</title>
-                    <polyline points={points} fill="none" stroke="var(--accent)" stroke-width="1.5" />
+                    <polyline points={points} fill="none" stroke="var(--viz)" stroke-width="1.5" />
                   </svg>
                 </a>
               );
@@ -262,12 +262,12 @@ topics.get("/:slug", async (c) => {
                   )}
 
                   {isSingle ? (
-                    <circle cx={points[0].x} cy={points[0].y} r="4" fill="var(--accent)">
+                    <circle cx={points[0].x} cy={points[0].y} r="4" fill="var(--viz)">
                       <title>{`${dates[0]}: ${counts[0]} mention${counts[0] !== 1 ? "s" : ""}`}</title>
                     </circle>
                   ) : (
-                    <polyline points={points.map(p => `${p.x},${p.y}`).join(" ")} fill="none"
-                      stroke="var(--accent)" stroke-width="2" />
+                      <polyline points={points.map(p => `${p.x},${p.y}`).join(" ")} fill="none"
+                      stroke="var(--viz)" stroke-width="2" />
                   )}
 
                   {!isSingle && points.map((p, i) => (
@@ -282,7 +282,7 @@ topics.get("/:slug", async (c) => {
                     return (
                       <rect key={`rug-${i}`} x={x - 1} y={h + 1} width={2} height={rugH - 2}
                         class="dispersion-mark"
-                        fill="var(--accent)" opacity={opacity}>
+                        fill="var(--viz)" opacity={opacity}>
                         <title>{`${date}: ${counts[i]}`}</title>
                       </rect>
                     );
@@ -443,13 +443,13 @@ topics.get("/:slug", async (c) => {
                       <polyline
                         points={points.map((point) => `${point.x},${point.y}`).join(" ")}
                         fill="none"
-                        stroke="var(--accent)"
+                        stroke="var(--viz)"
                         stroke-width="2"
                       />
                     )}
                     {points.map((point) => (
                       <g key={`rank-${point.year}`}>
-                        <circle cx={point.x} cy={point.y} r="3.5" fill="var(--accent)">
+                        <circle cx={point.x} cy={point.y} r="3.5" fill="var(--viz)">
                           <title>{`${point.year}: #${point.rank} (${point.count} chunks)`}</title>
                         </circle>
                         <text x={point.x} y={height + 12} text-anchor="middle" fill="var(--text-light)" font-size="9" font-family="var(--font-ui)">

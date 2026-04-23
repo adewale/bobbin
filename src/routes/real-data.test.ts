@@ -59,7 +59,7 @@ describe("Layout CSS invariants", () => {
     expect(styles).toMatch(/\.rail-stack\s*\{[^}]*--rail-link-color:\s*var\(--text\);/s);
     expect(styles).toMatch(/\.rail-stack\s*\{[^}]*--rail-link-hover:\s*var\(--accent-dark\);/s);
     expect(styles).toMatch(/\.rail-stack\s*\{[^}]*--rail-meta-color:\s*var\(--text-light\);/s);
-    expect(styles).toMatch(/\.rail-stack\s*\{[^}]*--rail-signal-color:\s*var\(--accent-dark\);/s);
+    expect(styles).toMatch(/\.rail-stack\s*\{[^}]*--rail-signal-color:\s*var\(--viz\);/s);
   });
 
   it("removes dead legacy visualization and rail selectors", () => {
