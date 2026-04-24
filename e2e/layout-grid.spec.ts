@@ -3,11 +3,12 @@ import { test, expect } from "@playwright/test";
 const pages = [
   "/",
   "/topics",
-  "/topics/swarm-sifting#in-context",
-  "/search?q=swarm",
+  "/topics/chatgpt#observations",
+  "/search?q=ChatGPT",
   "/episodes",
-  "/episodes/2026-04-14-preview",
-  "/chunks/swarm-sifting-sort-2026-04-14-preview-0",
+  "/episodes/2026-05-12-rail-demo",
+  "/chunks/rail-demo-current-1",
+  "/design",
 ];
 
 const viewports = [
@@ -48,9 +49,8 @@ for (const viewport of viewports) {
   test.describe(`layout-grid ${viewport.name}`, () => {
     for (const path of pages) {
       test(`${path} has no overflow or clipped visible text`, async ({ page }) => {
-        test.skip(test.info().project.name !== "desktop", "desktop project runs all viewport audits explicitly");
         await page.setViewportSize({ width: viewport.width, height: viewport.height });
-        await page.goto(path, { waitUntil: "domcontentloaded" });
+        await page.goto(path, { waitUntil: "networkidle" });
 
         const audit = await auditLayout(page);
 

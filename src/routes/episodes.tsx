@@ -1,9 +1,11 @@
 import { Hono } from "hono";
 import type { AppEnv, EpisodeRow, ChunkRow, TopicRow } from "../types";
 import { BrowseRow, BrowseRowList, BrowseSection, BrowseSubsection } from "../components/BrowseIndex";
+import { EmptyArchiveState } from "../components/EmptyArchiveState";
 import { Layout } from "../components/Layout";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { RichContent, RichFootnotes, parseFootnotesJson, parseRichContentJson } from "../components/RichContent";
+import { TopicRailList } from "../components/TopicRailList";
 import { monthName } from "../lib/date";
 import { collectExternalLinks } from "../lib/episode-rail";
 import { getAdjacentEpisodes, getAllEpisodesGrouped, getChunksByEpisode, getEpisodeBySlug, getEpisodeRailInsights, getEpisodeTopicsBlended } from "../db/episodes";
@@ -33,14 +35,26 @@ episodes.get("/", async (c) => {
   }
 
   const years = [...byYear.keys()].sort((a, b) => b - a);
+  const latestEpisode = allEpisodesList[0] || null;
+  const earliestEpisode = allEpisodesList[allEpisodesList.length - 1] || null;
+  const episodeTagline = latestEpisode && earliestEpisode
+    ? `${allEpisodesList.length} episodes from ${earliestEpisode.published_date} to ${latestEpisode.published_date}`
+    : `${allEpisodesList.length} episodes`;
 
     return c.html(
       <Layout title="Episodes" description="All Bits and Bobs episodes by date" activePath="/episodes" mainClassName="main-wide">
       <div class="page-with-rail page-with-rail--aligned browse-layout">
         <div class="page-body browse-main">
-          <div class="page-preamble">
-            <p class="page-count">{allEpisodesList.length} episodes</p>
-          </div>
+          <section class="page-preamble hero">
+            <p class="page-tagline">{episodeTagline}</p>
+          </section>
+
+          {allEpisodesList.length === 0 && (
+            <EmptyArchiveState
+              title="No episodes are available yet."
+              detail="The schema is present, but the local archive has not been populated with episode data yet."
+            />
+          )}
 
           {years.map((year) => {
             const months = [...byYear.get(year)!.keys()].sort((a, b) => b - a);
@@ -75,7 +89,7 @@ episodes.get("/", async (c) => {
           })}
         </div>
 
-        <aside class="page-rail browse-rail rail-stack">
+        {years.length > 0 && <aside class="page-rail browse-rail rail-stack">
           <nav class="page-toc rail-panel" aria-label="Years">
             <div class="rail-panel-heading-row">
               <h3>Years</h3>
@@ -90,7 +104,7 @@ episodes.get("/", async (c) => {
               ))}
             </ol>
           </nav>
-        </aside>
+        </aside>}
       </div>
     </Layout>
   );
@@ -200,44 +214,32 @@ episodes.get("/:slug", async (c) => {
         {hasEpisodeRail && (
           <aside class="page-rail topics-margin rail-stack episode-analysis-rail">
             {blendedTopics.main.length > 0 && (
-              <section class="topic-tier-main rail-panel">
-                <div class="rail-panel-heading-row">
-                  <h3>Topics</h3>
+              <TopicRailList
+                title="Topics"
+                topics={blendedTopics.main}
+                sectionClassName="topic-tier-main"
+                listClassName="topics-list"
+                help={(
                   <HelpTip
                     label="Explain episode topics"
                     text="The main themes that recur across this episode."
                   />
-                </div>
-                <div class="rail-panel-list topics-list">
-                  <ul>
-                    {blendedTopics.main.map((topic) => (
-                      <li key={topic.id}>
-                        <a href={`/topics/${topic.slug}`}>{topic.name}</a>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </section>
+                )}
+              />
             )}
             {blendedTopics.distinctive.length > 0 && (
-              <section class="distinctive-topics rail-panel">
-                <div class="rail-panel-heading-row">
-                  <h3>Distinctive</h3>
+              <TopicRailList
+                title="Distinctive"
+                topics={blendedTopics.distinctive}
+                sectionClassName="distinctive-topics"
+                listClassName="distinctive-list"
+                help={(
                   <HelpTip
                     label="Explain distinctive topics"
                     text="Topics that are unusually salient in this episode compared with ordinary language and the rest of the archive."
                   />
-                </div>
-                <div class="rail-panel-list distinctive-list">
-                  <ul>
-                    {blendedTopics.distinctive.map((topic) => (
-                      <li key={topic.id}>
-                        <a href={`/topics/${topic.slug}`}>{topic.name}</a>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </section>
+                )}
+              />
             )}
 
             {railInsights.unexpectedPairings.length > 0 && (

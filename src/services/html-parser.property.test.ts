@@ -1,9 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { existsSync, readFileSync } from "node:fs";
 import fc from "fast-check";
 import { parseHtmlDocument } from "./html-parser";
 import sampleEssays from "../../test/fixtures/sample-mobilebasic.html?raw";
 import sampleNotes from "../../test/fixtures/sample-notes-format.html?raw";
+import archiveEssaysHtml from "../../data/raw/1IPwKwmEgrL6R2lVe9IaPIu0sPB4O_ZNy8ZA0N0W3yw0.html?raw";
+import currentHtml from "../../data/raw/1xRiCqpy3LMAgEsHdX-IA23j6nUISdT5nAJmtKbk9wNA.html?raw";
 
 describe("format detection", () => {
   it("essay-format fixture detected as essays", () => {
@@ -46,18 +47,9 @@ describe("format detection", () => {
   });
 });
 
-const hasLocalData = (() => {
-  try {
-    return existsSync("data/raw/1IPwKwmEgrL6R2lVe9IaPIu0sPB4O_ZNy8ZA0N0W3yw0.html");
-  } catch {
-    return false;
-  }
-})();
-
-describe.skipIf(!hasLocalData)("format detection on real local data", () => {
+describe("format detection on real local data", () => {
   it("small archive doc (1IPw) detected as essays", () => {
-    const html = readFileSync("data/raw/1IPwKwmEgrL6R2lVe9IaPIu0sPB4O_ZNy8ZA0N0W3yw0.html", "utf-8");
-    const episodes = parseHtmlDocument(html);
+    const episodes = parseHtmlDocument(archiveEssaysHtml);
     expect(episodes.length).toBeGreaterThan(0);
     for (const ep of episodes) {
       expect(ep.format).toBe("essays");
@@ -65,8 +57,7 @@ describe.skipIf(!hasLocalData)("format detection on real local data", () => {
   });
 
   it("current doc (1xRi) detected as notes", () => {
-    const html = readFileSync("data/raw/1xRiCqpy3LMAgEsHdX-IA23j6nUISdT5nAJmtKbk9wNA.html", "utf-8");
-    const episodes = parseHtmlDocument(html);
+    const episodes = parseHtmlDocument(currentHtml);
     expect(episodes.length).toBeGreaterThan(0);
     for (const ep of episodes) {
       expect(ep.format).toBe("notes");

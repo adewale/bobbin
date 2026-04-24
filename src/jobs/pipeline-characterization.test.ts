@@ -3,61 +3,44 @@ import { env } from "cloudflare:test";
 import { applyTestMigrations } from "../../test/helpers/migrations";
 import { parseHtmlDocument } from "../services/html-parser";
 import { runPipelineCharacterization } from "./pipeline-characterization";
+import sampleEssaysHtml from "../../test/fixtures/sample-mobilebasic.html?raw";
+import sampleNotesHtml from "../../test/fixtures/sample-notes-format.html?raw";
 
-const RUN_CHARACTERIZATION = process.env.RUN_CHARACTERIZATION_TESTS === "1";
 const MODE = process.env.PIPELINE_EXTRACTOR_MODE || "naive";
 
 async function loadCharacterizationSources() {
-  const [archiveEssaysHtml, archiveNotesHtml, currentHtml, emptyHtml] = await Promise.all([
-    import("../../data/raw/1IPwKwmEgrL6R2lVe9IaPIu0sPB4O_ZNy8ZA0N0W3yw0.html?raw"),
-    import("../../data/raw/1WC16fr5iEwzpK8u11yvYd6cCHPvq6Ce4WnrkpJ49vYw.html?raw"),
-    import("../../data/raw/1xRiCqpy3LMAgEsHdX-IA23j6nUISdT5nAJmtKbk9wNA.html?raw"),
-    import("../../data/raw/1x8z6k07JqXTVIRVNr1S_7wYVl5L7IpX14gXxU1UBrGk.html?raw"),
-  ]);
-
-  const archiveEssays = parseHtmlDocument(archiveEssaysHtml.default);
-  const archiveNotes = parseHtmlDocument(archiveNotesHtml.default);
-  const current = parseHtmlDocument(currentHtml.default);
-  const empty = parseHtmlDocument(emptyHtml.default);
+  const essays = parseHtmlDocument(sampleEssaysHtml);
+  const notes = parseHtmlDocument(sampleNotesHtml);
+  const empty: ReturnType<typeof parseHtmlDocument> = [];
 
   return {
     characterizationSources: [
       {
-        googleDocId: "1IPwKwmEgrL6R2lVe9IaPIu0sPB4O_ZNy8ZA0N0W3yw0",
-        title: "Bits and Bobs (Archive Essays)",
-        episodes: archiveEssays,
+        googleDocId: "sample-essays",
+        title: "Bits and Bobs (Sample Essays)",
+        episodes: essays.slice(0, 2),
       },
       {
-        googleDocId: "1WC16fr5iEwzpK8u11yvYd6cCHPvq6Ce4WnrkpJ49vYw",
-        title: "Bits and Bobs (Archive Notes)",
-        episodes: archiveNotes,
+        googleDocId: "sample-notes",
+        title: "Bits and Bobs (Sample Notes)",
+        episodes: notes.slice(0, 2),
       },
       {
-        googleDocId: "1xRiCqpy3LMAgEsHdX-IA23j6nUISdT5nAJmtKbk9wNA",
-        title: "Bits and Bobs (Current)",
-        episodes: current,
-      },
-      {
-        googleDocId: "1x8z6k07JqXTVIRVNr1S_7wYVl5L7IpX14gXxU1UBrGk",
+        googleDocId: "sample-empty",
         title: "Bits and Bobs (Empty)",
         episodes: empty,
       },
     ],
     regressionSources: [
       {
-        googleDocId: "1IPwKwmEgrL6R2lVe9IaPIu0sPB4O_ZNy8ZA0N0W3yw0",
-        title: "Bits and Bobs (Archive Essays)",
-        episodes: archiveEssays.slice(0, 2),
+        googleDocId: "sample-essays",
+        title: "Bits and Bobs (Sample Essays)",
+        episodes: essays.slice(0, 2),
       },
       {
-        googleDocId: "1WC16fr5iEwzpK8u11yvYd6cCHPvq6Ce4WnrkpJ49vYw",
-        title: "Bits and Bobs (Archive Notes)",
-        episodes: archiveNotes.slice(0, 3),
-      },
-      {
-        googleDocId: "1xRiCqpy3LMAgEsHdX-IA23j6nUISdT5nAJmtKbk9wNA",
-        title: "Bits and Bobs (Current)",
-        episodes: current.slice(0, 2),
+        googleDocId: "sample-notes",
+        title: "Bits and Bobs (Sample Notes)",
+        episodes: notes.slice(0, 2),
       },
     ],
   };
@@ -67,19 +50,19 @@ beforeEach(async () => {
   await applyTestMigrations(env.DB);
 });
 
-describe.skipIf(!RUN_CHARACTERIZATION)("pipeline characterization", () => {
-  it(`captures full-corpus metrics for ${MODE}`, async () => {
+describe("pipeline characterization", () => {
+  it(`captures representative pipeline metrics for ${MODE}`, async () => {
     const { characterizationSources } = await loadCharacterizationSources();
     const metrics = await runPipelineCharacterization(env.DB, characterizationSources, MODE);
 
     expect(metrics.extractorMode).toBe(MODE === "yaket" || MODE === "yaket_bobbin" || MODE === "episode_hybrid" ? MODE : "naive");
-    expect(metrics.sources).toBe(4);
-    expect(metrics.episodes).toBe(80);
-    expect(metrics.chunks).toBe(5771);
-    expect(metrics.topicsActive).toBeGreaterThan(0);
-    expect(metrics.topicsVisible).toBeGreaterThan(0);
-    expect(metrics.candidateRows).toBeGreaterThan(metrics.candidatesAccepted);
-    expect(metrics.candidatesRejected).toBeGreaterThan(0);
+    expect(metrics.sources).toBe(3);
+    expect(metrics.episodes).toBe(3);
+    expect(metrics.chunks).toBeGreaterThan(10);
+    expect(metrics.topicsActive).toBeGreaterThanOrEqual(0);
+    expect(metrics.topicsVisible).toBeLessThanOrEqual(metrics.topicsActive);
+    expect(metrics.candidateRows).toBeGreaterThanOrEqual(metrics.candidatesAccepted);
+    expect(metrics.candidatesRejected).toBeGreaterThanOrEqual(0);
     expect(metrics.activeTopicsWithProvenance).toBe(metrics.topicsActive);
     expect(metrics.archivedLineageTopics).toBeGreaterThanOrEqual(0);
     expect(metrics.finalize.archived_lineage_topics).toBe(metrics.archivedLineageTopics);

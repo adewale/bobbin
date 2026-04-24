@@ -1,25 +1,38 @@
 /**
  * Local pipeline: runs the full ingest → enrich → finalize loop against real
- * HTML data using a local D1 database (via Miniflare/getPlatformProxy).
+ * HTML data using the same local D1 database that wrangler.local.jsonc-backed
+ * dev servers use (via Miniflare/getPlatformProxy).
  *
  * Usage:
  *   npx tsx scripts/local-pipeline.ts           # 3 episodes (default)
  *   npx tsx scripts/local-pipeline.ts 10         # 10 episodes
  *   npx tsx scripts/local-pipeline.ts all        # all episodes
  *   npx tsx scripts/local-pipeline.ts 5 --clean  # wipe local DB first
+ *   npx tsx scripts/local-pipeline.ts all --config wrangler.local.jsonc
  *
  * The local D1 persists at .wrangler/state/v3/d1/ — you can inspect it with:
- *   npx wrangler d1 execute bobbin-db --local --command "SELECT ..."
+ *   npx wrangler d1 execute bobbin-db --local --config wrangler.local.jsonc --command "SELECT ..."
  */
 import { getPlatformProxy } from "wrangler";
 import { readFileSync, readdirSync } from "node:fs";
 import { parseHtmlDocument } from "../src/services/html-parser";
 import { ingestEpisodesOnly, enrichAllChunks, finalizeEnrichment } from "../src/jobs/ingest";
 import { ensureSource } from "../src/db/sources";
+import { LOCAL_DEV_WRANGLER_CONFIG_PATH } from "../src/lib/local-dev-config";
 import { applyTestMigrations } from "../test/helpers/migrations";
 
 const args = process.argv.slice(2);
-const episodeLimit = args.find(a => a !== "--clean");
+const configFlagIndex = args.indexOf("--config");
+const configPath = configFlagIndex >= 0 ? args[configFlagIndex + 1] : LOCAL_DEV_WRANGLER_CONFIG_PATH;
+if (configFlagIndex >= 0 && !configPath) {
+  throw new Error("--config requires a path");
+}
+const positionalArgs = args.filter((arg, index) => {
+  if (arg === "--clean" || arg === "--config") return false;
+  if (configFlagIndex >= 0 && index === configFlagIndex + 1) return false;
+  return true;
+});
+const episodeLimit = positionalArgs[0];
 const shouldClean = args.includes("--clean");
 const maxEpisodes = episodeLimit === "all" ? Infinity : parseInt(episodeLimit || "3", 10);
 
@@ -28,7 +41,7 @@ async function main() {
   const totalStart = Date.now();
 
   // Get local D1 binding via Miniflare
-  const { env, dispose } = await getPlatformProxy({ configPath: "./wrangler.jsonc" });
+  const { env, dispose } = await getPlatformProxy({ configPath });
   const db = env.DB as D1Database;
 
   try {

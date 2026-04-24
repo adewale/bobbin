@@ -36,6 +36,27 @@ npx wrangler d1 migrations apply bobbin-db --local
 npm run dev
 ```
 
+## Local development workflow
+
+For browser-based local development, use the real app config and the canonical local fixture:
+
+```bash
+npm run fixture:local   # seeds a full local corpus + rail demo into the local D1
+npm run dev:9090        # starts the app on http://localhost:9090
+```
+
+The fixture script prints a set of recommended URLs that exercise the main user-visible surfaces:
+
+- home
+- episodes index
+- episode rail demo
+- chunk detail and source-fidelity pages
+- topics index and topic detail
+- search
+- design inventory
+
+If the local database is empty, the app will show an in-product setup hint that points back to `npm run fixture:local`.
+
 ## Architecture
 
 Cloudflare Workers with Hono SSR. D1 for structured data, Vectorize for semantic search, Workers AI for embeddings.

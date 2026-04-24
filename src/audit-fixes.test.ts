@@ -3,9 +3,15 @@ import { SELF, env } from "cloudflare:test";
 import { applyTestMigrations } from "../test/helpers/migrations";
 import { createIngestionLog } from "./db/ingestion";
 import { recordPipelineRun } from "./db/pipeline-metrics";
+import sampleNotesHtml from "../test/fixtures/sample-notes-format.html?raw";
 
 beforeEach(async () => {
   (env as any).ADMIN_SECRET = "";
+  (env as any).__TEST_FETCH_GOOGLE_DOC = async () => ({
+    html: sampleNotesHtml,
+    fetchedAt: new Date().toISOString(),
+  });
+  (env as any).__TEST_ENRICH_EPISODES_WITH_LLM = async () => undefined;
   await applyTestMigrations(env.DB);
   await env.DB.batch([
     env.DB.prepare("INSERT INTO sources (google_doc_id, title) VALUES ('t', 'T')"),

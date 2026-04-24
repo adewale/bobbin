@@ -46,6 +46,9 @@ interface RefreshPipelineReport {
   finalize?: FinalizeResult;
 }
 
+type RefreshFetcher = typeof fetchGoogleDoc;
+type RefreshLlmEnricher = typeof enrichEpisodesWithLlm;
+
 function elapsed(start: number): number {
   return Math.round(Date.now() - start);
 }
@@ -53,6 +56,12 @@ function elapsed(start: number): number {
 export async function runRefresh(env: Bindings): Promise<RefreshEvent> {
   const runStart = Date.now();
   const extractorMode = normalizeTopicExtractorMode(env.TOPIC_EXTRACTOR_MODE);
+  const fetchDoc: RefreshFetcher = typeof (env as any).__TEST_FETCH_GOOGLE_DOC === "function"
+    ? (env as any).__TEST_FETCH_GOOGLE_DOC
+    : fetchGoogleDoc;
+  const llmEnricher: RefreshLlmEnricher = typeof (env as any).__TEST_ENRICH_EPISODES_WITH_LLM === "function"
+    ? (env as any).__TEST_ENRICH_EPISODES_WITH_LLM
+    : enrichEpisodesWithLlm;
   const event: RefreshEvent = {
     event: "refresh",
     source: CURRENT_DOC_ID.substring(0, 12) + "...",
@@ -83,7 +92,7 @@ export async function runRefresh(env: Bindings): Promise<RefreshEvent> {
     // --- Fetch ---
     currentStep = "fetch";
     const fetchStart = Date.now();
-    const fetched = await fetchGoogleDoc(source.google_doc_id);
+    const fetched = await fetchDoc(source.google_doc_id);
     await env.DB.prepare(
       "UPDATE sources SET latest_html = NULL WHERE id = ?"
     ).bind(source.id).run();
@@ -108,7 +117,7 @@ export async function runRefresh(env: Bindings): Promise<RefreshEvent> {
 
     currentStep = "llm_enrich";
     if (result.insertedEpisodes.length > 0) {
-      await enrichEpisodesWithLlm(env, source.id, result.insertedEpisodes);
+      await llmEnricher(env, source.id, result.insertedEpisodes);
     }
 
     // --- Enrich (only if new chunks, or unenriched chunks exist) ---

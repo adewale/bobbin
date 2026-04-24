@@ -4,6 +4,7 @@ import { BrowseRow } from "../components/BrowseIndex";
 import { Layout } from "../components/Layout";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { RichContent, RichFootnotes, parseFootnotesJson, parseRichContentJson } from "../components/RichContent";
+import { TopicRailList } from "../components/TopicRailList";
 import { getCrossReferences } from "../services/cross-refs";
 import { safeJsonForHtml } from "../lib/html";
 import { getChunkBySlug, getChunkTopics, getRelatedByTopics, getThreadChunks, getAdjacentChunks } from "../db/chunks";
@@ -118,7 +119,7 @@ chunks.get("/:slug", async (c) => {
 
           {(thread as any[]).length > 0 && (
             <section class="more-on-this body-panel body-panel-list">
-              <h2>More on this topic</h2>
+              <h2 class="section-heading">More on this topic</h2>
               <p class="section-subtitle">From other episodes</p>
               <ul>
                 {(thread as any[]).map((r: any) => (
@@ -153,44 +154,32 @@ chunks.get("/:slug", async (c) => {
         {(topics.length > 0 || episodeBlend.distinctive.length > 0) && (
           <aside class="page-rail topics-margin rail-stack">
             {topics.length > 0 && (
-              <section class="topic-tier-main rail-panel">
-                <div class="rail-panel-heading-row">
-                  <h3>Topics</h3>
+              <TopicRailList
+                title="Topics"
+                topics={topics}
+                sectionClassName="topic-tier-main"
+                listClassName="topics-list"
+                help={(
                   <HelpTip
                     label="Explain chunk topics"
                     text="The main themes in this chunk."
                   />
-                </div>
-                <div class="rail-panel-list topics-list">
-                  <ul>
-                    {topics.map((topic) => (
-                      <li key={topic.id}>
-                        <a href={`/topics/${topic.slug}`}>{topic.name}</a>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </section>
+                )}
+              />
             )}
             {episodeBlend.distinctive.length > 0 && (
-              <section class="distinctive-topics rail-panel">
-                <div class="rail-panel-heading-row">
-                  <h3>Distinctive</h3>
+              <TopicRailList
+                title="Distinctive"
+                topics={episodeBlend.distinctive}
+                sectionClassName="distinctive-topics"
+                listClassName="distinctive-list"
+                help={(
                   <HelpTip
                     label="Explain distinctive topics"
                     text="Topics that stand out more in this episode than they usually do across Bobbin."
                   />
-                </div>
-                <div class="rail-panel-list distinctive-list">
-                  <ul>
-                    {episodeBlend.distinctive.map((topic) => (
-                      <li key={topic.id}>
-                        <a href={`/topics/${topic.slug}`}>{topic.name}</a>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </section>
+                )}
+              />
             )}
 
             {relatedItems.length > 0 && (

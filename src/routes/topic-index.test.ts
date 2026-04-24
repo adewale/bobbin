@@ -53,8 +53,9 @@ describe("Topics index - small multiples grid", () => {
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).toContain("multiples-grid");
-    expect(html).toContain("multiple-spark");
+    expect(html).toContain('class="multiple-spark rail-sparkline"');
     expect(html).toContain("<polyline");
+    expect(html).toContain('viewBox="0 0 180 40"');
   });
 
   it("shows top topics by usage", async () => {
@@ -116,8 +117,9 @@ describe("Topics index - unified grid", () => {
   it("shows intro text describing the topic grid", async () => {
     const res = await SELF.fetch("http://localhost/topics");
     const html = await res.text();
-    expect(html).toContain("page-intro");
-    expect(html).toContain("page-intro");
+    expect(html).toContain('class="page-preamble hero"');
+    expect(html).toContain("page-tagline");
+    expect(html).toContain("Concepts ranked by how their attention shifts across the corpus");
   });
 
   it("includes multi-word topics in the sparkline grid", async () => {

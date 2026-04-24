@@ -1,6 +1,9 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../types";
+import { EmptyArchiveState } from "../components/EmptyArchiveState";
 import { Layout } from "../components/Layout";
+import { TopicChartPanel } from "../components/TopicChartPanel";
+import { TopicHeader } from "../components/TopicHeader";
 import { getAdjacentTopics, getRelatedTopics, getTopTopicsWithSparklines, getTopicBySlug, getTopicChunkCount, getTopicChunks, getTopicDriftChunks, getTopicEpisodes, getTopicRankHistory, getTopicSparkline, getTopicWordStats } from "../db/topics";
 import { safeParseInt } from "../lib/html";
 import { Breadcrumbs } from "../components/Breadcrumbs";
@@ -35,14 +38,23 @@ topics.get("/", async (c) => {
 
   return c.html(
     <Layout title="Topics" description="Browse Bits and Bobs by topic" activePath="/topics" mainClassName="main-wide">
-      <p class="page-intro">Concepts ranked by how their attention shifts across the corpus — spikes, trends, and fades.</p>
+      <section class="page-preamble hero">
+        <p class="page-tagline">Concepts ranked by how their attention shifts across the corpus — spikes, trends, and fades.</p>
+      </section>
+
+      {topicsWithSparklines.length === 0 && (
+        <EmptyArchiveState
+          title="No topics are available yet."
+          detail="The local archive does not have any visible topics yet because no episode data has been ingested into the local D1 database."
+        />
+      )}
 
       {topicsWithSparklines.length > 0 && (
         <section class="topic-multiples">
           <div class="multiples-grid">
             {topicsWithSparklines.map(topic => {
               const max = Math.max(...topic.sparkline, 1);
-              const w = 120, h = 40, pad = 2;
+              const w = 180, h = 40, pad = 2;
               const points = topic.sparkline.map((v: number, i: number) => {
                 const x = topic.sparkline.length === 1 ? w / 2 : (i / (topic.sparkline.length - 1)) * (w - pad * 2) + pad;
                 const y = h - pad - (v / max) * (h - pad * 2);
@@ -58,9 +70,9 @@ topics.get("/", async (c) => {
                 >
                   <span class="multiple-name">{topic.name}</span>
                   <span class="multiple-count">{topic.usage_count}</span>
-                  <svg viewBox={`0 0 ${w} ${h}`} class="multiple-spark" role="img" aria-label={`Usage trend for ${topic.name}`}>
+                  <svg viewBox={`0 0 ${w} ${h}`} class="multiple-spark rail-sparkline" role="img" aria-label={`Usage trend for ${topic.name}`}>
                     <title>{`${topic.name}: ${topic.usage_count} chunks`}</title>
-                    <polyline points={points} fill="none" stroke="var(--viz)" stroke-width="1.5" />
+                    <polyline points={points} fill="none" stroke="var(--rail-signal-color)" stroke-width="1.5" />
                   </svg>
                 </a>
               );
@@ -149,46 +161,30 @@ topics.get("/:slug", async (c) => {
             />
           </div>
 
-          <h1>Topic: {topic.name}</h1>
-          <div class="topic-stats-row">
-            <p class="topic-header-stats">
-              {wordStats && (<><span class="topic-mentions">{wordStats.total_count.toLocaleString()} mentions</span> &middot; </>)}
-              {total} chunk{total !== 1 ? "s" : ""} &middot; {episodes.length} episode
-              {episodes.length !== 1 ? "s" : ""}
-            </p>
-            {wordStats && wordStats.distinctiveness > 0 && (
-              <div class="topic-distinctiveness topic-inline-heading-row">
-                <span>{wordStats.distinctiveness.toFixed(1)}&times; distinctiveness vs baseline</span>
-                <HelpTip
-                  label="Explain distinctiveness"
-                  text="How much more common this term is here than in ordinary English. Higher values mean the topic is more characteristic of this corpus."
-                />
-              </div>
+          <TopicHeader
+            title={`Topic: ${topic.name}`}
+            totalChunks={total}
+            totalEpisodes={episodes.length}
+            wordStats={wordStats}
+            relatedTopics={relatedTopics}
+            distinctivenessHelp={(
+              <HelpTip
+                label="Explain distinctiveness"
+                text="How much more common this term is here than in ordinary English. Higher values mean the topic is more characteristic of this corpus."
+              />
             )}
-          </div>
-
-          {relatedTopics.length > 0 && (
-            <div class="topic-related topic-related-inline">
-              <span class="topic-inline-heading-row">
-                <span class="topic-related-label">Related:</span>
-                <HelpTip
-                  label="Explain related topics"
-                  text="Topics that appear in the same chunks as this one. Use this to find semantic neighbors, not ranking neighbors."
-                />
-              </span>{" "}
-              {relatedTopics.map((rt, index) => (
-                <span key={rt.slug}>
-                  {index > 0 ? " · " : ""}
-                  <a href={`/topics/${rt.slug}`}>{rt.name}</a>
-                </span>
-              ))}
-            </div>
-          )}
+            relatedHelp={(
+              <HelpTip
+                label="Explain related topics"
+                text="Topics that appear in the same chunks as this one. Use this to find semantic neighbors, not ranking neighbors."
+              />
+            )}
+          />
 
           {editorialSummary.length > 0 && (
             <section class="topic-summary body-panel" aria-labelledby="topic-summary-heading">
-              <div class="topic-section-heading-row">
-                <h2 id="topic-summary-heading">Topic summary</h2>
+              <div class="section-heading-row">
+                <h2 class="section-heading" id="topic-summary-heading">Topic summary</h2>
                 <HelpTip
                   label="Explain topic summary"
                   text="A short read on the topic's time range, peak episode, and strongest associations. Use it as the quick orientation before drilling into examples."
@@ -238,65 +234,73 @@ topics.get("/:slug", async (c) => {
                 ];
 
             return (
-              <section class="topic-sparkline" id="over-time" aria-label="Mentions over time">
-                <div class="topic-section-heading-row">
-                  <h2>Over time</h2>
+              <TopicChartPanel
+                title="Over time"
+                className="topic-sparkline"
+                id="over-time"
+                ariaLabel="Mentions over time"
+                metaPosition="before"
+                help={(
                   <HelpTip
                     label="Explain mentions over time"
                     text="Raw mentions over time. Use this to see absolute attention, not relative rank among all topics."
                   />
-                </div>
-                <div class="topic-sparkline-meta">
-                  <span><strong>Range</strong>{dates[0]} to {dates[dates.length - 1]}</span>
-                  {!isSingle && <span><strong>Mean</strong>{mean.toFixed(1)} per episode</span>}
-                  <span><strong>Peak</strong>{peakPoint.count} on {peakPoint.date}</span>
-                </div>
-                <svg viewBox={`0 0 ${w} ${h + rugH + labelH}`} class="topic-spark-svg" role="img">
-                  {!isSingle && (
-                    <>
-                      <line x1={bottomPad} y1={meanY} x2={w - bottomPad} y2={meanY}
-                        stroke="var(--border)" stroke-width="1" stroke-dasharray="4,3">
-                        <title>{`Mean ${mean.toFixed(1)} mentions per episode across the full range`}</title>
-                      </line>
-                    </>
-                  )}
+                )}
+                meta={(
+                  <div class="section-meta section-meta-row">
+                    <span><strong class="section-meta-label">Range</strong>{dates[0]} to {dates[dates.length - 1]}</span>
+                    {!isSingle && <span><strong class="section-meta-label">Mean</strong>{mean.toFixed(1)} per episode</span>}
+                    <span><strong class="section-meta-label">Peak</strong>{peakPoint.count} on {peakPoint.date}</span>
+                  </div>
+                )}
+                chart={(
+                  <svg viewBox={`0 0 ${w} ${h + rugH + labelH}`} class="topic-spark-svg" role="img">
+                    {!isSingle && (
+                      <>
+                        <line x1={bottomPad} y1={meanY} x2={w - bottomPad} y2={meanY}
+                          stroke="var(--border)" stroke-width="1" stroke-dasharray="4,3">
+                          <title>{`Mean ${mean.toFixed(1)} mentions per episode across the full range`}</title>
+                        </line>
+                      </>
+                    )}
 
-                  {isSingle ? (
-                    <circle cx={points[0].x} cy={points[0].y} r="4" fill="var(--viz)">
-                      <title>{`${dates[0]}: ${counts[0]} mention${counts[0] !== 1 ? "s" : ""}`}</title>
-                    </circle>
-                  ) : (
-                      <polyline points={points.map(p => `${p.x},${p.y}`).join(" ")} fill="none"
-                      stroke="var(--viz)" stroke-width="2" />
-                  )}
+                    {isSingle ? (
+                      <circle cx={points[0].x} cy={points[0].y} r="4" fill="var(--viz)">
+                        <title>{`${dates[0]}: ${counts[0]} mention${counts[0] !== 1 ? "s" : ""}`}</title>
+                      </circle>
+                    ) : (
+                        <polyline points={points.map(p => `${p.x},${p.y}`).join(" ")} fill="none"
+                        stroke="var(--viz)" stroke-width="2" />
+                    )}
 
-                  {!isSingle && points.map((p, i) => (
-                    <circle key={`pt-${i}`} cx={p.x} cy={p.y} r="5" fill="transparent" pointer-events="all">
-                      <title>{`${dates[i]}: ${counts[i]} mention${counts[i] !== 1 ? "s" : ""}`}</title>
-                    </circle>
-                  ))}
+                    {!isSingle && points.map((p, i) => (
+                      <circle key={`pt-${i}`} cx={p.x} cy={p.y} r="5" fill="transparent" pointer-events="all">
+                        <title>{`${dates[i]}: ${counts[i]} mention${counts[i] !== 1 ? "s" : ""}`}</title>
+                      </circle>
+                    ))}
 
-                  {dates.map((date: string, i: number) => {
-                    const x = isSingle ? w / 2 : (i / Math.max(dates.length - 1, 1)) * (w - bottomPad * 2) + bottomPad;
-                    const opacity = 0.2 + (counts[i] / max) * 0.8;
-                    return (
-                      <rect key={`rug-${i}`} x={x - 1} y={h + 1} width={2} height={rugH - 2}
-                        class="dispersion-mark"
-                        fill="var(--viz)" opacity={opacity}>
-                        <title>{`${date}: ${counts[i]}`}</title>
-                      </rect>
-                    );
-                  })}
+                    {dates.map((date: string, i: number) => {
+                      const x = isSingle ? w / 2 : (i / Math.max(dates.length - 1, 1)) * (w - bottomPad * 2) + bottomPad;
+                      const opacity = 0.2 + (counts[i] / max) * 0.8;
+                      return (
+                        <rect key={`rug-${i}`} x={x - 1} y={h + 1} width={2} height={rugH - 2}
+                          class="dispersion-mark"
+                          fill="var(--viz)" opacity={opacity}>
+                          <title>{`${date}: ${counts[i]}`}</title>
+                        </rect>
+                      );
+                    })}
 
-                  {landmarks.map((lm, i) => (
-                    <text key={`lm-${i}`} x={lm.x} y={h + rugH + 12}
-                      text-anchor={i === 0 ? "start" : i === 2 ? "end" : "middle"}
-                      fill="var(--text-light)" font-size="9" font-family="var(--font-ui)">
-                      {lm.label}
-                    </text>
-                  ))}
-                </svg>
-              </section>
+                    {landmarks.map((lm, i) => (
+                      <text key={`lm-${i}`} x={lm.x} y={h + rugH + 12}
+                        text-anchor={i === 0 ? "start" : i === 2 ? "end" : "middle"}
+                        fill="var(--text-light)" font-size="9" font-family="var(--font-ui)">
+                        {lm.label}
+                      </text>
+                    ))}
+                  </svg>
+                )}
+              />
             );
           })()}
 
@@ -319,8 +323,8 @@ topics.get("/:slug", async (c) => {
           </nav>
 
           <section class="topic-tab-panel topic-observations" id="observations" data-topic-tab-panel="observations" role="tabpanel" aria-labelledby="tab-observations">
-            <div class="topic-section-heading-row">
-              <h2>Observations</h2>
+            <div class="section-heading-row">
+              <h2 class="section-heading">Observations</h2>
               <HelpTip
                 label="Explain observations"
                 text="The primary evidence view for this topic. Sort it chronologically when you want concrete examples behind the larger pattern."
@@ -346,7 +350,7 @@ topics.get("/:slug", async (c) => {
                 Oldest first
               </a>
             </nav>
-            <p class="topic-observation-note">
+            <p class="section-meta">
               {`Showing ${totalObservationCount} observation${totalObservationCount === 1 ? "" : "s"} sorted ${observationSort === "oldest" ? "from earliest to latest" : "from latest to earliest"}.`}
             </p>
             <div class="topic-observation-list">
@@ -374,8 +378,8 @@ topics.get("/:slug", async (c) => {
 
           {hasDrift && (
             <section class="topic-tab-panel topic-drift" id="drift" data-topic-tab-panel="drift" role="tabpanel" aria-labelledby="tab-drift">
-              <div class="topic-section-heading-row">
-                <h2>Terminology drift</h2>
+              <div class="section-heading-row">
+                <h2 class="section-heading">Terminology drift</h2>
                 <HelpTip
                   label="Explain terminology drift"
                   text="Recurring two-word phrases that become less or more associated with the topic over time. Use this to spot framing changes rather than individual examples."
@@ -427,44 +431,50 @@ topics.get("/:slug", async (c) => {
               });
 
               return (
-                <section class="topic-rank-panel rail-panel">
-                  <div class="rail-panel-heading-row">
-                    <h3>Rank over time</h3>
+                <TopicChartPanel
+                  title="Rank over time"
+                  variant="rail"
+                  className="topic-rank-panel"
+                  help={(
                     <HelpTip
                       label="Explain rank over time"
                       text="Relative position among all topics by year. Unlike the chart above, this shows rank, not raw mentions."
                     />
-                  </div>
-                  <svg viewBox={`0 0 ${width} ${height + 16}`} class="topic-rank-svg rail-sparkline" role="img" aria-label={`Rank over time for ${topic.name}`}>
-                    {!isSingle && (
-                      <polyline
-                        points={points.map((point) => `${point.x},${point.y}`).join(" ")}
-                        fill="none"
-                        stroke="var(--viz)"
-                        stroke-width="2"
-                      />
-                    )}
-                    {points.map((point) => (
-                      <g key={`rank-${point.year}`}>
-                        <circle cx={point.x} cy={point.y} r="3.5" fill="var(--viz)">
-                          <title>{`${point.year}: #${point.rank} (${point.count} chunks)`}</title>
-                        </circle>
-                        <text x={point.x} y={height + 12} text-anchor="middle" fill="var(--text-light)" font-size="9" font-family="var(--font-ui)">
-                          {point.year}
-                        </text>
-                      </g>
-                    ))}
-                  </svg>
-                  <p class="topic-rank-caption">
-                    #{rankHistory[0].rank} in {rankHistory[0].year}
-                    {rankHistory.length > 1 ? ` · #${rankHistory[rankHistory.length - 1].rank} in ${rankHistory[rankHistory.length - 1].year}` : ""}
-                  </p>
-                </section>
+                  )}
+                  chart={(
+                    <svg viewBox={`0 0 ${width} ${height + 16}`} class="topic-rank-svg rail-sparkline" role="img" aria-label={`Rank over time for ${topic.name}`}>
+                      {!isSingle && (
+                        <polyline
+                          points={points.map((point) => `${point.x},${point.y}`).join(" ")}
+                          fill="none"
+                          stroke="var(--viz)"
+                          stroke-width="2"
+                        />
+                      )}
+                      {points.map((point) => (
+                        <g key={`rank-${point.year}`}>
+                          <circle cx={point.x} cy={point.y} r="3.5" fill="var(--viz)">
+                            <title>{`${point.year}: #${point.rank} (${point.count} chunks)`}</title>
+                          </circle>
+                          <text x={point.x} y={height + 12} text-anchor="middle" fill="var(--text-light)" font-size="9" font-family="var(--font-ui)">
+                            {point.year}
+                          </text>
+                        </g>
+                      ))}
+                    </svg>
+                  )}
+                  meta={(
+                    <p class="section-meta section-meta-row section-meta--after">
+                      <span><strong class="section-meta-label">Start</strong>#{rankHistory[0].rank} in {rankHistory[0].year}</span>
+                      {rankHistory.length > 1 ? <span><strong class="section-meta-label">Latest</strong>#{rankHistory[rankHistory.length - 1].rank} in {rankHistory[rankHistory.length - 1].year}</span> : null}
+                    </p>
+                  )}
+                />
               );
             })()}
 
             {(adjacentTopics.above || adjacentTopics.below) && (
-              <section class="rail-panel">
+              <section class="rail-panel rail-panel-list">
                 <div class="rail-panel-heading-row">
                   <h3>Adjacent topics</h3>
                   <HelpTip
@@ -472,22 +482,22 @@ topics.get("/:slug", async (c) => {
                     text="Topics just above or below this one by overall chunk volume. These are ranking neighbors, not semantic neighbors."
                   />
                 </div>
-                <div class="topic-adjacent-list">
+                <ul>
                   {adjacentTopics.above && (
-                    <p>
-                      <span class="topic-adjacent-label">Above</span>
+                    <li>
+                      <span class="insight-meta topic-adjacent-kicker">Above</span>
                       <a href={`/topics/${adjacentTopics.above.slug}`}>{adjacentTopics.above.name}</a>
-                      <span class="topic-adjacent-meta">{adjacentTopics.above.usage_count} chunks</span>
-                    </p>
+                      <span class="insight-meta">{adjacentTopics.above.usage_count} chunks</span>
+                    </li>
                   )}
                   {adjacentTopics.below && (
-                    <p>
-                      <span class="topic-adjacent-label">Below</span>
+                    <li>
+                      <span class="insight-meta topic-adjacent-kicker">Below</span>
                       <a href={`/topics/${adjacentTopics.below.slug}`}>{adjacentTopics.below.name}</a>
-                      <span class="topic-adjacent-meta">{adjacentTopics.below.usage_count} chunks</span>
-                    </p>
+                      <span class="insight-meta">{adjacentTopics.below.usage_count} chunks</span>
+                    </li>
                   )}
-                </div>
+                </ul>
               </section>
             )}
           </aside>

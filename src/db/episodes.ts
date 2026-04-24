@@ -46,12 +46,15 @@ export async function getRecentEpisodes(db: D1Database, limit: number): Promise<
   return result.results;
 }
 
-export async function getNovelTopicHistory(db: D1Database, limit: number): Promise<EpisodeNovelTopicHistoryPoint[]> {
+export async function getNovelTopicHistory(db: D1Database): Promise<EpisodeNovelTopicHistoryPoint[]> {
   const result = await db.prepare(
-    `SELECT e.id, e.slug, e.title, e.published_date,
+    `WITH latest AS (
+       SELECT MAX(published_date) AS latest_published_date FROM episodes
+     )
+     SELECT e.id, e.slug, e.title, e.published_date,
             COUNT(DISTINCT CASE
-              WHEN NOT EXISTS (
-                SELECT 1
+               WHEN NOT EXISTS (
+                 SELECT 1
                 FROM episode_topics et2
                 JOIN episodes prev ON et2.episode_id = prev.id
                 WHERE et2.topic_id = et.topic_id
@@ -61,14 +64,15 @@ export async function getNovelTopicHistory(db: D1Database, limit: number): Promi
                   )
               ) THEN et.topic_id
             END) as novel_topics
-     FROM episodes e
+     FROM episodes e, latest
      LEFT JOIN episode_topics et ON e.id = et.episode_id
+     WHERE latest.latest_published_date IS NOT NULL
+       AND e.published_date >= date(latest.latest_published_date, '-1 year')
      GROUP BY e.id
-     ORDER BY e.published_date DESC, e.id DESC
-     LIMIT ?`
-  ).bind(limit).all<EpisodeNovelTopicHistoryPoint>();
+     ORDER BY e.published_date ASC, e.id ASC`
+  ).all<EpisodeNovelTopicHistoryPoint>();
 
-  return [...result.results].reverse();
+  return result.results;
 }
 
 export async function getEpisodeBySlug(db: D1Database, slug: string): Promise<EpisodeRow | null> {

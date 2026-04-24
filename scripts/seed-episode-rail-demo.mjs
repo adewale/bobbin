@@ -1,5 +1,9 @@
 import { execFileSync } from "node:child_process";
 
+const args = process.argv.slice(2);
+const configFlagIndex = args.indexOf("--config");
+const CONFIG_PATH = configFlagIndex >= 0 ? args[configFlagIndex + 1] : "wrangler.jsonc";
+
 const SOURCE_DOC_ID = "episode-rail-demo-source";
 const PREV_SLUG = "2026-05-05-rail-demo";
 const CURR_SLUG = "2026-05-12-rail-demo";
@@ -12,14 +16,14 @@ function sqlValue(value) {
 
 function localExec(sqlStatements) {
   const joined = sqlStatements.join(" ");
-  execFileSync("npx", ["wrangler", "d1", "execute", "bobbin-db", "--local", "--command", joined], {
+  execFileSync("npx", ["wrangler", "d1", "execute", "bobbin-db", "--local", "--config", CONFIG_PATH, "--command", joined], {
     cwd: process.cwd(),
     stdio: "inherit",
   });
 }
 
 function localQuery(sql) {
-  const output = execFileSync("npx", ["wrangler", "d1", "execute", "bobbin-db", "--local", "--command", sql], {
+  const output = execFileSync("npx", ["wrangler", "d1", "execute", "bobbin-db", "--local", "--config", CONFIG_PATH, "--command", sql], {
     cwd: process.cwd(),
     encoding: "utf8",
   });

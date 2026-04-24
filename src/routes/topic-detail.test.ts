@@ -153,12 +153,15 @@ describe("Topic detail page — word_stats integration", () => {
     const res = await SELF.fetch("http://localhost/topics/llms");
     const html = await res.text();
 
-    expect(html).toContain('class="topic-sparkline-meta"');
+    expect(html).toContain('class="section-meta section-meta-row"');
     expect(html).toContain("Range");
     expect(html).toContain("Mean");
     expect(html).toContain("Peak");
     expect(html).toContain("Semantically it travels with");
     expect(html).toContain("while by chunk count it sits between");
+    expect(html).toContain('class="rail-panel rail-panel-list"');
+    expect(html).toContain('topic-adjacent-kicker');
+    expect(html).not.toContain('topic-adjacent-list');
   });
 
   it("removes the episodes panel and related drill-in affordances", async () => {
@@ -180,6 +183,7 @@ describe("Topic detail page — word_stats integration", () => {
     expect(html).toContain("Observations");
     expect(html).toContain('topic-observation-controls');
     expect(html).toContain('topic-tabs--controls');
+    expect(html).toContain('class="section-heading"');
     expect(html).toContain('data-topic-observation-nav="sort"');
     expect(html).toContain('data-topic-observation-sort="newest"');
     expect(html).toContain('data-topic-observation-sort="oldest"');
@@ -187,6 +191,7 @@ describe("Topic detail page — word_stats integration", () => {
     expect(html).toContain("Newest first");
     expect(html).toContain("Oldest first");
     expect(html).toContain("<mark>llms</mark>");
+    expect(html).toContain('class="section-meta"');
     expect(html).toContain("Earlier framing");
     expect(html).toContain("Later framing");
     expect(html).not.toContain("Earlier focus");

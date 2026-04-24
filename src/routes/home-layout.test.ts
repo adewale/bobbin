@@ -12,6 +12,9 @@ async function seedHomepageData() {
     env.DB.prepare(
       "INSERT INTO episodes (source_id, slug, title, published_date, year, month, day, chunk_count, format) VALUES (1, '2026-03-30-older', 'Bits and Bobs 3/30/26', '2026-03-30', 2026, 3, 30, 1, 'notes')"
     ),
+    env.DB.prepare(
+      "INSERT INTO episodes (source_id, slug, title, published_date, year, month, day, chunk_count, format) VALUES (1, '2024-01-08-outside-window', 'Bits and Bobs 1/8/24', '2024-01-08', 2024, 1, 8, 1, 'notes')"
+    ),
     // Chunks for latest episode
     env.DB.prepare(
       "INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (1, 'insightful-comment-2026-04-06', 'An insightful HackerNews comment about code generation', '<p>An insightful comment</p>', 'An insightful comment', 0)"
@@ -26,12 +29,16 @@ async function seedHomepageData() {
     env.DB.prepare(
       "INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (2, 'older-chunk-2026-03-30', 'Older chunk', '<p>Older</p>', 'Older chunk', 0)"
     ),
+    env.DB.prepare(
+      "INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (3, 'outside-window-chunk-2024-01-08', 'Outside window chunk', '<p>Outside</p>', 'Outside window', 0)"
+    ),
     // Topics
     env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('llms', 'llms', 50)"),
     env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('agent', 'agent', 30)"),
     env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('chatgpt', 'chatgpt', 20)"),
     env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('swarm', 'swarm', 15)"),
     env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('ecosystem', 'ecosystem', 10)"),
+    env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('archive-only', 'archive-only', 5)"),
     // Link topics to latest episode
     env.DB.prepare("INSERT INTO episode_topics (episode_id, topic_id) VALUES (1, 1)"),
     env.DB.prepare("INSERT INTO episode_topics (episode_id, topic_id) VALUES (1, 2)"),
@@ -39,6 +46,7 @@ async function seedHomepageData() {
     env.DB.prepare("INSERT INTO episode_topics (episode_id, topic_id) VALUES (1, 4)"),
     env.DB.prepare("INSERT INTO episode_topics (episode_id, topic_id) VALUES (1, 5)"),
     env.DB.prepare("INSERT INTO episode_topics (episode_id, topic_id) VALUES (2, 1)"),
+    env.DB.prepare("INSERT INTO episode_topics (episode_id, topic_id) VALUES (3, 6)"),
     // Link topics to chunks
     env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 1)"),
     env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 2)"),
@@ -60,6 +68,7 @@ describe("Homepage latest episode panel", () => {
     expect(res.status).toBe(200);
     expect(html).toContain("latest-episode-panel");
     expect(html).toContain("body-panel");
+    expect(html).toContain('class="section-heading"');
   });
 
   it("shows episode title and chunk titles in the latest panel", async () => {
@@ -128,6 +137,10 @@ describe("Homepage margin layout", () => {
     expect(html).toContain("Recent Episodes");
     expect(html).toContain("Novel Topic History");
     expect(html).toContain('class="rail-sparkline"');
+    expect(html).toContain('class="section-meta section-meta-row section-meta--after"');
+    expect(html).toContain("Latest");
+    expect(html).toContain("Peak");
+    expect(html).not.toContain("Bits and Bobs 1/8/24: 1 new topic");
   });
 
   it("uses header search as the homepage's primary search affordance", async () => {

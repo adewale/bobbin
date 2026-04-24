@@ -34,6 +34,11 @@ describe("Layout CSS invariants", () => {
 
   it("defines a shared wide container and a single-column page shell", () => {
     expect(styles).toMatch(/:root\s*\{[^}]*--max-width-wide:\s*62rem;/s);
+    expect(styles).toMatch(/:root\s*\{[^}]*--rail-title-color:\s*var\(--text-light\);/s);
+    expect(styles).toMatch(/:root\s*\{[^}]*--rail-link-color:\s*var\(--text\);/s);
+    expect(styles).toMatch(/:root\s*\{[^}]*--rail-link-hover:\s*var\(--accent-dark\);/s);
+    expect(styles).toMatch(/:root\s*\{[^}]*--rail-meta-color:\s*var\(--text-light\);/s);
+    expect(styles).toMatch(/:root\s*\{[^}]*--rail-signal-color:\s*var\(--viz\);/s);
     expect(styles).toMatch(/\.main-wide\s*\{[^}]*max-width:\s*var\(--max-width-wide\);/s);
     expect(styles).toMatch(/\.page-shell\s*\{[^}]*max-width:\s*var\(--page-shell-max,\s*var\(--max-width-wide\)\);/s);
     expect(styles).toMatch(/\.page-body-single\s*\{[^}]*max-width:\s*var\(--page-content-max,\s*var\(--max-width\)\);/s);
@@ -60,12 +65,39 @@ describe("Layout CSS invariants", () => {
     expect(styles).toMatch(/\.rail-stack\s*\{[^}]*--rail-link-color:\s*var\(--text\);/s);
     expect(styles).toMatch(/\.rail-stack\s*\{[^}]*--rail-link-hover:\s*var\(--accent-dark\);/s);
     expect(styles).toMatch(/\.rail-stack\s*\{[^}]*--rail-meta-color:\s*var\(--text-light\);/s);
-    expect(styles).toMatch(/\.rail-stack\s*\{[^}]*--rail-signal-color:\s*var\(--viz\);/s);
   });
 
   it("reuses the underline navigation treatment for topic controls", () => {
     expect(styles).toMatch(/\.topic-tabs--controls\s*\{[^}]*margin:\s*0;[^}]*gap:\s*0\.75rem;/s);
     expect(styles).not.toContain(".topic-control-chip {");
+  });
+
+  it("defines shared section heading and meta utilities", () => {
+    expect(styles).toMatch(/\.section-heading\s*\{[^}]*font-family:\s*var\(--font-ui\);[^}]*text-transform:\s*uppercase;/s);
+    expect(styles).toMatch(/\.section-meta\s*\{[^}]*font-family:\s*var\(--font-ui\);[^}]*font-size:\s*var\(--text-caption\);/s);
+    expect(styles).toMatch(/\.section-meta-row\s*\{[^}]*display:\s*flex;[^}]*flex-wrap:\s*wrap;/s);
+  });
+
+  it("gives the episodes index the same main-item title scale as other primary content lists", () => {
+    expect(styles).toMatch(/\.page-with-rail\.browse-layout \.browse-episodes \.list-row-title\s*\{[^}]*font-family:\s*var\(--font-body\);[^}]*font-size:\s*var\(--text-body\);[^}]*font-weight:\s*400;/s);
+  });
+
+  it("aligns search-result and observation titles with the episodes browse-row title scale", () => {
+    expect(styles).toMatch(/\.chunk-card h3,[^}]*\.topic-observation-card h3\s*\{[^}]*font-family:\s*var\(--font-body\);[^}]*font-size:\s*var\(--text-body\);[^}]*font-weight:\s*400;[^}]*line-height:\s*1\.45;/s);
+  });
+
+  it("uses the editorial browse-row title family on the topics index widgets", () => {
+    expect(styles).toMatch(/\.multiple-name\s*\{[^}]*font-family:\s*var\(--font-body\);[^}]*font-size:\s*var\(--text-body\);[^}]*font-weight:\s*400;[^}]*line-height:\s*1\.45;/s);
+  });
+
+  it("keeps recent episode counts in the shared UI metadata font", () => {
+    expect(styles).toMatch(/\.recent-episodes \.recent-ep-link span\s*\{[^}]*font-size:\s*var\(--text-caption\);[^}]*font-family:\s*var\(--font-ui\);/s);
+  });
+
+  it("uses one muted support-text role across the topic header cluster", () => {
+    expect(styles).toMatch(/\.topic-header-stats\s*\{[^}]*color:\s*var\(--text-muted\);/s);
+    expect(styles).toMatch(/\.topic-distinctiveness\s*\{[^}]*color:\s*var\(--text-muted\);/s);
+    expect(styles).toMatch(/\.topic-related-label\s*\{[^}]*color:\s*var\(--text-muted\);/s);
   });
 
   it("removes dead legacy visualization and rail selectors", () => {

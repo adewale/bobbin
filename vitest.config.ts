@@ -9,6 +9,8 @@ export default defineConfig({
     }),
   ],
   test: {
-    exclude: ["e2e/**", "node_modules/**", "src/**/distinctiveness.test.ts", ".claude/**"],
+    minWorkers: 1,
+    maxWorkers: 4,
+    exclude: ["e2e/**", "node_modules/**", "src/**/distinctiveness.test.ts", "src/routes/real-data.test.ts", "src/services/real-data.test.ts", "src/services/source-fidelity.corpus.test.tsx", ".claude/**"],
   },
 });

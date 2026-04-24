@@ -81,21 +81,22 @@ test.describe("Navigation", () => {
     await expect(h1).toContainText("Topic:");
   });
 
-  test('search for "ecosystem" -> results appear', async ({ page }) => {
+  test('search for "ChatGPT" -> results appear', async ({ page }) => {
     await page.goto("/search", { waitUntil: "domcontentloaded" });
 
     // Fill in the search form
-    const searchInput = page.locator('input[name="q"]');
+    const searchForm = page.locator(".search-form");
+    const searchInput = searchForm.locator('input[name="q"]');
     await expect(searchInput).toBeVisible();
-    await searchInput.fill("ecosystem");
+    await searchInput.fill("ChatGPT");
 
     // Submit the form
-    const submitButton = page.locator('button[type="submit"]');
+    const submitButton = searchForm.locator('button[type="submit"]');
     await submitButton.click();
     await page.waitForLoadState("domcontentloaded");
 
     // URL should include the query param
-    expect(page.url()).toContain("q=ecosystem");
+    expect(page.url()).toContain("q=ChatGPT");
 
     // Results section should appear
     const resultsSection = page.locator(".search-results");
@@ -103,7 +104,7 @@ test.describe("Navigation", () => {
 
     // Should show at least one result
     const summary = resultsSection.locator("p").first();
-    await expect(summary).toContainText("ecosystem");
-    await expect(summary).not.toContainText("0 results");
+    await expect(summary).toContainText(/^[1-9][0-9]* results? for/u);
+    await expect(summary).toContainText("ChatGPT");
   });
 });

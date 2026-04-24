@@ -4,6 +4,8 @@ import { defineConfig } from "vitest/config";
 // Run with: npx vitest run --config vitest.node.config.ts
 export default defineConfig({
   test: {
+    minWorkers: 1,
+    maxWorkers: 1,
     include: [
       "src/**/real-data.test.ts",
       "src/**/distinctiveness.test.ts",

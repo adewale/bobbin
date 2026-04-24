@@ -71,6 +71,8 @@ describe("GET /episodes", () => {
     const html = await res.text();
     expect(html).toContain("Episodes");
     expect(html).toContain("Bits and Bobs 4/8/24");
+    expect(html).toContain('class="page-preamble hero"');
+    expect(html).toContain("2 episodes from 2024-03-25 to 2024-04-08");
   });
 });
 

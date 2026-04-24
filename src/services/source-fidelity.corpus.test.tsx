@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { renderToString } from "hono/jsx/dom/server";
 import { RichContent } from "../components/RichContent";
 import { decodeHtmlEntities } from "../lib/html";
@@ -38,14 +38,12 @@ function isSubsequence(expected: string[], received: string[]): boolean {
 }
 
 const DOCS = [
-  "1IPwKwmEgrL6R2lVe9IaPIu0sPB4O_ZNy8ZA0N0W3yw0.html",
-  "1WC16fr5iEwzpK8u11yvYd6cCHPvq6Ce4WnrkpJ49vYw.html",
-  "1xRiCqpy3LMAgEsHdX-IA23j6nUISdT5nAJmtKbk9wNA.html",
+  fileURLToPath(new URL("../../data/raw/1IPwKwmEgrL6R2lVe9IaPIu0sPB4O_ZNy8ZA0N0W3yw0.html", import.meta.url)),
+  fileURLToPath(new URL("../../data/raw/1WC16fr5iEwzpK8u11yvYd6cCHPvq6Ce4WnrkpJ49vYw.html", import.meta.url)),
+  fileURLToPath(new URL("../../data/raw/1xRiCqpy3LMAgEsHdX-IA23j6nUISdT5nAJmtKbk9wNA.html", import.meta.url)),
 ];
 
-const hasLocalData = existsSync(join(process.cwd(), "data/raw", DOCS[0]));
-
-describe.skipIf(!hasLocalData)("source fidelity corpus rendering", () => {
+describe("source fidelity corpus rendering", () => {
   it("renders every richly formatted chunk into semantically correct HTML", () => {
     let chunksWithLinks = 0;
     let chunksWithSuperscript = 0;
@@ -55,7 +53,7 @@ describe.skipIf(!hasLocalData)("source fidelity corpus rendering", () => {
     let chunksWithNestedLists = 0;
 
     for (const doc of DOCS) {
-      const html = readFileSync(join(process.cwd(), "data/raw", doc), "utf8");
+      const html = readFileSync(doc, "utf8");
       const episodes = parseHtmlDocument(html);
       for (const episode of episodes) {
         for (const chunk of episode.chunks) {

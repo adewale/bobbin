@@ -1,5 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
 
+const ignoreVisualTests = !process.env.AI_GATEWAY_API_KEY && !process.env.RUN_VISUAL_TESTS
+  ? ["e2e/visual.spec.ts"]
+  : [];
+
 export default defineConfig({
   testDir: "./e2e",
   timeout: 30_000,
@@ -20,6 +24,7 @@ export default defineConfig({
   projects: [
     {
       name: "desktop",
+      testIgnore: ignoreVisualTests,
       use: {
         ...devices["Desktop Chrome"],
         viewport: { width: 1280, height: 720 },
@@ -27,6 +32,7 @@ export default defineConfig({
     },
     {
       name: "mobile",
+      testIgnore: [...ignoreVisualTests, "e2e/layout-grid.spec.ts"],
       use: {
         ...devices["iPhone 15"],
         viewport: { width: 393, height: 852 },

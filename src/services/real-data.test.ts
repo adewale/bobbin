@@ -3,28 +3,28 @@
  * No mocks. These verify the actual parsing pipeline produces correct results.
  */
 import { describe, it, expect } from "vitest";
-import { readFileSync, existsSync } from "node:fs";
 import fc from "fast-check";
 import { extractDocLinksFromHtml, parseHtmlDocument } from "./html-parser";
 import type { ParsedEpisode } from "../types";
-
-// Skip entire file if local data isn't available (CI environment)
-const DATA_DIR = "data/raw";
-const hasData = existsSync(DATA_DIR);
+import archiveEssaysHtml from "../../data/raw/1IPwKwmEgrL6R2lVe9IaPIu0sPB4O_ZNy8ZA0N0W3yw0.html?raw";
+import archiveNotesHtml from "../../data/raw/1WC16fr5iEwzpK8u11yvYd6cCHPvq6Ce4WnrkpJ49vYw.html?raw";
+import currentHtml from "../../data/raw/1xRiCqpy3LMAgEsHdX-IA23j6nUISdT5nAJmtKbk9wNA.html?raw";
+import emptyHtml from "../../data/raw/1x8z6k07JqXTVIRVNr1S_7wYVl5L7IpX14gXxU1UBrGk.html?raw";
 
 const DOCS = [
-  { file: "1IPwKwmEgrL6R2lVe9IaPIu0sPB4O_ZNy8ZA0N0W3yw0.html", label: "archive-essays" },
-  { file: "1WC16fr5iEwzpK8u11yvYd6cCHPvq6Ce4WnrkpJ49vYw.html", label: "archive-notes" },
-  { file: "1xRiCqpy3LMAgEsHdX-IA23j6nUISdT5nAJmtKbk9wNA.html", label: "current" },
-  { file: "1x8z6k07JqXTVIRVNr1S_7wYVl5L7IpX14gXxU1UBrGk.html", label: "empty" },
+  { file: "1IPwKwmEgrL6R2lVe9IaPIu0sPB4O_ZNy8ZA0N0W3yw0.html", label: "archive-essays", html: archiveEssaysHtml },
+  { file: "1WC16fr5iEwzpK8u11yvYd6cCHPvq6Ce4WnrkpJ49vYw.html", label: "archive-notes", html: archiveNotesHtml },
+  { file: "1xRiCqpy3LMAgEsHdX-IA23j6nUISdT5nAJmtKbk9wNA.html", label: "current", html: currentHtml },
+  { file: "1x8z6k07JqXTVIRVNr1S_7wYVl5L7IpX14gXxU1UBrGk.html", label: "empty", html: emptyHtml },
 ];
 
 function loadDoc(file: string): ParsedEpisode[] {
-  const html = readFileSync(`${DATA_DIR}/${file}`, "utf-8");
-  return parseHtmlDocument(html);
+  const doc = DOCS.find((entry) => entry.file === file);
+  if (!doc) throw new Error(`Unknown doc fixture: ${file}`);
+  return parseHtmlDocument(doc.html);
 }
 
-describe.skipIf(!hasData)("Real data: episode counts", () => {
+describe("Real data: episode counts", () => {
   it("archive-essays doc produces 11 episodes", () => {
     expect(loadDoc(DOCS[0].file)).toHaveLength(11);
   });
@@ -47,7 +47,7 @@ describe.skipIf(!hasData)("Real data: episode counts", () => {
   });
 });
 
-describe.skipIf(!hasData)("Real data: format detection", () => {
+describe("Real data: format detection", () => {
   it("all 11 archive-essays episodes are detected as essays", () => {
     const episodes = loadDoc(DOCS[0].file);
     for (const ep of episodes) {
@@ -70,7 +70,7 @@ describe.skipIf(!hasData)("Real data: format detection", () => {
   });
 });
 
-describe.skipIf(!hasData)("Real data: chunk structure completeness", () => {
+describe("Real data: chunk structure completeness", () => {
   it("every episode has at least 1 chunk", () => {
     for (const doc of DOCS) {
       for (const ep of loadDoc(doc.file)) {
@@ -174,7 +174,7 @@ describe.skipIf(!hasData)("Real data: chunk structure completeness", () => {
   });
 });
 
-describe.skipIf(!hasData)("Real data: essay content richness", () => {
+describe("Real data: essay content richness", () => {
   it("essay chunks have ≥3 lines of content (main + sub-points)", () => {
     const episodes = loadDoc(DOCS[0].file);
     for (const ep of episodes) {
@@ -196,7 +196,7 @@ describe.skipIf(!hasData)("Real data: essay content richness", () => {
   });
 });
 
-describe.skipIf(!hasData)("Real data: notes content structure", () => {
+describe("Real data: notes content structure", () => {
   it("notes chunks average 1-5 lines (brief observations)", () => {
     const episodes = loadDoc(DOCS[2].file);
     const totalLines = episodes.reduce(
@@ -211,11 +211,10 @@ describe.skipIf(!hasData)("Real data: notes content structure", () => {
   });
 });
 
-describe.skipIf(!hasData)("Real data: document link extraction", () => {
+describe("Real data: document link extraction", () => {
   it("all extracted doc links are canonical, deduped Google Doc IDs", () => {
     for (const doc of DOCS) {
-      const html = readFileSync(`${DATA_DIR}/${doc.file}`, "utf-8");
-      const links = extractDocLinksFromHtml(html);
+      const links = extractDocLinksFromHtml(doc.html);
       expect(new Set(links).size).toBe(links.length);
       for (const link of links) {
         expect(link).toMatch(/^[A-Za-z0-9_-]{20,}$/);
@@ -224,21 +223,18 @@ describe.skipIf(!hasData)("Real data: document link extraction", () => {
   });
 
   it("the archive essays doc still contains the known cross-doc reference", () => {
-    const html = readFileSync(`${DATA_DIR}/${DOCS[0].file}`, "utf-8");
-    const links = extractDocLinksFromHtml(html);
+    const links = extractDocLinksFromHtml(DOCS[0].html);
     expect(links).toHaveLength(1);
     expect(links[0]).toMatch(/^[A-Za-z0-9_-]{20,}$/);
   });
 });
 
 // PBT: properties that hold across ALL parsed episodes from ALL docs
-describe.skipIf(!hasData)("PBT: universal parsing invariants on real data", () => {
+describe("PBT: universal parsing invariants on real data", () => {
   // Load all episodes once
   const allEpisodes: ParsedEpisode[] = [];
-  if (hasData) {
-    for (const doc of DOCS) {
-      allEpisodes.push(...loadDoc(doc.file));
-    }
+  for (const doc of DOCS) {
+    allEpisodes.push(...loadDoc(doc.file));
   }
 
   it("format is always 'essays' or 'notes'", () => {
