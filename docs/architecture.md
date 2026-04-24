@@ -1,5 +1,7 @@
 # Bobbin Architecture
 
+This file is the current route and system reference for Bobbin. Historical audits and research notes in `docs/audit-*` and `docs/research-*` may describe earlier route shapes or experiments.
+
 Bobbin is a searchable archive of Alex Komoroske's "Bits and Bobs" weekly newsletter, built on Cloudflare Workers.
 
 ## System overview
@@ -38,16 +40,17 @@ Google Docs (mobilebasic HTML)
 ### Content
 | Route | Purpose |
 |-------|---------|
-| `GET /` | Homepage: latest episode panel, margin layout with Recent Episodes + Popular Topics |
-| `GET /episodes` | Paginated episode list (20/page) |
+| `GET /` | Homepage: editorial preamble, latest panel, recent-episodes rail, popular topics, novel-topic history |
+| `GET /episodes` | Unified year/month episode browse with shared hero/tagline treatment |
 | `GET /episodes/:slug` | Episode detail with all chunks and topics |
-| `GET /chunks/:slug` | Chunk detail with cross-references as margin notes |
+| `GET /chunks/:slug` | Chunk detail with source-fidelity rendering, thread context, and topic rail panels |
+| `GET /design` | Shared component inventory and design-system examples |
 
 ### Browse
 | Route | Purpose |
 |-------|---------|
-| `GET /topics` | Topic grid: small multiples with sparklines, sorted by quality |
-| `GET /topics/:slug` | Topic detail: sparkline, dispersion plot, KWIC, slopegraph, episode timeline |
+| `GET /topics` | Topic small-multiples index with rail-style sparklines |
+| `GET /topics/:slug` | Topic detail with summary, over-time chart, observations, terminology drift, rank-over-time rail panel, and adjacent topics |
 
 ### Search
 | Route | Purpose |
@@ -59,6 +62,7 @@ Google Docs (mobilebasic HTML)
 | Route | Purpose |
 |-------|---------|
 | `GET /api/ingest?limit=N&doc=ID` | Fetch doc, parse, ingest N new episodes |
+| `GET /api/refresh` | Canonical refresh pipeline: ensure source, fetch, parse, ingest, enrich, finalize |
 | `GET /api/backfill-source?doc=ID&offset=N&limit=N&llm=0|1` | Reparse existing source and repair episode/chunk fidelity artifacts |
 | `GET /api/backfill-llm?doc=ID&limit=N` | Backfill missing episode-level LLM proposal caches |
 | `GET /api/embed?limit=N` | Batch-embed N chunks to Vectorize |
@@ -72,7 +76,6 @@ Google Docs (mobilebasic HTML)
 ### Reactive API (for client-side JS)
 | Route | Purpose |
 |-------|---------|
-| `GET /api/word-stats?from=&to=&limit=` | Word frequencies with date filtering |
 | `GET /api/topics?q=` | Topic name search (autocomplete) |
 
 ## Database schema
@@ -165,19 +168,19 @@ Fallback chain: FTS5 + Vectorize → FTS5 only → LIKE keyword search
 src/
   index.tsx              Entry point, route registration, scheduled + queue handlers
   types.ts               Bindings, DB row types, parsed types
-  components/            JSX components (Layout, EpisodeCard, ChunkCard, TopicCloud, etc.)
+  components/            JSX components (Layout, TopicHeader, TopicChartPanel, TopicRailList, TopicStrip, etc.)
   routes/                Hono sub-routers (home, episodes, chunks, topics, search, api)
   services/              Domain logic (search, YAKE extraction, entity detection, text similarity, n-grams)
   jobs/                  Pipeline operations (ingest, refresh, queue-handler)
-  db/                    Database query functions (episodes, chunks, topics, word-stats, search)
+  db/                    Database query functions (episodes, chunks, topics, search, word stats)
   data/                  Static data (known-entities.ts)
   lib/                   Pure utilities (slug, date, text, html, query-parser, entity-aliases)
   crawler/               Google Docs fetcher
 migrations/              D1 schema migrations (0001-0009)
-scripts/                 Operational tooling:
-                           run-refresh.sh (mirrors cron), run-enrichment.sh (enrich only),
-                           local-pipeline.ts (full local E2E), analyze-topics.ts (corpus analysis),
-                           cleanup-db.sh (one-time DB cleanup)
+  scripts/                 Operational tooling:
+                           seed-full-local-fixture.ts (canonical local fixture),
+                           audit-computed-values.mjs (browser computed-style audit),
+                           local-pipeline.ts (ingest/enrich/finalize), analyze-topics.ts (corpus analysis)
 public/                  Static assets (CSS, favicon.svg, robots.txt)
 test/                    Fixtures and helpers
 docs/                    Architecture and lessons learned
@@ -205,4 +208,4 @@ docs/                    Architecture and lessons learned
 8. **Resilient finalization**: 18 steps, each wrapped in `runStep()` with timing/error reporting. Continues on error, returns partial results. Batches by actual row IDs, not sparse ID ranges.
 9. **Queue-based parallelization**: Slow enrichment steps (n-gram assignment, related_slugs) dispatched to ENRICHMENT_QUEUE for parallel processing.
 10. **Wide event logging**: Canonical log lines for cron (`refresh` event) and queue (`queue_batch` event) with per-step timing.
-11. **Local development pipeline**: `scripts/local-pipeline.ts` runs full ingest→enrich→finalize against real data in <10s via `getPlatformProxy()`.
+11. **Local development pipeline**: `npm run fixture:local` seeds a representative local corpus and rail demo against the same `wrangler.jsonc` config the browser app uses.

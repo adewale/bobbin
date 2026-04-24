@@ -1,6 +1,6 @@
 # Bobbin
 
-A searchable, browsable archive of Alex Komoroske's [Bits and Bobs](https://komoroske.com/bits-and-bobs) weekly observations. Built on Cloudflare Workers.
+A searchable, browsable archive of Alex Komoroske's [Bits and Bobs](https://komoroske.com/bits-and-bobs) weekly observations, built on Cloudflare Workers.
 
 **Live:** [bobbin.adewale-883.workers.dev](https://bobbin.adewale-883.workers.dev)
 
@@ -8,11 +8,11 @@ A searchable, browsable archive of Alex Komoroske's [Bits and Bobs](https://komo
 
 Komoroske publishes 30–70 standalone observations each week about AI, software, ecosystems, and technology. Bobbin ingests this content from Google Docs, parses it into individual observations, and provides:
 
-- **Hybrid search** — FTS5 + Vectorize semantic search with `before:`, `after:`, `year:`, and `"exact phrase"` operators
-- **Concordance** — word distinctiveness analysis with inline sparklines showing temporal trends
-- **Tags** — TF-IDF scored with named entity detection (Claude Code, Stratechery, Goodhart's Law)
-- **Timeline** — browse by year/month with essay vs notes format detection
-- **Cross-references** — "more on this topic" links between observations across episodes
+- **Hybrid search** — FTS5 + Vectorize semantic search with `before:`, `after:`, `year:`, `topic:`, and `"exact phrase"` operators
+- **Archive browsing** — grouped episode browsing plus topic pages that show how attention shifts across the corpus
+- **Source fidelity** — chunk and episode detail pages render stored rich-content artifacts, footnotes, links, and images directly
+- **Shared editorial UI** — home, episodes, topics, and design surfaces all reuse the same layout, section-heading, and rail patterns
+- **Local verification workflow** — fixture seeding, browser-level checks, and computed-style audits for local development
 
 ## Quick start
 
@@ -55,11 +55,17 @@ The fixture script prints a set of recommended URLs that exercise the main user-
 - search
 - design inventory
 
+There is also a repeatable computed-style/browser audit for the current local app:
+
+```bash
+npm run audit:computed
+```
+
 If the local database is empty, the app will show an in-product setup hint that points back to `npm run fixture:local`.
 
 ## Architecture
 
-Cloudflare Workers with Hono SSR. D1 for structured data, Vectorize for semantic search, Workers AI for embeddings.
+Cloudflare Workers with Hono SSR. D1 for structured data, Vectorize for semantic search, Workers AI for embeddings, and Cloudflare Queues for background enrichment/finalization work.
 
 ```
 Google Docs → fetch → parse → D1 + Vectorize
@@ -69,6 +75,14 @@ Google Docs → fetch → parse → D1 + Vectorize
 
 See [docs/architecture.md](docs/architecture.md) for the full system design.
 
+Current design, architecture, and search docs:
+
+- [docs/architecture.md](docs/architecture.md)
+- [docs/design.md](docs/design.md)
+- [docs/search.md](docs/search.md)
+
+Historical research, audits, and specs in `docs/audit-*`, `docs/research-*`, and `specs/*` are retained as background material rather than current source-of-truth documentation.
+
 Extractor tuning and characterization notes:
 
 - [docs/yaket-bobbin-tuning.md](docs/yaket-bobbin-tuning.md)
@@ -76,10 +90,11 @@ Extractor tuning and characterization notes:
 ## Testing
 
 ```bash
-npm test              # 273 vitest tests (Workers pool)
-npm run test:real     # 34 tests against cached Google Doc HTML
-npm run test:e2e      # 8 Playwright tests (desktop + mobile)
-npm run test:all      # all of the above
+npm test              # workers-runtime Vitest suites
+npm run test:real     # node/runtime corpus and CSS invariant suites
+npm run test:e2e      # Playwright browser suite against BASE_URL/local server
+npm run test:visual   # opt-in AI visual checks; requires AI_GATEWAY_API_KEY
+npm run test:all      # workers + node Vitest suites
 ```
 
 ## Search operators

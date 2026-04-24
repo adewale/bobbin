@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { AppEnv, EpisodeRow, ChunkRow, TopicRow } from "../types";
 import { BrowseRow, BrowseRowList, BrowseSection, BrowseSubsection } from "../components/BrowseIndex";
 import { EmptyArchiveState } from "../components/EmptyArchiveState";
+import { HelpTip } from "../components/HelpTip";
 import { Layout } from "../components/Layout";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { RichContent, RichFootnotes, parseFootnotesJson, parseRichContentJson } from "../components/RichContent";
@@ -11,15 +12,6 @@ import { collectExternalLinks } from "../lib/episode-rail";
 import { getAdjacentEpisodes, getAllEpisodesGrouped, getChunksByEpisode, getEpisodeBySlug, getEpisodeRailInsights, getEpisodeTopicsBlended } from "../db/episodes";
 
 const episodes = new Hono<AppEnv>();
-
-function HelpTip(props: { label: string; text: string }) {
-  return (
-    <details class="topic-help-tip">
-      <summary aria-label={props.label} title={props.label}>?</summary>
-      <div class="topic-help-tip-bubble" role="note">{props.text}</div>
-    </details>
-  );
-}
 
 // Unified browse: timeline + episode list in one page
 episodes.get("/", async (c) => {

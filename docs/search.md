@@ -1,6 +1,6 @@
 # Search
 
-Bobbin uses hybrid search: lexical full-text search (FTS5) fused with semantic vector search (Vectorize), merged via weighted reciprocal rank fusion. Search is topic-aware — it boosts results assigned to matching topics and expands entity aliases automatically.
+Bobbin uses hybrid search: lexical full-text search (FTS5) fused with semantic vector search (Vectorize), then merged with a weighted score blend. Search is topic-aware: it boosts results assigned to matching topics and expands entity aliases automatically.
 
 ## Query language
 
@@ -69,7 +69,7 @@ Multi-word aliases are individually quoted for FTS5: `"simon willison" OR willis
 
 ### Topic filter
 
-`topic:slug` resolves the slug to a topic ID and adds a WHERE clause filtering to chunks in `chunk_topics`. Multiple topic filters intersect (chunks must have ALL specified topics).
+`topic:slug` resolves the slug to a topic ID and adds a WHERE clause filtering to chunks in `chunk_topics`. Multiple topic filters intersect.
 
 ## Fallback chain
 
@@ -88,7 +88,7 @@ The LIKE fallback strips FTS5 operators and quotes before matching, falling back
 | File | Responsibility |
 |------|---------------|
 | `src/lib/query-parser.ts` | Parse query string into operators + free text |
-| `src/services/search.ts` | FTS5 search, merge/rerank |
+| `src/services/search.ts` | FTS5 search and weighted merge/rerank |
 | `src/services/search-topics.ts` | Topic boost + topic filter |
 | `src/lib/entity-aliases.ts` | Entity alias expansion |
 | `src/data/known-entities.ts` | Curated entity list with aliases |

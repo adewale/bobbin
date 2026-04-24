@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../types";
 import { BrowseRow } from "../components/BrowseIndex";
+import { HelpTip } from "../components/HelpTip";
 import { Layout } from "../components/Layout";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { RichContent, RichFootnotes, parseFootnotesJson, parseRichContentJson } from "../components/RichContent";
@@ -11,15 +12,6 @@ import { getChunkBySlug, getChunkTopics, getRelatedByTopics, getThreadChunks, ge
 import { getEpisodeTopicsBlended } from "../db/episodes";
 
 const chunks = new Hono<AppEnv>();
-
-function HelpTip(props: { label: string; text: string }) {
-  return (
-    <details class="topic-help-tip">
-      <summary aria-label={props.label} title={props.label}>?</summary>
-      <div class="topic-help-tip-bubble" role="note">{props.text}</div>
-    </details>
-  );
-}
 
 chunks.get("/:slug", async (c) => {
   const slug = c.req.param("slug");

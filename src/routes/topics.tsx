@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../types";
 import { EmptyArchiveState } from "../components/EmptyArchiveState";
+import { HelpTip } from "../components/HelpTip";
 import { Layout } from "../components/Layout";
 import { TopicChartPanel } from "../components/TopicChartPanel";
 import { TopicHeader } from "../components/TopicHeader";
@@ -22,15 +23,6 @@ function buildTopicPath(slug: string, params: { sort?: string; page?: number }) 
 
   const query = search.toString();
   return query ? `/topics/${slug}?${query}` : `/topics/${slug}`;
-}
-
-function HelpTip(props: { label: string; text: string }) {
-  return (
-    <details class="topic-help-tip">
-      <summary aria-label={props.label} title={props.label}>?</summary>
-      <div class="topic-help-tip-bubble" role="note">{props.text}</div>
-    </details>
-  );
 }
 
 topics.get("/", async (c) => {

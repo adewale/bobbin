@@ -2,6 +2,8 @@
 
 **Date:** 2026-04-12
 
+Historical note: several items below have since been resolved or superseded. For example, `batchExec` is now shared under `src/lib/db.ts`, and the `/word-stats` page no longer exists as a current product surface.
+
 ## 1. Duplicated Code
 
 ### 1a. `batchExec` -- 3 identical copies (HIGH)

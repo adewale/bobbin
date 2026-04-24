@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-04-24 — Shared archive surfaces, local verification, and test stabilization
+
+### Changed
+- Home, episodes, and topics now share the same editorial preamble/tagline treatment.
+- Topic small-multiple sparklines now use the same rail-aligned signal treatment as the newer chart panels.
+- `/design` expanded into a real component catalogue and shared-surface inventory.
+- Playwright smoke/navigation/layout tests now target current local routes and fixture URLs instead of stale preview-only surfaces.
+- Workers and Node Vitest suites are split more explicitly by runtime so filesystem-heavy corpus tests no longer fail under the Workers pool.
+
+### Added
+- `npm run audit:computed` for repeatable browser-level computed-style audits.
+- Shared UI primitives: `HelpTip`, `TopicHeader`, `TopicChartPanel`, `TopicRailList`, `TopicStrip`, `EmptyArchiveState`.
+- Canonical full-product local fixture workflow documented around `npm run fixture:local` and `npm run dev:9090`.
+
+### Fixed
+- `/topics` sparklines rendering invisibly when rail chart tokens were used outside `.rail-stack`.
+- Refresh tests timing out on live network/LLM work by adding test hooks for fetch and LLM enrichment.
+- Full-suite test instability from stale smoke assumptions, duplicate layout-grid scheduling, and overly parallelized runtime mixes.
+
+---
+
 ## 2026-04-14 — YAKE migration + finalization fix
 
 The biggest pipeline overhaul since the initial build. Replaced the topic extraction

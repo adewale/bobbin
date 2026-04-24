@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { AppEnv } from "../types";
 import { BrowseRow } from "../components/BrowseIndex";
 import { EmptyArchiveState } from "../components/EmptyArchiveState";
+import { HelpTip } from "../components/HelpTip";
 import { Layout } from "../components/Layout";
 import { TopicChartPanel } from "../components/TopicChartPanel";
 import { TopicRailList } from "../components/TopicRailList";
@@ -11,15 +12,6 @@ import { getTopTopics } from "../db/topics";
 import { getMostConnected } from "../db/word-stats";
 
 const home = new Hono<AppEnv>();
-
-function HelpTip(props: { label: string; text: string }) {
-  return (
-    <details class="topic-help-tip">
-      <summary aria-label={props.label} title={props.label}>?</summary>
-      <div class="topic-help-tip-bubble" role="note">{props.text}</div>
-    </details>
-  );
-}
 
 home.get("/", async (c) => {
   const [episodes, topics, connected, novelTopicHistory] = await Promise.all([

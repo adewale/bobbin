@@ -17,8 +17,11 @@ test.describe("Navigation", () => {
     const href = await episodeLink.getAttribute("href");
     expect(href).toMatch(/^\/episodes\//);
 
-    await episodeLink.click();
-    await page.waitForLoadState("domcontentloaded");
+    await Promise.all([
+      page.waitForURL(/\/episodes\/[^/]+$/),
+      episodeLink.click(),
+    ]);
+    await page.waitForLoadState("networkidle");
 
     // Should not be a 404
     const h1 = page.locator("h1").first();
@@ -36,8 +39,11 @@ test.describe("Navigation", () => {
 
     // Navigate to the first episode
     const episodeLink = page.locator(".browse-episodes a").first();
-    await episodeLink.click();
-    await page.waitForLoadState("domcontentloaded");
+    await Promise.all([
+      page.waitForURL(/\/episodes\/[^/]+$/),
+      episodeLink.click(),
+    ]);
+    await page.waitForLoadState("networkidle");
 
     // Find a chunk link (in the TOC list or essay section)
     const chunkLink = page
@@ -45,8 +51,11 @@ test.describe("Navigation", () => {
       .first();
     await expect(chunkLink).toBeVisible();
 
-    await chunkLink.click();
-    await page.waitForLoadState("domcontentloaded");
+    await Promise.all([
+      page.waitForURL(/\/chunks\/[^/]+$/),
+      chunkLink.click(),
+    ]);
+    await page.waitForLoadState("networkidle");
 
     // Should not be a 404
     const h1 = page.locator("h1").first();
@@ -66,8 +75,11 @@ test.describe("Navigation", () => {
     const topicLink = page.locator('a[href^="/topics/"]').first();
     await expect(topicLink).toBeVisible();
 
-    await topicLink.click();
-    await page.waitForLoadState("domcontentloaded");
+    await Promise.all([
+      page.waitForURL(/\/topics\/[^/]+$/),
+      topicLink.click(),
+    ]);
+    await page.waitForLoadState("networkidle");
 
     // Should not be a 404
     const h1 = page.locator("h1").first();

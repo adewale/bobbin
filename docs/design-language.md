@@ -1,10 +1,12 @@
 Bobbin Design Language
 
-Philosophy: Tufte-influenced information density. Maximum data-ink ratio. Serif body text for reading, system sans-serif for UI chrome. The design trusts the content — no decorative elements, no hero images, no card shadows.
+Historical note: this file captures the design philosophy and token vocabulary. For the current route/component inventory, use `docs/design.md` and the in-app `/design` route.
+
+Philosophy: Tufte-influenced information density with a calmer editorial surface. Serif body text for reading, system sans-serif for UI chrome, restrained panels, and no ornamental effects.
 
 Color palette — warm neutrals with a single accent:
 - Text: #2c2c2c (near-black, never pure black)
-- Muted/light text: #6b6b6b, #999
+- Muted/light text: #6b6b6b, #707070
 - Background: #fdfcfa (warm off-white, not clinical white)
 - Warm surface: #f7f5f0 (header, cards, badges)
 - Accent: #c04000 (burnt orange) with light #fdf0e8 and dark #8b2e00 variants
@@ -14,11 +16,10 @@ Typography — three-font system:
 - Wordmark: Libre Franklin 700 — used for the "BOBBIN" site title in the header. Uppercase, letter-spacing 0.05em, accent-dark color. Loaded via Google Fonts.
 - Body: Georgia/Times New Roman (serif) at 18px, 1.7 line-height — optimized for long reading
 - UI: system sans-serif stack — for navigation, labels, metadata, counts
-- H1: serif, 1.75rem, italic, weight 400 — Tufte-style understated headings
-- H2: serif, 1.2rem, weight 400 — same understated treatment
-- H3: sans-serif, 0.95rem, weight 600 — functional subheadings
+- H1: serif display treatment for detail pages and `/design`
+- H2/H3: shared section and rail heading systems, with uppercase UI headings for most panels
 
-Layout: Single-column, 44rem max-width. Tufte margin notes on desktop (13rem side column via CSS grid). Collapses to inline on mobile. scrollbar-gutter: stable prevents layout shift.
+Layout: single-column reading width by default, with an opt-in wide container (`62rem`) and shared page-with-rail grid when side content is needed. Rail content collapses below the main column on mobile. `scrollbar-gutter: stable` prevents layout shift.
 
 Favicon: SVG "B" in Libre Franklin 700, accent-dark (#8b2e00), served as `/favicon.svg`.
 
@@ -28,11 +29,11 @@ Interaction patterns:
 - Topics as pills with hover state (border + background shift to accent)
 - Breadcrumb navigation with / separators
 - Active nav item: accent underline
-- Search icon in header (no text label), autofocus on search page
+- Search icon in header, with the page-level search form retained on the search route
 
 Animation: Deliberately restrained. All behind prefers-reduced-motion. Page fade-in (0.2s), accordion slide-down (0.15s opacity), tag/bar hover transitions (0.15s). No bounces, no springs, no attention-grabbing motion.
 
-Data visualization: Small multiples grid on the topics index (sparklines per topic). Topic detail pages show dispersion plots, sparklines with mean lines, slopegraphs, KWIC tables, and episode timelines. All use the accent color at low opacity for fills.
+Data visualization: Topics index uses small-multiple sparklines. Topic detail pages use `TopicChartPanel` for over-time and rank-over-time views. Shared sparkline signal now uses `--rail-signal-color`, not the accent colour.
 
 Mobile: 44px minimum touch targets. Header compresses (smaller font, tighter gaps). Margin notes become inline bordered blocks. Topics move below content.
 

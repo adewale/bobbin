@@ -1,40 +1,61 @@
 # Design
 
-## Colour scheme
+Bobbin's current design system is text-first, editorial, and heavily shared across routes. The canonical live inventory for these patterns is the `/design` route in the app itself.
 
-Warm editorial palette inspired by printed essay collections. The accent colour draws the eye without competing with the text.
-
-| Token | Value | Usage |
-|-------|-------|-------|
-| `--text` | `#2c2c2c` | Body text — soft black, easier to read than pure black |
-| `--text-muted` | `#6b6b6b` | Secondary text, metadata, dates |
-| `--text-light` | `#999` | Tertiary text, counts, labels |
-| `--bg` | `#fdfcfa` | Page background — warm off-white, not clinical white |
-| `--bg-card` | `#fff` | Card/panel backgrounds |
-| `--bg-warm` | `#f7f5f0` | Highlighted sections, header, panels — cream |
-| `--accent` | `#c04000` | Primary accent — burnt orange. Links, active states, bars, sparklines |
-| `--accent-light` | `#fdf0e8` | Accent tint for backgrounds, tag hover, highlights |
-| `--accent-dark` | `#8b2e00` | Accent shade for header logo, active nav |
-| `--border` | `#e8e4de` | Subtle warm grey borders |
-
-## Typography
+## Core tokens
 
 | Token | Value | Usage |
 |-------|-------|-------|
-| `--font-body` | Georgia, Times New Roman, serif | Body text, observation content, essays |
-| `--font-ui` | System sans-serif stack | Navigation, labels, metadata, tags, buttons |
-| `--font-mono` | SF Mono, Fira Code | Not currently used (reserved for code excerpts) |
+| `--text` | `#2c2c2c` | Primary reading text |
+| `--text-muted` | `#6b6b6b` | Support text, secondary descriptions |
+| `--text-light` | `#707070` | Labels, captions, tertiary meta |
+| `--bg` | `#fdfcfa` | Page background |
+| `--bg-card` | `#fff` | Inputs and white card surfaces |
+| `--bg-warm` | `#f7f5f0` | Shared panel and rail surface |
+| `--accent` | `#c04000` | Active state and emphasis |
+| `--accent-light` | `#fdf0e8` | Accent tint |
+| `--accent-dark` | `#8b2e00` | Header/logo emphasis |
+| `--viz` | `#5b6c7f` | Chart/sparkline signal colour |
+| `--rail-signal-color` | `var(--viz)` | Shared sparkline token across rail and non-rail charts |
+| `--border` | `#e8e4de` | Panel and divider borders |
 
-## Design principles
+## Typography roles
 
-1. **Content first** — the chunks are the product. Minimise chrome.
-2. **Tuftean data-ink** ��� every visual element should encode data. No decorative elements.
-3. **Consistent width** — 44rem max-width everywhere. No layout shift between pages.
-4. **Active nav** — current section underlined in the header. No breadcrumbs on top-level pages.
-5. **Progressive disclosure** — accordions for episode chunks, details/summary for topics on mobile.
-6. **Stable scrollbar** — `scrollbar-gutter: stable` prevents layout shift.
+| Role | Tokens | Current use |
+|------|--------|-------------|
+| Content/title serif | `--font-body` | chunk titles, topic titles, longform reading |
+| UI sans | `--font-ui` | nav, labels, controls, metadata, rail headings |
+| Section heading | `.section-heading` | shared uppercase heading treatment across panels |
+| Section metadata | `.section-meta`, `.section-meta-label` | shared range/mean/count/support text |
 
-## Page hierarchy
+## Current page structure
 
-**Top-level** (no breadcrumbs, no h1): /, /episodes, /topics, /search
-**Detail** (breadcrumbs, h1): /episodes/:slug, /chunks/:slug, /topics/:slug
+- **Top-level archive pages**: `/`, `/episodes`, `/topics`
+  - share `.page-preamble.hero`
+  - use `.page-tagline`
+  - typically avoid a large `h1`
+- **Search**: `/search`
+  - centers the page-level `SearchForm`
+  - uses chunk cards as the sole search-results presentation
+- **Detail pages**: `/episodes/:slug`, `/chunks/:slug`, `/topics/:slug`
+  - use breadcrumbs plus a real `h1`
+- **Design inventory**: `/design`
+  - intentionally has an `h1`
+  - shows the shared component catalogue and live component demos
+
+## Shared components
+
+- `TopicHeader`
+- `TopicChartPanel`
+- `TopicRailList`
+- `TopicStrip`
+- `EmptyArchiveState`
+- `BrowseSection`, `BrowseSubsection`, `BrowseRowList`, `BrowseRow`
+
+## Principles
+
+1. **Content first**: reading and archive scanning drive the layout.
+2. **Shared surfaces over page-specific chrome**: warm panels, rail panels, section headings, and meta rows repeat instead of route-specific widgets.
+3. **Editorial hierarchy**: primary titles use the content serif; labels and controls stay in the UI sans.
+4. **Accent restraint**: accent is for active state and emphasis, not every chart or link.
+5. **Deterministic local verification**: `/design`, the local fixture, and the computed-values audit all exist to make UI changes testable in a browser.

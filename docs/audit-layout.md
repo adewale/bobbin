@@ -2,6 +2,8 @@
 
 Audited 2026-04-12 against `docs/design-language.md` intent and `public/styles/main.css` implementation.
 
+Historical note: this audit predates the shared `page-preamble.hero`, `page-tagline`, and wide `page-with-rail` refactor. Treat the recommendations below as historical observations, not the current layout contract.
+
 ---
 
 ## 1. Homepage (`/`)
