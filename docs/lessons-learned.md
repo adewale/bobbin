@@ -620,3 +620,58 @@ The lesson is: **for UX work, fast removal is as valuable as fast addition**. A 
 53. Preserve intentionally distinctive structure when polishing a page; consistency is not the same as flattening everything into one pattern.
 54. Many CSS regressions come from incorrect selector assumptions about real DOM structure and specificity, not from missing declarations.
 55. UX iteration improves when additions and removals are both cheap; reversible experiments are a product-quality tool.
+
+## What we learned in the D1 hardening and migration-bootstrap pass
+
+The next round of work was less about product behavior and more about operational correctness. The visible bug was a D1 bind-limit failure, but the deeper lesson was that our local confidence had been built on the wrong things: tiny fixtures, handwritten schema bootstrap, and query shapes that only looked safe while the corpus was small.
+
+### Production D1 failures are often query-shape bugs, not "database flakiness"
+
+The key failures were deterministic:
+
+- oversized `IN (?, ?, ...)` lists
+- index-hostile `OR` predicates
+- lookups whose real predicates had drifted away from the available indexes
+
+Retrying those failures would only have replayed the same bad SQL. The real fix was to change the query shape: batch bounded ID lists, use subqueries/CTEs when batching would change semantics, and rewrite hot `OR` filters into planner-friendly unions.
+
+### Tiny test fixtures can hide exact-scale failures
+
+The `/topics` failure escaped because the test database and local persisted corpus were both much smaller than live. The code was not "sometimes broken". It was broken exactly when corpus cardinality crossed D1's practical statement limits.
+
+The lesson is broader than bind limits: **if a product's correctness depends on result-set size, topic density, or corpus width, then scale itself is part of the contract and needs explicit regression coverage**.
+
+### One migration chain must define reality
+
+The most important cleanup was removing the handwritten test schema and making tests/local bootstrap apply the checked-in migration chain directly. Until that happened, every test pass carried an asterisk: it proved the app worked against a similar schema, not necessarily the real one.
+
+The practical rule is simple: **schema drift is not a testing bug, it is a source-of-truth bug**. If migrations define production, migrations should also define tests and local repair paths.
+
+### `EXPLAIN QUERY PLAN` is part of verification, not optional archaeology
+
+Adding or rewriting indexes without checking the resulting plan leaves too much to assumption. The useful verification step was not just "the query still returns rows" but:
+
+- which index did SQLite/D1 actually choose?
+- did the query still force a temp B-tree sort?
+- did a supposed optimization still scan the table?
+
+That made several gaps obvious immediately, especially around audit tables, LLM evidence rows, and ordered episode/chunk lookups.
+
+### Retry policy has to distinguish transient errors from deterministic failures
+
+Queue consumers originally retried every failure. That is operationally convenient and logically wrong. A transient D1 reset or lock should retry. A deterministic SQL-shape error or application bug should not.
+
+The lesson is: **broad retry behavior hides root causes and amplifies bad work**. Retry logic should encode an opinion about which failures can plausibly succeed on the next attempt.
+
+### Environment isolation is part of database safety
+
+Preview/local config that points at the real database is not just a configuration smell. It is an operational footgun. The fix here was small, but the lesson is durable: **preview, local, test, and live bindings should make the safe choice the default choice**.
+
+### Updated lesson list
+
+56. D1 incidents that appear intermittent are often deterministic query-shape bugs triggered by real corpus cardinality.
+57. If correctness changes with corpus width or result-set size, scale must be part of the regression suite.
+58. A handwritten test schema is a second source of truth; eventually it will contradict production. Use the real migration chain everywhere you can.
+59. `EXPLAIN QUERY PLAN` belongs in the verification loop for schema and query changes, not only in postmortems.
+60. Retry only transient D1/infrastructure failures; deterministic SQL or application bugs should fail fast.
+61. Preview/local database isolation is part of correctness, not just deployment hygiene.
