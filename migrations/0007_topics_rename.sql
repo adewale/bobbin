@@ -38,6 +38,8 @@ CREATE INDEX IF NOT EXISTS idx_episode_topics_topic ON episode_topics(topic_id);
 CREATE INDEX IF NOT EXISTS idx_word_stats_count ON word_stats(total_count DESC);
 CREATE INDEX IF NOT EXISTS idx_word_stats_distinctiveness ON word_stats(distinctiveness DESC);
 
+PRAGMA optimize;
+
 -- Drop old tables
 DROP TABLE IF EXISTS episode_tags;
 DROP TABLE IF EXISTS chunk_tags;

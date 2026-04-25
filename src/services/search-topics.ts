@@ -1,5 +1,31 @@
 import type { ScoredResult } from "./search";
 
+function normalizeTopicSlugs(topicSlugs: readonly string[]): string[] {
+  return [...new Set(topicSlugs.map((slug) => slug.trim()).filter(Boolean))];
+}
+
+function topicChunkFilterSql(): string {
+  return `SELECT ct.chunk_id
+          FROM chunk_topics ct
+          JOIN topics t ON ct.topic_id = t.id
+          JOIN json_each(?) AS filter_topics ON t.slug = filter_topics.value
+          WHERE t.hidden = 0 AND t.display_suppressed = 0
+          GROUP BY ct.chunk_id
+          HAVING COUNT(DISTINCT t.id) = ?`;
+}
+
+export function buildTopicChunkFilterClause(chunkColumn: string, topicSlugs: readonly string[]) {
+  const normalizedTopicSlugs = normalizeTopicSlugs(topicSlugs);
+  if (normalizedTopicSlugs.length === 0) {
+    return { sql: "", binds: [] as unknown[] };
+  }
+
+  return {
+    sql: `AND ${chunkColumn} IN (${topicChunkFilterSql()})`,
+    binds: [JSON.stringify(normalizedTopicSlugs), normalizedTopicSlugs.length] as unknown[],
+  };
+}
+
 /**
  * Apply a score boost to search results that are assigned to a topic
  * matching the query text. Chunks where the concept is thematically
@@ -50,38 +76,12 @@ export async function applyTopicFilter(
   db: D1Database,
   topicSlugs: string[]
 ): Promise<number[]> {
-  if (topicSlugs.length === 0) return [];
+  const normalizedTopicSlugs = normalizeTopicSlugs(topicSlugs);
+  if (normalizedTopicSlugs.length === 0) return [];
 
-  // Resolve each slug to a topic ID
-  const topicIds: number[] = [];
-  for (const slug of topicSlugs) {
-      const topic = await db
-      .prepare("SELECT id FROM topics WHERE slug = ? AND hidden = 0 AND display_suppressed = 0")
-      .bind(slug)
-      .first<{ id: number }>();
-    if (!topic) return []; // If any topic doesn't exist, no results
-    topicIds.push(topic.id);
-  }
-
-  if (topicIds.length === 1) {
-    // Simple case: single topic
-    const chunks = await db
-      .prepare("SELECT chunk_id FROM chunk_topics WHERE topic_id = ?")
-      .bind(topicIds[0])
-      .all<{ chunk_id: number }>();
-    return chunks.results.map((r) => r.chunk_id);
-  }
-
-  // Intersection: chunks assigned to ALL specified topics
-  const placeholders = topicIds.map(() => "?").join(",");
   const chunks = await db
-    .prepare(
-      `SELECT chunk_id FROM chunk_topics
-       WHERE topic_id IN (${placeholders})
-       GROUP BY chunk_id
-       HAVING COUNT(DISTINCT topic_id) = ?`
-    )
-    .bind(...topicIds, topicIds.length)
+    .prepare(topicChunkFilterSql())
+    .bind(JSON.stringify(normalizedTopicSlugs), normalizedTopicSlugs.length)
     .all<{ chunk_id: number }>();
 
   return chunks.results.map((r) => r.chunk_id);

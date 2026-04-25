@@ -46,10 +46,18 @@ export async function getUnenrichedChunks(db: D1Database, limit: number) {
   // Also pick up chunks with outdated enrichment_version
   const { CURRENT_ENRICHMENT_VERSION } = await import("../jobs/ingest");
   const result = await db.prepare(
-    `SELECT c.id, c.episode_id, c.content_plain
-     FROM chunks c
-     WHERE c.enriched = 0 OR c.enrichment_version < ?
-     ORDER BY c.id DESC
+    `WITH pending_chunks AS (
+       SELECT c.id, c.episode_id, c.content_plain
+       FROM chunks c
+       WHERE c.enriched = 0
+       UNION
+       SELECT c.id, c.episode_id, c.content_plain
+       FROM chunks c
+       WHERE c.enriched != 0 AND c.enrichment_version < ?
+     )
+     SELECT id, episode_id, content_plain
+     FROM pending_chunks
+     ORDER BY id DESC
      LIMIT ?`
   ).bind(CURRENT_ENRICHMENT_VERSION, limit).all();
   return result.results as any[];
@@ -76,7 +84,11 @@ export async function resetEnrichmentFlags(db: D1Database) {
 export async function isEnrichmentDone(db: D1Database): Promise<boolean> {
   const { CURRENT_ENRICHMENT_VERSION } = await import("../jobs/ingest");
   const result = await db.prepare(
-    "SELECT COUNT(*) as c FROM chunks WHERE enriched = 0 OR enrichment_version < ?"
-  ).bind(CURRENT_ENRICHMENT_VERSION).first<{ c: number }>();
-  return (result?.c || 0) === 0;
+    `SELECT EXISTS(
+       SELECT 1 FROM chunks WHERE enriched = 0
+       UNION
+       SELECT 1 FROM chunks WHERE enriched != 0 AND enrichment_version < ?
+     ) as has_pending`
+  ).bind(CURRENT_ENRICHMENT_VERSION).first<{ has_pending: number }>();
+  return (result?.has_pending || 0) === 0;
 }

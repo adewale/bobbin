@@ -1,5 +1,5 @@
 import type { ParsedQuery } from "../lib/query-parser";
-import { applyTopicFilter } from "./search-topics";
+import { buildTopicChunkFilterClause } from "./search-topics";
 
 export interface BoostConfig {
   title: number;
@@ -76,11 +76,9 @@ export async function ftsSearch(
   let topicWhere = "";
   let topicBinds: any[] = [];
   if (parsed.topics && parsed.topics.length > 0) {
-    const allowedChunkIds = await applyTopicFilter(db, parsed.topics);
-    if (allowedChunkIds.length === 0) return [];
-    const placeholders = allowedChunkIds.map(() => "?").join(",");
-    topicWhere = `AND c.id IN (${placeholders})`;
-    topicBinds = allowedChunkIds;
+    const topicFilter = buildTopicChunkFilterClause("c.id", parsed.topics);
+    topicWhere = topicFilter.sql;
+    topicBinds = topicFilter.binds;
   }
 
   const results = await db
@@ -94,7 +92,7 @@ export async function ftsSearch(
        WHERE chunks_fts MATCH ?
        ${dateWhere}
        ${topicWhere}
-       ORDER BY rank
+       ORDER BY rank, e.published_date DESC, c.position DESC, c.id DESC
        LIMIT ?`
     )
     .bind(-boosts.title, -boosts.content, ftsQuery, ...dateBinds, ...topicBinds, limit)

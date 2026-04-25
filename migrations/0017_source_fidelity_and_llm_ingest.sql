@@ -47,3 +47,5 @@ CREATE TABLE llm_episode_candidate_evidence (
 CREATE INDEX IF NOT EXISTS idx_llm_enrichment_runs_episode ON llm_enrichment_runs(episode_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_llm_episode_candidates_episode_slug ON llm_episode_candidates(episode_id, slug);
 CREATE INDEX IF NOT EXISTS idx_llm_episode_candidate_evidence_candidate ON llm_episode_candidate_evidence(candidate_id);
+
+PRAGMA optimize;

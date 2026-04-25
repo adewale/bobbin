@@ -1,6 +1,6 @@
 /**
  * Local pipeline: runs the full ingest → enrich → finalize loop against real
- * HTML data using the same local D1 database that wrangler.local.jsonc-backed
+ * HTML data using the same local D1 database that wrangler.jsonc-backed
  * dev servers use (via Miniflare/getPlatformProxy).
  *
  * Usage:
@@ -8,18 +8,105 @@
  *   npx tsx scripts/local-pipeline.ts 10         # 10 episodes
  *   npx tsx scripts/local-pipeline.ts all        # all episodes
  *   npx tsx scripts/local-pipeline.ts 5 --clean  # wipe local DB first
- *   npx tsx scripts/local-pipeline.ts all --config wrangler.local.jsonc
+ *   npx tsx scripts/local-pipeline.ts all --config wrangler.jsonc
  *
  * The local D1 persists at .wrangler/state/v3/d1/ — you can inspect it with:
- *   npx wrangler d1 execute bobbin-db --local --config wrangler.local.jsonc --command "SELECT ..."
+ *   npx wrangler d1 execute bobbin-db --local --config wrangler.jsonc --command "SELECT ..."
  */
 import { getPlatformProxy } from "wrangler";
 import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { parseHtmlDocument } from "../src/services/html-parser";
 import { ingestEpisodesOnly, enrichAllChunks, finalizeEnrichment } from "../src/jobs/ingest";
 import { ensureSource } from "../src/db/sources";
 import { LOCAL_DEV_WRANGLER_CONFIG_PATH } from "../src/lib/local-dev-config";
-import { applyTestMigrations } from "../test/helpers/migrations";
+
+const RESET_STATEMENTS = [
+  "DROP TRIGGER IF EXISTS chunks_ai",
+  "DROP TRIGGER IF EXISTS chunks_ad",
+  "DROP TRIGGER IF EXISTS chunks_au",
+  "DROP TABLE IF EXISTS chunks_fts",
+  "DROP TABLE IF EXISTS episode_artifact_chunks",
+  "DROP TABLE IF EXISTS source_html_chunks",
+  "DROP TABLE IF EXISTS llm_episode_candidate_evidence",
+  "DROP TABLE IF EXISTS llm_episode_candidates",
+  "DROP TABLE IF EXISTS llm_enrichment_runs",
+  "DROP TABLE IF EXISTS pipeline_stage_metrics",
+  "DROP TABLE IF EXISTS pipeline_runs",
+  "DROP TABLE IF EXISTS topic_lineage_archive",
+  "DROP TABLE IF EXISTS topic_merge_audit",
+  "DROP TABLE IF EXISTS topic_candidate_audit",
+  "DROP TABLE IF EXISTS phrase_lexicon",
+  "DROP TABLE IF EXISTS chunk_words",
+  "DROP TABLE IF EXISTS word_stats",
+  "DROP TABLE IF EXISTS episode_topics",
+  "DROP TABLE IF EXISTS chunk_topics",
+  "DROP TABLE IF EXISTS topics",
+  "DROP TABLE IF EXISTS episode_tags",
+  "DROP TABLE IF EXISTS chunk_tags",
+  "DROP TABLE IF EXISTS tags",
+  "DROP TABLE IF EXISTS concordance",
+  "DROP TABLE IF EXISTS chunks",
+  "DROP TABLE IF EXISTS episodes",
+  "DROP TABLE IF EXISTS ingestion_log",
+  "DROP TABLE IF EXISTS sources",
+];
+
+async function applyLocalMigrations(db: D1Database) {
+  function splitSqlStatements(sql: string): string[] {
+    const statements: string[] = [];
+    const lines = sql
+      .split("\n")
+      .filter((line) => !line.trim().startsWith("--"));
+
+    let current: string[] = [];
+    let inTrigger = false;
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+
+      if (/^CREATE\s+TRIGGER\b/i.test(trimmed)) {
+        inTrigger = true;
+      }
+
+      current.push(line);
+
+      if (inTrigger) {
+        if (/^END;$/i.test(trimmed)) {
+          statements.push(current.join("\n").trim());
+          current = [];
+          inTrigger = false;
+        }
+        continue;
+      }
+
+      if (trimmed.endsWith(";")) {
+        statements.push(current.join("\n").trim());
+        current = [];
+      }
+    }
+
+    if (current.length > 0) {
+      statements.push(current.join("\n").trim());
+    }
+
+    return statements;
+  }
+
+  const migrationDir = join(process.cwd(), "migrations");
+  const migrationSql = readdirSync(migrationDir)
+    .filter((fileName) => fileName.endsWith(".sql"))
+    .sort((left, right) => left.localeCompare(right))
+    .map((fileName) => readFileSync(join(migrationDir, fileName), "utf8"))
+    .flatMap(splitSqlStatements);
+
+  await db.batch(RESET_STATEMENTS.map((sql) => db.prepare(sql)));
+  for (const sql of migrationSql) {
+    await db.prepare(sql).run();
+  }
+  await db.prepare("PRAGMA optimize;").run();
+}
 
 const args = process.argv.slice(2);
 const configFlagIndex = args.indexOf("--config");
@@ -45,12 +132,12 @@ async function main() {
   const db = env.DB as D1Database;
 
   try {
-    // Apply schema (drop + recreate — same schema as test helpers)
+    // Apply schema from the real migration chain (drop + recreate for a clean local run)
     if (shouldClean) {
       console.log("\n--- Cleaning local DB (drop + recreate) ---");
     }
     // Always apply migrations — idempotent (drops then creates)
-    await applyTestMigrations(db);
+    await applyLocalMigrations(db);
     console.log("Schema applied");
 
     // Parse HTML files

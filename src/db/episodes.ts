@@ -128,13 +128,20 @@ export async function getEpisodeTopicsBlended(
   let distinctiveTopics: TopicRow[] = [];
 
   if (topicIds.length > 0) {
-    const placeholders = topicIds.map(() => "?").join(",");
     const epCounts = await db.prepare(
-      `SELECT topic_id, COUNT(DISTINCT episode_id) as ep_appearances
-       FROM episode_topics
-       WHERE topic_id IN (${placeholders})
-       GROUP BY topic_id`
-    ).bind(...topicIds).all();
+      `SELECT et.topic_id, COUNT(DISTINCT et.episode_id) as ep_appearances
+       FROM episode_topics et
+       JOIN (
+         SELECT ct.topic_id
+         FROM chunk_topics ct
+         JOIN chunks c ON ct.chunk_id = c.id
+         JOIN topics t ON ct.topic_id = t.id
+         WHERE c.episode_id = ? AND t.hidden = 0 AND t.display_suppressed = 0
+         GROUP BY ct.topic_id
+         HAVING COUNT(*) >= 2
+       ) qualifying_topics ON qualifying_topics.topic_id = et.topic_id
+       GROUP BY et.topic_id`
+    ).bind(episodeId).all();
 
     const epAppearanceMap = new Map<number, number>();
     for (const r of epCounts.results as any[]) {
@@ -232,30 +239,46 @@ export async function getEpisodeRailInsights(
     };
   }
 
-  const placeholders = topicIds.map(() => "?").join(",");
   const [priorTopicCountsResult, pairCorpusRowsResult, previousTopicCountsResult] = await Promise.all([
     db.prepare(
-      `SELECT et.topic_id, COUNT(DISTINCT et.episode_id) as prior_episodes
-       FROM episode_topics et
-       JOIN episodes e ON et.episode_id = e.id
-       WHERE et.topic_id IN (${placeholders}) AND e.published_date < ?
-       GROUP BY et.topic_id`
-    ).bind(...topicIds, publishedDate).all(),
+      `WITH current_topics AS (
+         SELECT ct.topic_id
+         FROM chunk_topics ct
+         JOIN chunks c ON ct.chunk_id = c.id
+         JOIN topics t ON ct.topic_id = t.id
+         WHERE c.episode_id = ? AND t.hidden = 0 AND t.display_suppressed = 0
+         GROUP BY ct.topic_id
+       )
+       SELECT et.topic_id, COUNT(DISTINCT et.episode_id) as prior_episodes
+        FROM episode_topics et
+        JOIN current_topics current_topics ON current_topics.topic_id = et.topic_id
+        JOIN episodes e ON et.episode_id = e.id
+        WHERE e.published_date < ?
+        GROUP BY et.topic_id`
+    ).bind(episodeId, publishedDate).all(),
     topicIds.length > 1
       ? db.prepare(
-          `SELECT ct1.topic_id as left_id, ct2.topic_id as right_id, COUNT(*) as corpus_count
-           FROM chunk_topics ct1
-           JOIN chunk_topics ct2 ON ct1.chunk_id = ct2.chunk_id AND ct1.topic_id < ct2.topic_id
-           JOIN chunks c ON c.id = ct1.chunk_id
-           JOIN topics t1 ON ct1.topic_id = t1.id
-           JOIN topics t2 ON ct2.topic_id = t2.id
-           WHERE c.episode_id != ?
-             AND t1.hidden = 0 AND t1.display_suppressed = 0
-             AND t2.hidden = 0 AND t2.display_suppressed = 0
-             AND ct1.topic_id IN (${placeholders})
-             AND ct2.topic_id IN (${placeholders})
-            GROUP BY ct1.topic_id, ct2.topic_id`
-        ).bind(episodeId, ...topicIds, ...topicIds).all()
+          `WITH current_topics AS (
+             SELECT ct.topic_id
+             FROM chunk_topics ct
+             JOIN chunks c ON ct.chunk_id = c.id
+             JOIN topics t ON ct.topic_id = t.id
+             WHERE c.episode_id = ? AND t.hidden = 0 AND t.display_suppressed = 0
+             GROUP BY ct.topic_id
+           )
+           SELECT ct1.topic_id as left_id, ct2.topic_id as right_id, COUNT(*) as corpus_count
+            FROM chunk_topics ct1
+            JOIN chunk_topics ct2 ON ct1.chunk_id = ct2.chunk_id AND ct1.topic_id < ct2.topic_id
+            JOIN current_topics left_topics ON left_topics.topic_id = ct1.topic_id
+            JOIN current_topics right_topics ON right_topics.topic_id = ct2.topic_id
+            JOIN chunks c ON c.id = ct1.chunk_id
+            JOIN topics t1 ON ct1.topic_id = t1.id
+            JOIN topics t2 ON ct2.topic_id = t2.id
+            WHERE c.episode_id != ?
+              AND t1.hidden = 0 AND t1.display_suppressed = 0
+              AND t2.hidden = 0 AND t2.display_suppressed = 0
+             GROUP BY ct1.topic_id, ct2.topic_id`
+        ).bind(episodeId, episodeId).all()
       : Promise.resolve({ results: [] as any[] }),
     previousEpisode
       ? db.prepare(

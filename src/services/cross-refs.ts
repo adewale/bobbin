@@ -1,3 +1,5 @@
+import { collectInBatches, sqlPlaceholders } from "../lib/db";
+
 export interface CrossReference {
   vectorId: string;
   chunkId: number;
@@ -65,18 +67,21 @@ export async function getCrossReferences(
   const chunkIds = refs.map((r) => r.chunkId).filter((id) => id > 0);
   if (!chunkIds.length) return refs.map((r) => ({ ...r, slug: "", episodeSlug: "", publishedDate: "" }));
 
-  const placeholders = chunkIds.map(() => "?").join(",");
-  const hydrated = await db
-    .prepare(
-      `SELECT c.id, c.slug, e.slug as episode_slug, e.published_date
-       FROM chunks c JOIN episodes e ON c.episode_id = e.id
-       WHERE c.id IN (${placeholders})`
-    )
-    .bind(...chunkIds)
-    .all();
+  const hydratedRows = await collectInBatches(chunkIds, async (chunkIdBatch) => {
+    const placeholders = sqlPlaceholders(chunkIdBatch.length);
+    const hydrated = await db
+      .prepare(
+        `SELECT c.id, c.slug, e.slug as episode_slug, e.published_date
+         FROM chunks c JOIN episodes e ON c.episode_id = e.id
+         WHERE c.id IN (${placeholders})`
+      )
+      .bind(...chunkIdBatch)
+      .all();
+    return hydrated.results as any[];
+  });
 
   const hydMap = new Map(
-    (hydrated.results as any[]).map((r) => [r.id, r])
+    hydratedRows.map((r) => [r.id, r])
   );
 
   return refs.map((r) => {

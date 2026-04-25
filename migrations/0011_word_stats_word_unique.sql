@@ -6,3 +6,5 @@ WHERE id NOT IN (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_word_stats_word_unique ON word_stats(word);
+
+PRAGMA optimize;

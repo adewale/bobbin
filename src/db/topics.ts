@@ -1,4 +1,5 @@
 import type { TopicRow, WordStatsRow } from "../types";
+import { chunkForSqlBindings, sqlPlaceholders } from "../lib/db";
 
 export interface TopicAdjacent {
   name: string;
@@ -18,6 +19,8 @@ export interface TrendingTopic {
   slug: string;
   spikeRatio: number;
 }
+
+export { chunkForSqlBindings } from "../lib/db";
 
 export async function getTrendingTopicsForEpisode(db: D1Database, episodeId: number, limit = 3): Promise<TrendingTopic[]> {
   // Get topic counts for this episode (only topics with sufficient corpus usage)
@@ -311,24 +314,28 @@ export async function getTopTopicsWithSparklines(db: D1Database, limit?: number)
 
   // Build sparklines for the entire pool
   const poolIds = pool.map(t => t.id);
-  const placeholders = poolIds.map(() => "?").join(",");
-  const timeline = await db.prepare(
-    `SELECT ct.topic_id, e.published_date, COUNT(*) as count
-     FROM chunk_topics ct
-     JOIN chunks c ON ct.chunk_id = c.id
-     JOIN episodes e ON c.episode_id = e.id
-     WHERE ct.topic_id IN (${placeholders})
-     GROUP BY ct.topic_id, e.id
-     ORDER BY e.published_date ASC`
-  ).bind(...poolIds).all();
+  const timelineRows: Array<{ topic_id: number; published_date: string; count: number }> = [];
 
-  const allDates = [...new Set((timeline.results as any[]).map(r => r.published_date))].sort();
+  for (const topicIdBatch of chunkForSqlBindings(poolIds)) {
+    const placeholders = sqlPlaceholders(topicIdBatch.length);
+    const timeline = await db.prepare(
+      `SELECT ct.topic_id, e.published_date, COUNT(*) as count
+       FROM chunk_topics ct
+       JOIN chunks c ON ct.chunk_id = c.id
+       JOIN episodes e ON c.episode_id = e.id
+       WHERE ct.topic_id IN (${placeholders})
+       GROUP BY ct.topic_id, e.id
+       ORDER BY e.published_date ASC`
+    ).bind(...topicIdBatch).all<{ topic_id: number; published_date: string; count: number }>();
+
+    timelineRows.push(...timeline.results);
+  }
+
+  const allDates = [...new Set(timelineRows.map((row) => row.published_date))].sort();
+  const timelineByTopicAndDate = new Map(timelineRows.map((row) => [`${row.topic_id}:${row.published_date}`, row.count]));
 
   const withSparklines = pool.map(topic => {
-    const points = allDates.map(date => {
-      const match = (timeline.results as any[]).find(r => r.topic_id === topic.id && r.published_date === date);
-      return match ? match.count : 0;
-    });
+    const points = allDates.map((date) => timelineByTopicAndDate.get(`${topic.id}:${date}`) ?? 0);
     return { ...topic, sparkline: points, dates: allDates };
   });
 

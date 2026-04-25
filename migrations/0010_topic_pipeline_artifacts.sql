@@ -53,3 +53,5 @@ CREATE INDEX IF NOT EXISTS idx_topic_candidate_audit_chunk ON topic_candidate_au
 CREATE INDEX IF NOT EXISTS idx_topics_visible ON topics(hidden, display_suppressed, usage_count DESC);
 CREATE INDEX IF NOT EXISTS idx_topic_candidate_audit_topic ON topic_candidate_audit(topic_id);
 CREATE INDEX IF NOT EXISTS idx_topic_merge_audit_to_topic ON topic_merge_audit(to_topic_id);
+
+PRAGMA optimize;

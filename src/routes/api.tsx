@@ -10,6 +10,7 @@ import { enrichEpisodeIdsWithLlm, enrichEpisodesWithLlm } from "../services/llm-
 import { persistSourceHtmlChunks } from "../db/artifacts";
 import { parseSearchQuery } from "../lib/query-parser";
 import { keywordSearch } from "../db/search";
+import { collectInBatches, MAX_SQL_BINDINGS, sqlPlaceholders } from "../lib/db";
 import { safeParseInt, escapeLike } from "../lib/html";
 import { applyTopicBoost } from "../services/search-topics";
 import { expandEntityAliases } from "../lib/entity-aliases";
@@ -350,12 +351,18 @@ api.get("/enrich-parallel", async (c) => {
   const denied = requireAuth(c);
   if (denied) return denied;
 
-  const batchSize = safeParseInt(c.req.query("batch"), 200);
+  const batchSize = Math.min(Math.max(safeParseInt(c.req.query("batch"), 200), 1), MAX_SQL_BINDINGS);
 
   try {
+    const { CURRENT_ENRICHMENT_VERSION } = await import("../jobs/ingest");
     const unenriched = await c.env.DB.prepare(
-      "SELECT id FROM chunks WHERE enriched = 0 LIMIT 5000"
-    ).all<{ id: number }>();
+      `WITH pending_chunks AS (
+         SELECT id FROM chunks WHERE enriched = 0
+         UNION
+         SELECT id FROM chunks WHERE enriched != 0 AND enrichment_version < ?
+       )
+       SELECT id FROM pending_chunks ORDER BY id DESC LIMIT 5000`
+    ).bind(CURRENT_ENRICHMENT_VERSION).all<{ id: number }>();
 
     if (!unenriched.results.length) {
       return c.json({ status: "ok", dispatched: 0, batches: 0, complete: true });
@@ -505,14 +512,16 @@ api.get("/pipeline-runs", async (c) => {
   const runIds = (runs.results as any[]).map((run) => run.id);
   let stages: any[] = [];
   if (runIds.length > 0) {
-    const placeholders = runIds.map(() => "?").join(",");
-    const stageRows = await c.env.DB.prepare(
-      `SELECT pipeline_run_id, phase, stage_name, stage_order, status, duration_ms, counts_json, detail
-       FROM pipeline_stage_metrics
-       WHERE pipeline_run_id IN (${placeholders})
-       ORDER BY pipeline_run_id DESC, phase ASC, stage_order ASC`
-    ).bind(...runIds).all();
-    stages = stageRows.results as any[];
+    stages = await collectInBatches(runIds, async (runIdBatch) => {
+      const placeholders = sqlPlaceholders(runIdBatch.length);
+      const stageRows = await c.env.DB.prepare(
+        `SELECT pipeline_run_id, phase, stage_name, stage_order, status, duration_ms, counts_json, detail
+         FROM pipeline_stage_metrics
+         WHERE pipeline_run_id IN (${placeholders})
+         ORDER BY pipeline_run_id DESC, phase ASC, stage_order ASC`
+      ).bind(...runIdBatch).all();
+      return stageRows.results as any[];
+    });
   }
 
   return c.json({ runs: runs.results, stages });
@@ -545,7 +554,11 @@ api.get("/health", async (c) => {
     (async () => {
       const { CURRENT_ENRICHMENT_VERSION } = await import("../jobs/ingest");
       return c.env.DB.prepare(
-        "SELECT COUNT(*) as c FROM chunks WHERE enriched = 0 OR enrichment_version < ?"
+        `SELECT (
+           SELECT COUNT(*) FROM chunks WHERE enriched = 0
+         ) + (
+           SELECT COUNT(*) FROM chunks WHERE enriched != 0 AND enrichment_version < ?
+         ) as c`
       ).bind(CURRENT_ENRICHMENT_VERSION).first<{ c: number }>();
     })(),
     c.env.DB.prepare("SELECT * FROM ingestion_log ORDER BY started_at DESC LIMIT 1").first(),

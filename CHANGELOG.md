@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-04-25 — D1 hardening, migration-chain bootstrap, and queue retry cleanup
+
+### Changed
+- Workers-test and local-pipeline database bootstrap now apply the real checked-in D1 migration chain instead of reconstructing schema by hand.
+- Stale enrichment queries now use a union-based pending-chunk shape instead of an index-hostile `OR` predicate.
+- Queue retries now only requeue transient D1/infrastructure failures instead of retrying every exception.
+
+### Added
+- `migrations/0020_d1_best_practice_hardening.sql` with composite indexes for audit rows, LLM evidence, episode ordering, chunk ordering, and enrichment-version lookups.
+- `src/d1-best-practices.test.ts` to verify migration artifacts and index usage with `EXPLAIN QUERY PLAN`.
+
+### Fixed
+- Preview-local D1 config no longer points at the live database ID.
+- Index-creating migrations now run `PRAGMA optimize` so planner stats stay fresh after schema changes.
+- Local pipeline docs/comments now reference the canonical `wrangler.jsonc` path instead of stale `wrangler.local.jsonc` examples.
+
 ## 2026-04-24 — Shared archive surfaces, local verification, and test stabilization
 
 ### Changed

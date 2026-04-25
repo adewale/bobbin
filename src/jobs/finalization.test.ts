@@ -66,6 +66,45 @@ describe("Entity validation (Issue 1)", () => {
     const conceptRemaining = await env.DB.prepare("SELECT COUNT(*) as c FROM chunk_topics WHERE topic_id = 1").first<{ c: number }>();
     expect(conceptRemaining!.c).toBeGreaterThan(0); // concepts are not wiped out by entity validation
   });
+
+  it("removes invalid entity assignments in batches when the cleanup set exceeds the D1 bind cap", async () => {
+    await env.DB.prepare(
+      "INSERT INTO topics (name, slug, kind, usage_count) VALUES ('large entity', 'large-entity', 'entity', 121)"
+    ).run();
+
+    const chunkInserts = Array.from({ length: 120 }, (_, index) => {
+      const n = index + 1;
+      return env.DB.prepare(
+        "INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (1, ?, ?, ?, ?, ?)"
+      ).bind(
+        `large-entity-${n}`,
+        `Large entity ${n}`,
+        `This chunk talks about something else ${n}.`,
+        `This chunk talks about something else ${n}.`,
+        n + 10,
+      );
+    });
+    await env.DB.batch(chunkInserts);
+
+    const invalidAssignments = Array.from({ length: 120 }, (_, index) =>
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (?, 2)").bind(index + 5)
+    );
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 2)"),
+      ...invalidAssignments,
+    ]);
+
+    await finalizeEnrichment(env.DB);
+
+    const remaining = await env.DB.prepare(
+      "SELECT chunk_id FROM chunk_topics WHERE topic_id = 2 ORDER BY chunk_id"
+    ).all<{ chunk_id: number }>();
+    const remainingIds = remaining.results.map((row) => row.chunk_id);
+
+    expect(remainingIds).toHaveLength(0);
+    expect(remainingIds).not.toContain(1);
+    expect(remainingIds).not.toContain(125);
+  });
 });
 
 describe("Document frequency quality gate (df≥5)", () => {

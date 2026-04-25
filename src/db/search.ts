@@ -1,6 +1,6 @@
 import type { ParsedQuery } from "../lib/query-parser";
 import { escapeLike } from "../lib/html";
-import { applyTopicFilter } from "../services/search-topics";
+import { buildTopicChunkFilterClause } from "../services/search-topics";
 
 export interface KeywordResult {
   id: number;
@@ -43,11 +43,9 @@ export async function keywordSearch(
   let topicWhere = "";
   const topicBinds: any[] = [];
   if (parsed.topics && parsed.topics.length > 0) {
-    const allowedChunkIds = await applyTopicFilter(db, parsed.topics);
-    if (allowedChunkIds.length === 0) return [];
-    const placeholders = allowedChunkIds.map(() => "?").join(",");
-    topicWhere = `AND c.id IN (${placeholders})`;
-    topicBinds.push(...allowedChunkIds);
+    const topicFilter = buildTopicChunkFilterClause("c.id", parsed.topics);
+    topicWhere = topicFilter.sql;
+    topicBinds.push(...topicFilter.binds);
   }
 
   const result = await db.prepare(
@@ -56,8 +54,8 @@ export async function keywordSearch(
      WHERE c.content_plain LIKE ? ESCAPE '\\'
      ${dateWhere}
      ${topicWhere}
-     ORDER BY e.published_date DESC LIMIT ?`
-  ).bind(...binds, ...topicBinds, limit).all<KeywordResult>();
+     ORDER BY e.published_date DESC, c.position DESC, c.id DESC LIMIT ?`
+   ).bind(...binds, ...topicBinds, limit).all<KeywordResult>();
 
   return result.results;
 }

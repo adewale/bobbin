@@ -9,6 +9,10 @@ Bobbin has two distinct pipeline goals:
 
 The pipeline is deliberately split so the expensive semantic step happens once per episode at ingest time, while the downstream topic pipeline remains reproducible and cheap to rerun.
 
+Operational note:
+
+- test bootstrap and local pipeline bootstrap both apply the checked-in D1 migration chain directly, so schema behavior matches the real app path instead of a separate handwritten test schema.
+
 ## End-to-end flow
 
 ```text

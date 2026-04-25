@@ -99,3 +99,5 @@ CREATE INDEX idx_chunk_tags_tag ON chunk_tags(tag_id);
 CREATE INDEX idx_episode_tags_tag ON episode_tags(tag_id);
 CREATE INDEX idx_concordance_count ON concordance(total_count DESC);
 CREATE INDEX idx_chunk_words_word ON chunk_words(word);
+
+PRAGMA optimize;

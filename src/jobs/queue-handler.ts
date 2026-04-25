@@ -8,7 +8,7 @@
  * - "enrich-batch": enrich specific chunks by ID (parallel fan-out from /api/enrich-parallel)
  */
 import { slugify } from "../lib/slug";
-import { batchExec } from "../lib/db";
+import { batchExec, collectInBatches, sqlPlaceholders } from "../lib/db";
 import { extractCorpusNgrams } from "../services/ngram-extractor";
 import { extractPMIPhrases } from "../services/pmi-phrases";
 import { enrichEpisodeIdsWithLlm } from "../services/llm-ingest";
@@ -25,6 +25,24 @@ export interface EnrichmentMessage {
   chunkIds?: number[];
   // llm-episode-enrich
   episodeId?: number;
+}
+
+const RETRYABLE_QUEUE_ERROR_PATTERNS = [
+  "Network connection lost",
+  "storage caused object to be reset",
+  "reset because its code was updated",
+  "SQLITE_BUSY",
+  "SQLITE_BUSY_RECOVERY",
+  "SQLITE_LOCKED",
+  "Too Many Requests",
+  "429",
+  "503",
+  "504",
+];
+
+export function shouldRetryQueueMessage(error: unknown): boolean {
+  const message = String(error);
+  return RETRYABLE_QUEUE_ERROR_PATTERNS.some((pattern) => message.includes(pattern));
 }
 
 async function handleComputeRelated(db: D1Database, topicId: number) {
@@ -118,15 +136,18 @@ export async function handleEnrichBatch(db: D1Database, chunkIds: number[]) {
   if (!chunkIds.length) return;
 
   // Load chunks by ID and process using shared logic
-  const placeholders = chunkIds.map(() => "?").join(",");
-  const chunks = await db.prepare(
-    `SELECT id, episode_id, content_plain FROM chunks WHERE id IN (${placeholders})`
-  ).bind(...chunkIds).all<{ id: number; episode_id: number; content_plain: string }>();
+  const chunkRows = await collectInBatches(chunkIds, async (chunkIdBatch) => {
+    const placeholders = sqlPlaceholders(chunkIdBatch.length);
+    const chunks = await db.prepare(
+      `SELECT id, episode_id, content_plain FROM chunks WHERE id IN (${placeholders})`
+    ).bind(...chunkIdBatch).all<{ id: number; episode_id: number; content_plain: string }>();
+    return chunks.results;
+  });
 
-  if (!chunks.results.length) return;
+  if (!chunkRows.length) return;
 
   // Use the shared processChunkBatch — single source of truth
-  await processChunkBatch(db, chunks.results);
+  await processChunkBatch(db, chunkRows);
 }
 
 export async function handleEnrichmentBatch(
@@ -153,7 +174,11 @@ export async function handleEnrichmentBatch(
       msg.ack();
     } catch (e) {
       console.error(`Queue message failed:`, e);
-      msg.retry();
+      if (shouldRetryQueueMessage(e)) {
+        msg.retry();
+      } else {
+        msg.ack();
+      }
     }
   }
 

@@ -176,11 +176,11 @@ src/
   data/                  Static data (known-entities.ts)
   lib/                   Pure utilities (slug, date, text, html, query-parser, entity-aliases)
   crawler/               Google Docs fetcher
-migrations/              D1 schema migrations (0001-0009)
+migrations/              D1 schema migrations (0001-0020, including D1 hardening)
   scripts/                 Operational tooling:
-                           seed-full-local-fixture.ts (canonical local fixture),
-                           audit-computed-values.mjs (browser computed-style audit),
-                           local-pipeline.ts (ingest/enrich/finalize), analyze-topics.ts (corpus analysis)
+                            seed-full-local-fixture.ts (canonical local fixture),
+                            audit-computed-values.mjs (browser computed-style audit),
+                            local-pipeline.ts (ingest/enrich/finalize), analyze-topics.ts (corpus analysis)
 public/                  Static assets (CSS, favicon.svg, robots.txt)
 test/                    Fixtures and helpers
 docs/                    Architecture and lessons learned
@@ -209,3 +209,4 @@ docs/                    Architecture and lessons learned
 9. **Queue-based parallelization**: Slow enrichment steps (n-gram assignment, related_slugs) dispatched to ENRICHMENT_QUEUE for parallel processing.
 10. **Wide event logging**: Canonical log lines for cron (`refresh` event) and queue (`queue_batch` event) with per-step timing.
 11. **Local development pipeline**: `npm run fixture:local` seeds a representative local corpus and rail demo against the same `wrangler.jsonc` config the browser app uses.
+12. **Schema consistency over handwritten test doubles**: test/bootstrap paths apply the checked-in D1 migrations directly so FTS triggers, indexes, and operational hardening stay aligned across local development, tests, and deployed code.

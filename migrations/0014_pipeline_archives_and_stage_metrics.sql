@@ -53,3 +53,5 @@ CREATE INDEX IF NOT EXISTS idx_topic_lineage_archive_original ON topic_lineage_a
 CREATE INDEX IF NOT EXISTS idx_pipeline_runs_created_at ON pipeline_runs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_pipeline_runs_run_type ON pipeline_runs(run_type, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_pipeline_stage_metrics_run ON pipeline_stage_metrics(pipeline_run_id, phase, stage_order);
+
+PRAGMA optimize;

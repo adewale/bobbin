@@ -44,14 +44,6 @@ describe("End-to-end ingestion pipeline", () => {
     const episodes = parseHtmlDocument(sampleHtml);
     await ingestParsedEpisodes(makeTestEnv(), 1, episodes);
 
-    // Create FTS table and populate
-    await env.DB.exec(
-      "CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(title, content_plain, content='chunks', content_rowid='id', tokenize='porter unicode61')"
-    );
-    await env.DB.exec(
-      "INSERT INTO chunks_fts(rowid, title, content_plain) SELECT id, title, content_plain FROM chunks"
-    );
-
     const searchRes = await SELF.fetch("http://localhost/search?q=software");
     expect(searchRes.status).toBe(200);
     const searchHtml = await searchRes.text();

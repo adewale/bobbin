@@ -8,3 +8,5 @@ UPDATE chunks SET enriched = 1 WHERE id IN (SELECT DISTINCT chunk_id FROM chunk_
 
 -- Index for fast unenriched lookup
 CREATE INDEX IF NOT EXISTS idx_chunks_enriched ON chunks(enriched) WHERE enriched = 0;
+
+PRAGMA optimize;

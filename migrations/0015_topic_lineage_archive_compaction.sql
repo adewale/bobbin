@@ -9,3 +9,5 @@ WHERE last_original_topic_id IS NULL;
 
 CREATE INDEX IF NOT EXISTS idx_topic_lineage_archive_compact_key
   ON topic_lineage_archive(slug, archive_reason, merge_stage, merged_to_topic_id);
+
+PRAGMA optimize;

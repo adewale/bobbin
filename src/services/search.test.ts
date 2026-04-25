@@ -18,10 +18,6 @@ async function seedSearchData() {
     env.DB.prepare("INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (1, 'eco-body', 'Platform markets', 'The ecosystem evolves through ecosystem pressures and ecosystem diversity.', 'The ecosystem evolves through ecosystem pressures and ecosystem diversity.', 1)"),
     env.DB.prepare("INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (1, 'no-match', 'Whale falls', 'Dead platforms become food.', 'Dead platforms become food.', 2)"),
   ]);
-
-  // Create FTS table and populate
-  await env.DB.exec("CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(title, content_plain, content='chunks', content_rowid='id', tokenize='porter unicode61')");
-  await env.DB.exec("INSERT INTO chunks_fts(rowid, title, content_plain) SELECT id, title, content_plain FROM chunks");
 }
 
 beforeEach(async () => {
@@ -71,6 +67,38 @@ describe("ftsSearch", () => {
   it("handles multi-word queries", async () => {
     const results = await ftsSearch(env.DB, parseSearchQuery("ecosystem diversity"));
     expect(results.length).toBeGreaterThan(0);
+  });
+
+  it("handles topic filters whose matching chunk pool exceeds the D1 bind cap", async () => {
+    await env.DB.prepare(
+      "INSERT INTO topics (name, slug, usage_count) VALUES ('massive topic', 'massive-topic', 140)"
+    ).run();
+
+    const chunkInserts = Array.from({ length: 140 }, (_, index) => {
+      const n = index + 1;
+      return env.DB.prepare(
+        "INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (1, ?, ?, ?, ?, ?)"
+      ).bind(
+        `massive-${n}`,
+        `Massive chunk ${n}`,
+        `ecosystem note ${n}`,
+        `ecosystem note ${n}`,
+        n + 10,
+      );
+    });
+    await env.DB.batch(chunkInserts);
+
+    const topicAssignments = Array.from({ length: 140 }, (_, index) =>
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (?, 1)").bind(index + 4)
+    );
+    await env.DB.batch(topicAssignments);
+
+    const results = await ftsSearch(env.DB, parseSearchQuery("ecosystem topic:massive-topic"));
+
+    expect(results).toHaveLength(20);
+    expect(results.every((result) => result.slug.startsWith("massive-"))).toBe(true);
+    expect(results.some((result) => result.slug === "massive-140")).toBe(true);
+    expect(results.every((result) => result.slug !== "eco-title")).toBe(true);
   });
 });
 

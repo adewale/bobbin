@@ -60,14 +60,6 @@ async function seedSearchCorpus() {
     env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (4, 1)"),
     env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (5, 1)"),
   ]);
-
-  // Create FTS5 table
-  await env.DB.exec(
-    "CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(title, content_plain, content='chunks', content_rowid='id', tokenize='porter unicode61')"
-  );
-  await env.DB.exec(
-    "INSERT INTO chunks_fts(rowid, title, content_plain) SELECT id, title, content_plain FROM chunks"
-  );
 }
 
 beforeEach(async () => {
@@ -140,9 +132,6 @@ describe("Proper noun precision (no vector noise)", () => {
        'I heard this formulation from Ade Oshineye.',
        'I heard this formulation from Ade Oshineye.', 4)`
     ).run();
-    await env.DB.exec(
-      "INSERT INTO chunks_fts(rowid, title, content_plain) VALUES ((SELECT id FROM chunks WHERE slug = 'oshineye-chunk'), 'Goodhart formulation', 'I heard this formulation from Ade Oshineye.')"
-    );
 
     const res = await SELF.fetch("http://localhost/search?q=oshineye");
     const html = await res.text();

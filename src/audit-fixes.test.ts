@@ -153,4 +153,87 @@ describe("Pipeline reporting tables", () => {
     expect(stage?.stage_name).toBe("candidate_extraction");
     expect(JSON.parse(stage!.counts_json)).toEqual({ candidates_generated: 20 });
   });
+
+  it("GET /api/pipeline-runs handles stage hydration when the requested run count exceeds the D1 bind cap", async () => {
+    (env as any).ADMIN_SECRET = "test-secret";
+
+    for (let index = 0; index < 140; index += 1) {
+      const ingestionLogId = await createIngestionLog(env.DB, 1, "enrich");
+      await recordPipelineRun(env.DB, ingestionLogId, {
+        sourceId: 1,
+        runType: "enrich",
+        extractorMode: "naive",
+        status: "completed",
+        totalMs: 100 + index,
+        chunksProcessed: 10,
+        candidatesGenerated: 20,
+        candidatesRejectedEarly: 8,
+        candidatesInserted: 12,
+        topicsInserted: 6,
+        chunkTopicLinksInserted: 12,
+        chunkWordRowsInserted: 30,
+        pruned: 0,
+        merged: 0,
+        orphanTopicsDeleted: 0,
+        archivedLineageTopics: 0,
+      }, [
+        {
+          phase: "enrich",
+          name: `candidate_extraction_${index}`,
+          duration_ms: 12,
+          status: "ok",
+          counts: { candidates_generated: 20 + index },
+          detail: "batched",
+        },
+      ]);
+    }
+
+    const res = await SELF.fetch("http://localhost/api/pipeline-runs?limit=140", {
+      headers: { Authorization: "Bearer test-secret" },
+    });
+    const data = await res.json() as { runs: Array<{ id: number }>; stages: Array<{ pipeline_run_id: number }> };
+
+    expect(res.status).toBe(200);
+    expect(data.runs).toHaveLength(140);
+    expect(data.stages).toHaveLength(140);
+    expect(new Set(data.stages.map((stage) => stage.pipeline_run_id)).size).toBe(140);
+  });
+});
+
+describe("Admin batching guards", () => {
+  it("GET /api/enrich-parallel caps oversized dispatch batches before queueing", async () => {
+    (env as any).ADMIN_SECRET = "test-secret";
+    const sent: Array<{ type: string; chunkIds: number[] }> = [];
+    (env as any).ENRICHMENT_QUEUE = {
+      send: async (message: { type: string; chunkIds: number[] }) => {
+        sent.push(message);
+      },
+    };
+
+    const extraChunks = Array.from({ length: 120 }, (_, index) => {
+      const n = index + 1;
+      return env.DB.prepare(
+        "INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (1, ?, ?, ?, ?, ?)"
+      ).bind(
+        `parallel-${n}`,
+        `Parallel ${n}`,
+        `Parallel ${n}`,
+        `Parallel ${n}`,
+        n + 1,
+      );
+    });
+    await env.DB.batch(extraChunks);
+
+    const res = await SELF.fetch("http://localhost/api/enrich-parallel?batch=999", {
+      headers: { Authorization: "Bearer test-secret" },
+    });
+    const data = await res.json() as { dispatched: number; batches: number };
+
+    expect(res.status).toBe(200);
+    expect(data.dispatched).toBe(121);
+    expect(data.batches).toBe(2);
+    expect(sent).toHaveLength(2);
+    expect(sent.every((message) => message.chunkIds.length <= 90)).toBe(true);
+    expect(sent[0]?.type).toBe("enrich-batch");
+  });
 });

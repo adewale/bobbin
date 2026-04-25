@@ -7,7 +7,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
 import { applyTestMigrations } from "../../test/helpers/migrations";
 import { slugify } from "../lib/slug";
-import { handleEnrichBatch } from "./queue-handler";
+import { handleEnrichBatch, shouldRetryQueueMessage } from "./queue-handler";
 
 beforeEach(async () => {
   await applyTestMigrations(env.DB);
@@ -322,5 +322,61 @@ describe("enrich-batch handler", () => {
       "SELECT COUNT(*) as c FROM chunk_topics"
     ).first<{ c: number }>();
     expect(ct!.c).toBe(0);
+  });
+
+  it("handles chunk batches whose size exceeds the D1 bind cap", async () => {
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO word_stats (word, total_count, doc_count) VALUES ('ecosystem', 200, 100)"
+      ),
+      env.DB.prepare(
+        "INSERT INTO word_stats (word, total_count, doc_count) VALUES ('platform', 150, 90)"
+      ),
+    ]);
+
+    const extraChunks = Array.from({ length: 120 }, (_, index) => {
+      const n = index + 1;
+      return env.DB.prepare(
+        "INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (1, ?, ?, ?, ?, ?)"
+      ).bind(
+        `wide-batch-${n}`,
+        `Wide batch ${n}`,
+        `The ecosystem and platform pattern ${n}.`,
+        `The ecosystem and platform pattern ${n}.`,
+        n + 10,
+      );
+    });
+    await env.DB.batch(extraChunks);
+
+    const chunkIds = Array.from({ length: 123 }, (_, index) => index + 1);
+    await handleEnrichBatch(env.DB, chunkIds);
+
+    const enrichedCount = await env.DB.prepare(
+      "SELECT COUNT(*) as c FROM chunks WHERE id IN (SELECT id FROM chunks WHERE slug LIKE 'wide-batch-%' OR slug LIKE 'chunk-%') AND enriched = 1"
+    ).first<{ c: number }>();
+    expect(enrichedCount!.c).toBe(123);
+
+    const auditRows = await env.DB.prepare(
+      "SELECT COUNT(*) as c FROM topic_candidate_audit WHERE chunk_id IN (SELECT id FROM chunks WHERE slug LIKE 'wide-batch-%')"
+    ).first<{ c: number }>();
+    expect(auditRows!.c).toBeGreaterThan(0);
+
+    const untouched = await env.DB.prepare(
+      "SELECT COUNT(*) as c FROM chunks WHERE slug = 'chunk-3' AND enriched = 1"
+    ).first<{ c: number }>();
+    expect(untouched!.c).toBe(1);
+  });
+});
+
+describe("queue retry policy", () => {
+  it("retries transient D1 and infrastructure errors", () => {
+    expect(shouldRetryQueueMessage(new Error("D1_ERROR: Network connection lost"))).toBe(true);
+    expect(shouldRetryQueueMessage(new Error("SQLITE_BUSY: database is locked"))).toBe(true);
+    expect(shouldRetryQueueMessage(new Error("503 Service Unavailable"))).toBe(true);
+  });
+
+  it("does not retry deterministic application or SQL-shape failures", () => {
+    expect(shouldRetryQueueMessage(new Error("D1_ERROR: too many SQL variables"))).toBe(false);
+    expect(shouldRetryQueueMessage(new TypeError("Cannot read properties of undefined"))).toBe(false);
   });
 });

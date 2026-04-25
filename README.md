@@ -63,6 +63,8 @@ npm run audit:computed
 
 If the local database is empty, the app will show an in-product setup hint that points back to `npm run fixture:local`.
 
+Local browser runs, local pipeline runs, and Workers Vitest database bootstrap now all apply the same checked-in D1 migration chain. That keeps the test/local schema aligned with the real app schema, including FTS triggers, secondary indexes, and D1 hardening migrations.
+
 ## Architecture
 
 Cloudflare Workers with Hono SSR. D1 for structured data, Vectorize for semantic search, Workers AI for embeddings, and Cloudflare Queues for background enrichment/finalization work.
@@ -96,6 +98,8 @@ npm run test:e2e      # Playwright browser suite against BASE_URL/local server
 npm run test:visual   # opt-in AI visual checks; requires AI_GATEWAY_API_KEY
 npm run test:all      # workers + node Vitest suites
 ```
+
+The default test and local bootstrap path uses the real migration files, not a handwritten test schema. `npm run test:all` is the canonical non-visual verification pass.
 
 ## Search operators
 

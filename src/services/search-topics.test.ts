@@ -41,14 +41,6 @@ async function seedTopicSearchData() {
     env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (3, 1)"), // eco-synonyms -> ecosystem
     env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (4, 2)"), // agent-chunk -> agent
   ]);
-
-  // Create FTS table
-  await env.DB.exec(
-    "CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(title, content_plain, content='chunks', content_rowid='id', tokenize='porter unicode61')"
-  );
-  await env.DB.exec(
-    "INSERT INTO chunks_fts(rowid, title, content_plain) SELECT id, title, content_plain FROM chunks"
-  );
 }
 
 beforeEach(async () => {
@@ -121,6 +113,44 @@ describe("applyTopicFilter", () => {
   it("returns empty array for nonexistent topic", async () => {
     const filtered = await applyTopicFilter(env.DB, ["nonexistent"]);
     expect(filtered).toHaveLength(0);
+  });
+
+  it("handles topic intersections that exceed the D1 bind cap", async () => {
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (1, 'all-topics', 'All topics', 'All topics chunk', 'All topics chunk', 10)"
+      ),
+      env.DB.prepare(
+        "INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (1, 'missing-one-topic', 'Missing one topic', 'Missing one topic chunk', 'Missing one topic chunk', 11)"
+      ),
+    ]);
+
+    const extraTopics = Array.from({ length: 140 }, (_, index) => {
+      const n = index + 1;
+      return env.DB.prepare(
+        "INSERT INTO topics (name, slug, usage_count) VALUES (?, ?, 10)"
+      ).bind(`wide topic ${n}`, `wide-topic-${n}`);
+    });
+    await env.DB.batch(extraTopics);
+
+    const allTopicAssignments = Array.from({ length: 140 }, (_, index) => {
+      const topicId = index + 3;
+      return env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (5, ?)").bind(topicId);
+    });
+    const partialAssignments = Array.from({ length: 139 }, (_, index) => {
+      const topicId = index + 3;
+      return env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (6, ?)").bind(topicId);
+    });
+    await env.DB.batch([...allTopicAssignments, ...partialAssignments]);
+
+    const filtered = await applyTopicFilter(
+      env.DB,
+      Array.from({ length: 140 }, (_, index) => `wide-topic-${index + 1}`),
+    );
+
+    expect(filtered).toContain(5);
+    expect(filtered).not.toContain(6);
+    expect(filtered).toHaveLength(1);
   });
 });
 

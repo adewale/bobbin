@@ -145,6 +145,22 @@ describe("Topics index - unified grid", () => {
     expect(html).toContain("extra topic 24");
     expect(html).toContain('href="/topics/extra-topic-24"');
   });
+
+  it("still renders when the eligible topic pool exceeds the D1 SQL variable cap", async () => {
+    const extraTopics = Array.from({ length: 140 }, (_, index) => {
+      const n = index + 1;
+      return env.DB.prepare(`INSERT INTO topics (name, slug, usage_count) VALUES ('high volume topic ${n}', 'high-volume-topic-${n}', 5)`);
+    });
+
+    await env.DB.batch(extraTopics);
+
+    const res = await SELF.fetch("http://localhost/topics");
+    const html = await res.text();
+
+    expect(res.status).toBe(200);
+    expect(html).toContain("high volume topic 1");
+    expect(html).toContain('href="/topics/high-volume-topic-140"');
+  });
 });
 
 describe("Topics index - search", () => {

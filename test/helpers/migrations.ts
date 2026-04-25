@@ -1,4 +1,29 @@
+import migration0001 from "../../migrations/0001_initial_schema.sql?raw";
+import migration0002 from "../../migrations/0002_fts5_search.sql?raw";
+import migration0003 from "../../migrations/0003_episode_format.sql?raw";
+import migration0004 from "../../migrations/0004_concordance_distinctiveness.sql?raw";
+import migration0005 from "../../migrations/0005_chunk_reach.sql?raw";
+import migration0006 from "../../migrations/0006_performance_indexes.sql?raw";
+import migration0007 from "../../migrations/0007_topics_rename.sql?raw";
+import migration0008 from "../../migrations/0008_enriched_flag.sql?raw";
+import migration0009 from "../../migrations/0009_enrichment_version.sql?raw";
+import migration0010 from "../../migrations/0010_topic_pipeline_artifacts.sql?raw";
+import migration0011 from "../../migrations/0011_word_stats_word_unique.sql?raw";
+import migration0012 from "../../migrations/0012_topics_distinctiveness.sql?raw";
+import migration0013 from "../../migrations/0013_ingestion_log_pipeline_report.sql?raw";
+import migration0014 from "../../migrations/0014_pipeline_archives_and_stage_metrics.sql?raw";
+import migration0015 from "../../migrations/0015_topic_lineage_archive_compaction.sql?raw";
+import migration0016 from "../../migrations/0016_topic_lineage_archive_retroactive_compaction.sql?raw";
+import migration0017 from "../../migrations/0017_source_fidelity_and_llm_ingest.sql?raw";
+import migration0018 from "../../migrations/0018_large_artifact_chunks.sql?raw";
+import migration0019 from "../../migrations/0019_chunk_footnotes.sql?raw";
+import migration0020 from "../../migrations/0020_d1_best_practice_hardening.sql?raw";
+
 const DROPS = [
+  "DROP TRIGGER IF EXISTS chunks_ai",
+  "DROP TRIGGER IF EXISTS chunks_ad",
+  "DROP TRIGGER IF EXISTS chunks_au",
+  "DROP TABLE IF EXISTS chunks_fts",
   "DROP TABLE IF EXISTS episode_artifact_chunks",
   "DROP TABLE IF EXISTS source_html_chunks",
   "DROP TABLE IF EXISTS llm_episode_candidate_evidence",
@@ -15,280 +40,86 @@ const DROPS = [
   "DROP TABLE IF EXISTS episode_topics",
   "DROP TABLE IF EXISTS chunk_topics",
   "DROP TABLE IF EXISTS topics",
+  "DROP TABLE IF EXISTS episode_tags",
+  "DROP TABLE IF EXISTS chunk_tags",
+  "DROP TABLE IF EXISTS tags",
+  "DROP TABLE IF EXISTS concordance",
   "DROP TABLE IF EXISTS chunks",
   "DROP TABLE IF EXISTS episodes",
   "DROP TABLE IF EXISTS ingestion_log",
   "DROP TABLE IF EXISTS sources",
 ];
 
-const CREATES = [
-  `CREATE TABLE sources (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    google_doc_id TEXT NOT NULL UNIQUE,
-    title TEXT NOT NULL,
-    last_fetched_at TEXT,
-    last_revision_id TEXT,
-    is_archive INTEGER NOT NULL DEFAULT 0,
-    latest_html TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  )`,
-  `CREATE TABLE episodes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    source_id INTEGER NOT NULL REFERENCES sources(id),
-    slug TEXT NOT NULL UNIQUE,
-    title TEXT NOT NULL,
-    published_date TEXT NOT NULL,
-    year INTEGER NOT NULL,
-    month INTEGER NOT NULL,
-    day INTEGER NOT NULL,
-    summary TEXT,
-    chunk_count INTEGER NOT NULL DEFAULT 0,
-    format TEXT NOT NULL DEFAULT 'notes',
-    content_markdown TEXT,
-    rich_content_json TEXT,
-    links_json TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-  )`,
-  `CREATE TABLE chunks (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    episode_id INTEGER NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
-    slug TEXT NOT NULL UNIQUE,
-    title TEXT NOT NULL,
-    content TEXT NOT NULL,
-    content_plain TEXT NOT NULL,
-    summary TEXT,
-    position INTEGER NOT NULL DEFAULT 0,
-    word_count INTEGER NOT NULL DEFAULT 0,
-    vector_id TEXT,
-    content_markdown TEXT,
-    rich_content_json TEXT,
-    links_json TEXT,
-    images_json TEXT,
-    footnotes_json TEXT,
-    reach INTEGER NOT NULL DEFAULT 0,
-    analysis_text TEXT,
-    normalization_version INTEGER NOT NULL DEFAULT 0,
-    normalization_warnings TEXT,
-    enriched INTEGER NOT NULL DEFAULT 0,
-    enrichment_version INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-  )`,
-  `CREATE TABLE topics (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE,
-    slug TEXT NOT NULL UNIQUE,
-    usage_count INTEGER NOT NULL DEFAULT 0,
-    kind TEXT NOT NULL DEFAULT 'concept',
-    distinctiveness REAL NOT NULL DEFAULT 0,
-    related_slugs TEXT,
-    display_suppressed INTEGER NOT NULL DEFAULT 0,
-    display_reason TEXT,
-    hidden INTEGER NOT NULL DEFAULT 0,
-    entity_verified INTEGER NOT NULL DEFAULT 0,
-    provenance_complete INTEGER NOT NULL DEFAULT 0
-  )`,
-  `CREATE TABLE chunk_topics (
-    chunk_id INTEGER NOT NULL REFERENCES chunks(id) ON DELETE CASCADE,
-    topic_id INTEGER NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
-    PRIMARY KEY (chunk_id, topic_id)
-  )`,
-  `CREATE TABLE episode_topics (
-    episode_id INTEGER NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
-    topic_id INTEGER NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
-    PRIMARY KEY (episode_id, topic_id)
-  )`,
-  `CREATE TABLE word_stats (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    word TEXT NOT NULL UNIQUE,
-    total_count INTEGER NOT NULL DEFAULT 0,
-    doc_count INTEGER NOT NULL DEFAULT 0,
-    distinctiveness REAL NOT NULL DEFAULT 0,
-    in_baseline INTEGER NOT NULL DEFAULT 0,
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-  )`,
-  `CREATE TABLE chunk_words (
-    chunk_id INTEGER NOT NULL REFERENCES chunks(id) ON DELETE CASCADE,
-    word TEXT NOT NULL,
-    count INTEGER NOT NULL DEFAULT 1,
-    PRIMARY KEY (chunk_id, word)
-  )`,
-  `CREATE TABLE phrase_lexicon (
-    phrase TEXT NOT NULL,
-    slug TEXT NOT NULL UNIQUE,
-    support_count INTEGER NOT NULL DEFAULT 0,
-    doc_count INTEGER NOT NULL DEFAULT 0,
-    quality_score REAL NOT NULL DEFAULT 0,
-    provenance TEXT NOT NULL,
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-  )`,
-  `CREATE TABLE topic_candidate_audit (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    chunk_id INTEGER NOT NULL REFERENCES chunks(id) ON DELETE CASCADE,
-    topic_id INTEGER REFERENCES topics(id) ON DELETE SET NULL,
-    source TEXT NOT NULL,
-    stage TEXT NOT NULL DEFAULT 'candidate_processing',
-    raw_candidate TEXT NOT NULL,
-    normalized_candidate TEXT NOT NULL,
-    topic_name TEXT NOT NULL,
-    slug TEXT NOT NULL,
-    score REAL NOT NULL DEFAULT 0,
-    kind TEXT NOT NULL DEFAULT 'concept',
-    decision TEXT NOT NULL,
-    decision_reason TEXT NOT NULL,
-    provenance TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  )`,
-  `CREATE TABLE topic_merge_audit (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    from_topic_id INTEGER NOT NULL,
-    to_topic_id INTEGER NOT NULL,
-    from_slug TEXT NOT NULL,
-    to_slug TEXT NOT NULL,
-    stage TEXT NOT NULL,
-    reason TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  )`,
-  `CREATE TABLE topic_lineage_archive (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    original_topic_id INTEGER NOT NULL UNIQUE,
-    name TEXT NOT NULL,
-    slug TEXT NOT NULL,
-    kind TEXT NOT NULL,
-    usage_count INTEGER NOT NULL DEFAULT 0,
-    distinctiveness REAL NOT NULL DEFAULT 0,
-    display_reason TEXT,
-    provenance_complete INTEGER NOT NULL DEFAULT 0,
-    archive_reason TEXT NOT NULL,
-    merged_to_topic_id INTEGER,
-    merge_stage TEXT,
-    archive_count INTEGER NOT NULL DEFAULT 1,
-    last_original_topic_id INTEGER,
-    last_archived_at TEXT,
-    archived_at TEXT NOT NULL DEFAULT (datetime('now'))
-  )`,
-  `CREATE TABLE ingestion_log (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    source_id INTEGER REFERENCES sources(id),
-    started_at TEXT NOT NULL DEFAULT (datetime('now')),
-    completed_at TEXT,
-    status TEXT NOT NULL DEFAULT 'running',
-    run_type TEXT NOT NULL DEFAULT 'refresh',
-    episodes_added INTEGER NOT NULL DEFAULT 0,
-    chunks_added INTEGER NOT NULL DEFAULT 0,
-    error_message TEXT,
-    pipeline_report TEXT
-  )`,
-  `CREATE TABLE llm_enrichment_runs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    source_id INTEGER REFERENCES sources(id),
-    episode_id INTEGER REFERENCES episodes(id) ON DELETE CASCADE,
-    extractor_model TEXT NOT NULL,
-    prompt_version TEXT NOT NULL,
-    schema_version TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'completed',
-    raw_response_json TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  )`,
-  `CREATE TABLE llm_episode_candidates (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    run_id INTEGER NOT NULL REFERENCES llm_enrichment_runs(id) ON DELETE CASCADE,
-    episode_id INTEGER NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
-    candidate_name TEXT NOT NULL,
-    normalized_name TEXT NOT NULL,
-    slug TEXT NOT NULL,
-    kind TEXT NOT NULL,
-    confidence REAL NOT NULL DEFAULT 0,
-    rank_position INTEGER NOT NULL DEFAULT 0,
-    aliases_json TEXT NOT NULL DEFAULT '[]',
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  )`,
-  `CREATE TABLE llm_episode_candidate_evidence (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    candidate_id INTEGER NOT NULL REFERENCES llm_episode_candidates(id) ON DELETE CASCADE,
-    chunk_id INTEGER NOT NULL REFERENCES chunks(id) ON DELETE CASCADE,
-    chunk_slug TEXT NOT NULL,
-    quote TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  )`,
-  `CREATE TABLE source_html_chunks (
-    source_id INTEGER NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
-    chunk_index INTEGER NOT NULL,
-    fetched_at TEXT NOT NULL,
-    html_chunk TEXT NOT NULL,
-    PRIMARY KEY (source_id, chunk_index)
-  )`,
-  `CREATE TABLE episode_artifact_chunks (
-    episode_id INTEGER NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
-    artifact_key TEXT NOT NULL,
-    chunk_index INTEGER NOT NULL,
-    content_chunk TEXT NOT NULL,
-    PRIMARY KEY (episode_id, artifact_key, chunk_index)
-  )`,
-  `CREATE TABLE pipeline_runs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    ingestion_log_id INTEGER REFERENCES ingestion_log(id) ON DELETE CASCADE,
-    source_id INTEGER REFERENCES sources(id),
-    run_type TEXT NOT NULL,
-    extractor_mode TEXT NOT NULL DEFAULT 'naive',
-    status TEXT NOT NULL DEFAULT 'completed',
-    total_ms INTEGER NOT NULL DEFAULT 0,
-    chunks_processed INTEGER NOT NULL DEFAULT 0,
-    candidates_generated INTEGER NOT NULL DEFAULT 0,
-    candidates_rejected_early INTEGER NOT NULL DEFAULT 0,
-    candidates_inserted INTEGER NOT NULL DEFAULT 0,
-    topics_inserted INTEGER NOT NULL DEFAULT 0,
-    chunk_topic_links_inserted INTEGER NOT NULL DEFAULT 0,
-    chunk_word_rows_inserted INTEGER NOT NULL DEFAULT 0,
-    pruned INTEGER NOT NULL DEFAULT 0,
-    merged INTEGER NOT NULL DEFAULT 0,
-    orphan_topics_deleted INTEGER NOT NULL DEFAULT 0,
-    archived_lineage_topics INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  )`,
-  `CREATE TABLE pipeline_stage_metrics (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    pipeline_run_id INTEGER NOT NULL REFERENCES pipeline_runs(id) ON DELETE CASCADE,
-    phase TEXT NOT NULL,
-    stage_name TEXT NOT NULL,
-    stage_order INTEGER NOT NULL,
-    status TEXT NOT NULL,
-    duration_ms INTEGER NOT NULL DEFAULT 0,
-    counts_json TEXT NOT NULL DEFAULT '{}',
-    detail TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  )`,
-  "CREATE INDEX IF NOT EXISTS idx_episodes_published ON episodes(published_date DESC)",
-  "CREATE INDEX IF NOT EXISTS idx_episodes_year_month ON episodes(year, month)",
-  "CREATE INDEX IF NOT EXISTS idx_chunks_episode ON chunks(episode_id)",
-  "CREATE INDEX IF NOT EXISTS idx_chunks_vector ON chunks(vector_id)",
-  "CREATE INDEX IF NOT EXISTS idx_topics_usage ON topics(usage_count DESC)",
-  "CREATE INDEX IF NOT EXISTS idx_topics_visible ON topics(hidden, display_suppressed, usage_count DESC)",
-  "CREATE INDEX IF NOT EXISTS idx_chunk_topics_topic ON chunk_topics(topic_id)",
-  "CREATE INDEX IF NOT EXISTS idx_episode_topics_topic ON episode_topics(topic_id)",
-  "CREATE INDEX IF NOT EXISTS idx_word_stats_count ON word_stats(total_count DESC)",
-  "CREATE INDEX IF NOT EXISTS idx_chunk_words_word ON chunk_words(word)",
-  "CREATE INDEX IF NOT EXISTS idx_chunks_reach ON chunks(reach DESC)",
-  "CREATE INDEX IF NOT EXISTS idx_word_stats_distinctiveness ON word_stats(distinctiveness DESC)",
-  "CREATE INDEX IF NOT EXISTS idx_chunks_normalization_version ON chunks(normalization_version)",
-  "CREATE INDEX IF NOT EXISTS idx_phrase_lexicon_doc_count ON phrase_lexicon(doc_count DESC)",
-  "CREATE INDEX IF NOT EXISTS idx_topic_candidate_audit_chunk ON topic_candidate_audit(chunk_id)",
-  "CREATE INDEX IF NOT EXISTS idx_topic_candidate_audit_topic ON topic_candidate_audit(topic_id)",
-  "CREATE INDEX IF NOT EXISTS idx_topic_merge_audit_to_topic ON topic_merge_audit(to_topic_id)",
-  "CREATE INDEX IF NOT EXISTS idx_topic_lineage_archive_original ON topic_lineage_archive(original_topic_id)",
-  "CREATE INDEX IF NOT EXISTS idx_topic_lineage_archive_compact_key ON topic_lineage_archive(slug, archive_reason, merge_stage, merged_to_topic_id)",
-  "CREATE INDEX IF NOT EXISTS idx_llm_enrichment_runs_episode ON llm_enrichment_runs(episode_id, created_at DESC)",
-  "CREATE INDEX IF NOT EXISTS idx_llm_episode_candidates_episode_slug ON llm_episode_candidates(episode_id, slug)",
-  "CREATE INDEX IF NOT EXISTS idx_llm_episode_candidate_evidence_candidate ON llm_episode_candidate_evidence(candidate_id)",
-  "CREATE INDEX IF NOT EXISTS idx_source_html_chunks_source ON source_html_chunks(source_id, chunk_index)",
-  "CREATE INDEX IF NOT EXISTS idx_episode_artifact_chunks_episode ON episode_artifact_chunks(episode_id, artifact_key, chunk_index)",
-  "CREATE INDEX IF NOT EXISTS idx_pipeline_runs_created_at ON pipeline_runs(created_at DESC)",
-  "CREATE INDEX IF NOT EXISTS idx_pipeline_runs_run_type ON pipeline_runs(run_type, created_at DESC)",
-  "CREATE INDEX IF NOT EXISTS idx_pipeline_stage_metrics_run ON pipeline_stage_metrics(pipeline_run_id, phase, stage_order)",
-];
+function splitSqlStatements(sql: string): string[] {
+  const statements: string[] = [];
+  const lines = sql
+    .split("\n")
+    .filter((line) => !line.trim().startsWith("--"));
+
+  let current: string[] = [];
+  let inTrigger = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    if (/^CREATE\s+TRIGGER\b/i.test(trimmed)) {
+      inTrigger = true;
+    }
+
+    current.push(line);
+
+    if (inTrigger) {
+      if (/^END;$/i.test(trimmed)) {
+        statements.push(current.join("\n").trim());
+        current = [];
+        inTrigger = false;
+      }
+      continue;
+    }
+
+    if (trimmed.endsWith(";")) {
+      statements.push(current.join("\n").trim());
+      current = [];
+    }
+  }
+
+  if (current.length > 0) {
+    statements.push(current.join("\n").trim());
+  }
+
+  return statements;
+}
+
+const MIGRATIONS = [
+  migration0001,
+  migration0002,
+  migration0003,
+  migration0004,
+  migration0005,
+  migration0006,
+  migration0007,
+  migration0008,
+  migration0009,
+  migration0010,
+  migration0011,
+  migration0012,
+  migration0013,
+  migration0014,
+  migration0015,
+  migration0016,
+  migration0017,
+  migration0018,
+  migration0019,
+  migration0020,
+].flatMap(splitSqlStatements);
 
 export async function applyTestMigrations(db: D1Database): Promise<void> {
-  const allStatements = [...DROPS, ...CREATES];
-  await db.batch(allStatements.map((sql) => db.prepare(sql)));
+  await db.batch(DROPS.map((sql) => db.prepare(sql)));
+
+  for (const sql of MIGRATIONS) {
+    await db.prepare(sql).run();
+  }
+
+  await db.prepare("PRAGMA optimize;").run();
 }

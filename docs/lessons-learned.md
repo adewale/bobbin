@@ -291,7 +291,7 @@ Two serious failures only appeared when we ran the full Komoroske corpus through
 - `word_stats.word` was unique in test helpers but not in the real migration chain, so `ON CONFLICT(word)` worked in tests and failed in production-like runs.
 - `topics.distinctiveness` existed in test helpers but was missing from the real migration chain, so finalization silently degraded until we inspected the live schema.
 
-The lesson is not just "run migrations". The lesson is: **test helpers that reconstruct schema by hand will drift from production unless you treat them as a compatibility surface**. Full-corpus local runs against real Wrangler D1 state are the only trustworthy test for migration reality.
+The lesson was not just "run migrations". The lesson was: **test helpers that reconstruct schema by hand will drift from production unless you treat them as a compatibility surface**. Bobbin now applies the checked-in D1 migration chain in tests and local pipeline bootstrap as well, so the safer rule is: keep one migration source of truth and make every verification path use it.
 
 ### JSON logs are not enough; pipeline telemetry must be queryable
 

@@ -1,7 +1,7 @@
 import { slugify } from "../lib/slug";
 import { formatDate } from "../lib/date";
 import { countWords } from "../lib/text";
-import { batchExec } from "../lib/db";
+import { batchExec, chunkForSqlBindings, sqlPlaceholders } from "../lib/db";
 import { persistEpisodeArtifactChunks } from "../db/artifacts";
 import {
   buildPhraseLexicon,
@@ -1751,11 +1751,13 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
         .filter((row) => !regex.test(row.analysis_text.toLowerCase()))
         .map((row) => row.chunk_id);
       if (invalidChunkIds.length === 0) continue;
-      const placeholders = invalidChunkIds.map(() => "?").join(",");
-      const deletion = await db.prepare(
-        `DELETE FROM chunk_topics WHERE topic_id = ? AND chunk_id IN (${placeholders})`
-      ).bind(entity.id, ...invalidChunkIds).run();
-      deletedLinks += deletion.meta.changes || 0;
+      for (const invalidChunkIdBatch of chunkForSqlBindings(invalidChunkIds)) {
+        const placeholders = sqlPlaceholders(invalidChunkIdBatch.length);
+        const deletion = await db.prepare(
+          `DELETE FROM chunk_topics WHERE topic_id = ? AND chunk_id IN (${placeholders})`
+        ).bind(entity.id, ...invalidChunkIdBatch).run();
+        deletedLinks += deletion.meta.changes || 0;
+      }
     }
     await recountUsage(db);
     const entityFlagUpdates = entities.results.map((entity) =>

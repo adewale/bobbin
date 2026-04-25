@@ -16,3 +16,5 @@ CREATE TABLE episode_artifact_chunks (
 
 CREATE INDEX IF NOT EXISTS idx_source_html_chunks_source ON source_html_chunks(source_id, chunk_index);
 CREATE INDEX IF NOT EXISTS idx_episode_artifact_chunks_episode ON episode_artifact_chunks(episode_id, artifact_key, chunk_index);
+
+PRAGMA optimize;
