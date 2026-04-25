@@ -33,8 +33,8 @@ jobs:
         continue-on-error: true
 
       - name: Upload Playwright report
-        if: failure()
-        uses: actions/upload-artifact@v4
+        if: failure() && hashFiles('playwright-report/**') != ''
+        uses: actions/upload-artifact@v5
         with:
           name: playwright-report
           path: playwright-report/

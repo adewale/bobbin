@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-04-25 — CI maintenance and follow-through
+
+### Changed
+- `docs/lessons-learned.md` now captures the operational lessons from the D1 hardening and migration-bootstrap pass.
+- GitHub Actions now uses `actions/checkout@v5`, `actions/setup-node@v5`, and `actions/upload-artifact@v5`.
+
+### Fixed
+- `src/ingestion-roundtrip.test.ts` now uses an explicit timeout budget so slower CI runners do not fail a passing end-to-end worker test at the default 5-second limit.
+- Playwright report upload is now skipped cleanly when no `playwright-report/` directory exists, removing the noisy artifact warning from non-E2E failures.
+
 ## 2026-04-25 — D1 hardening, migration-chain bootstrap, and queue retry cleanup
 
 ### Changed

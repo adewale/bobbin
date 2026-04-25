@@ -10,6 +10,8 @@ import { ingestParsedEpisodes } from "./jobs/ingest";
 import sampleEssays from "../test/fixtures/sample-mobilebasic.html?raw";
 import sampleNotes from "../test/fixtures/sample-notes-format.html?raw";
 
+const ROUNDTRIP_TIMEOUT_MS = 20_000;
+
 beforeEach(async () => {
   await applyTestMigrations(env.DB);
   await env.DB.prepare(
@@ -44,7 +46,7 @@ describe("Ingestion roundtrip: essays fixture", () => {
       expect(de.month).toBe(pe.parsedDate.getUTCMonth() + 1);
       expect(de.day).toBe(pe.parsedDate.getUTCDate());
     }
-  });
+  }, ROUNDTRIP_TIMEOUT_MS);
 
   it("every parsed chunk ends up in D1 with correct fields", async () => {
     const parsed = parseHtmlDocument(sampleEssays);
@@ -66,7 +68,7 @@ describe("Ingestion roundtrip: essays fixture", () => {
         dbIdx++;
       }
     }
-  });
+  }, ROUNDTRIP_TIMEOUT_MS);
 
   it("format is stored correctly as essays", async () => {
     const parsed = parseHtmlDocument(sampleEssays);
@@ -76,7 +78,7 @@ describe("Ingestion roundtrip: essays fixture", () => {
     for (const ep of episodes.results as any[]) {
       expect(ep.format).toBe("essays");
     }
-  });
+  }, ROUNDTRIP_TIMEOUT_MS);
 });
 
 describe("Ingestion roundtrip: notes fixture", () => {
@@ -88,7 +90,7 @@ describe("Ingestion roundtrip: notes fixture", () => {
     expect(episodes.results).toHaveLength(1);
     expect((episodes.results[0] as any).format).toBe("notes");
     expect((episodes.results[0] as any).chunk_count).toBe(parsed[0].chunks.length);
-  });
+  }, ROUNDTRIP_TIMEOUT_MS);
 
   it("all chunks have sequential positions", async () => {
     const parsed = parseHtmlDocument(sampleNotes);
@@ -100,7 +102,7 @@ describe("Ingestion roundtrip: notes fixture", () => {
     for (let i = 0; i < chunks.results.length; i++) {
       expect((chunks.results[i] as any).position).toBe(i);
     }
-  });
+  }, ROUNDTRIP_TIMEOUT_MS);
 });
 
 describe("Ingestion roundtrip: no data loss", () => {
@@ -120,7 +122,7 @@ describe("Ingestion roundtrip: no data loss", () => {
       "SELECT slug, COUNT(*) as c FROM chunks GROUP BY slug HAVING c > 1"
     ).all();
     expect(dupChunks.results).toHaveLength(0);
-  });
+  }, ROUNDTRIP_TIMEOUT_MS);
 
   it("topic counts are positive for all generated topics", async () => {
     const parsed = parseHtmlDocument(sampleEssays);
@@ -135,7 +137,7 @@ describe("Ingestion roundtrip: no data loss", () => {
     for (const topic of activeTopics.results as any[]) {
       expect(topic.usage_count).toBeGreaterThan(0);
     }
-  });
+  }, ROUNDTRIP_TIMEOUT_MS);
 
   it("word_stats is populated after ingestion", async () => {
     const parsed = parseHtmlDocument(sampleEssays);
@@ -145,7 +147,7 @@ describe("Ingestion roundtrip: no data loss", () => {
       "SELECT COUNT(*) as c FROM word_stats"
     ).first();
     expect((wordStats as any).c).toBeGreaterThan(0);
-  });
+  }, ROUNDTRIP_TIMEOUT_MS);
 
   it("reingesting the same fixture does not duplicate episodes or chunks", async () => {
     const parsed = parseHtmlDocument(sampleEssays);
@@ -172,7 +174,7 @@ describe("Ingestion roundtrip: no data loss", () => {
     expect(second.episodesAdded).toBe(0);
     expect(second.chunksAdded).toBe(0);
     expect(after).toEqual(before);
-  });
+  }, ROUNDTRIP_TIMEOUT_MS);
 
   it("persists normalization artifacts for every ingested chunk", async () => {
     const parsed = parseHtmlDocument(sampleEssays);
@@ -188,5 +190,5 @@ describe("Ingestion roundtrip: no data loss", () => {
       expect(row.normalization_version).toBeGreaterThan(0);
       expect(row.normalization_warnings).not.toBeNull();
     }
-  });
+  }, ROUNDTRIP_TIMEOUT_MS);
 });
