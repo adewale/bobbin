@@ -106,7 +106,7 @@ describe("Episode detail rail insights", () => {
     expect(html).toContain("New");
     expect(html).toContain("Up");
     expect(html).not.toContain("Gone");
-    expect(html).toContain("typical rate");
+    expect(html).toContain("× typical");
     expect(html).not.toContain('class="episode-insight-kicker"');
     expect(html).toContain('class="rail-item-title"');
     expect(html).toContain('href="https://c.example"');
