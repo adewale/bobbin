@@ -675,3 +675,68 @@ Preview/local config that points at the real database is not just a configuratio
 59. `EXPLAIN QUERY PLAN` belongs in the verification loop for schema and query changes, not only in postmortems.
 60. Retry only transient D1/infrastructure failures; deterministic SQL or application bugs should fail fast.
 61. Preview/local database isolation is part of correctness, not just deployment hygiene.
+
+## What we learned in the multi-source refresh and live maintenance pass
+
+The next operational step was not a new UI or a new extractor. It was making the pipeline behave like a real corpus-ingestion system instead of a single-doc prototype. That meant confronting three uncomfortable facts at once: the source registry had drifted from the original spec, the refresh job only knew about one hardcoded doc, and "raw rows landed in D1" was not the same thing as "the source is fully integrated into the live product".
+
+### A source registry is a product surface, not a background detail
+
+Once Bobbin stopped being "the current doc plus maybe some archives" and started becoming a maintained corpus, it needed an explicit source registry with real state. The important fields were not just `google_doc_id` and `title`, but also:
+
+- whether the source is active
+- whether it is an archive source
+- whether the last refresh succeeded
+- what the last failure was
+- how many failures have happened in a row
+
+Without that, every operational question turned into archaeology. With it, the source list becomes inspectable and the refresh loop becomes explainable.
+
+### Hardcoding one refresh source is a prototype habit
+
+The original refresh path used a single constant doc ID. That was fine for proving the pipeline, but it silently encoded the wrong product model: that there is one canonical input and everything else is a special case.
+
+The real corpus model was different. Bobbin has a set of inputs, some current and some archival, and refresh should operate over that set. The lesson is: **if the product concept includes multiple sources, the scheduler should model sources explicitly instead of smuggling them through constants**.
+
+### Discoverability and operability are different problems
+
+We fixed auto-registration of unknown `doc=` ingests, but that only solved discoverability. Operability required a second thing entirely: a first-class maintenance path that could run refresh, enrich, finalize, and backfill operations against the deployed worker without depending on local code paths or one-off curl folklore.
+
+That is why `maintenance:remote` mattered. It was not a convenience wrapper. It was the point where operational knowledge stopped living in the operator's head and started living in the repo.
+
+### Raw ingest success and enriched-corpus success are separate states
+
+The 2023-2024 archive doc made this very obvious. We could successfully:
+
+- fetch the doc
+- parse it
+- insert episodes and chunks
+- even get FTS rows
+
+and still not have the source truly integrated, because `chunk_topics` and enriched state were missing. That means the pipeline does not have one success state. It has at least two:
+
+1. raw content landed
+2. downstream enrichment/finalization landed
+
+The lesson is: **treat raw-ingest completeness and enriched-corpus completeness as distinct operational milestones**.
+
+### Production-only maintenance paths deserve first-class testing and logging
+
+The local-to-remote Wrangler path was brittle in exactly the way production maintenance paths often are: not because the business logic was wrong, but because transport, auth, proxying, and logging all interacted in ways that were easy to miss locally. Making pipeline logging best-effort reduced one class of fragility. Moving operational work through the deployed worker reduced another.
+
+The important lesson is: **maintenance paths are part of the system, and if they are not intentionally designed they will fail exactly when you need them most**.
+
+### Coverage gaps are often source-access gaps in disguise
+
+After adding the new archive source, the remaining historical gaps were no longer abstract missing time ranges. They lined up with concrete docs that still returned `401` on the public fetch path. That reframed the problem. The missing history was not primarily a parser problem or an indexing problem. It was an access problem.
+
+The lesson is: **when timeline gaps persist after the pipeline is otherwise healthy, audit source accessibility before you assume the ingestion logic is still wrong**.
+
+### Updated lesson list
+
+62. A corpus with multiple inputs needs an explicit source registry with operational state, not just a table of IDs.
+63. If the product concept includes multiple sources, cron/refresh should iterate the source set instead of hardcoding one current input.
+64. Auto-discovery of new sources and safe remote maintenance are different problems; both need first-class support.
+65. "Episodes and chunks inserted" is not the same operational state as "fully integrated into the enriched corpus".
+66. Production maintenance paths need intentional design, logging, and tooling; otherwise they fail at the worst possible moment.
+67. Persistent timeline gaps often point to source-access problems, not just ingestion-logic problems.
