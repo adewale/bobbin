@@ -117,4 +117,23 @@ describe("Episode detail rail insights", () => {
     expect(html).not.toContain('href="mailto:test@example.com" target="_blank"');
     expect(html).toContain("Bits and Bobs 2/15/24");
   });
+
+  it("renders the trending-up glyph for intensified topics in Since Last Episode", async () => {
+    const res = await SELF.fetch("http://localhost/episodes/2024-03-20-rail");
+    const html = await res.text();
+
+    // Locate the Since Last Episode section so the assertion isn't satisfied
+    // by an arrow elsewhere on the page (or by the New row, which has no glyph).
+    const start = html.indexOf("Since Last Episode");
+    const end = html.indexOf("Archive Contrast", start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const sinceLast = html.slice(start, end);
+
+    // The glyph is appended to the topic anchor and inherits its color
+    // (no semantic green/red). Direction is shape, not hue.
+    expect(sinceLast).toContain('class="topic-trend"');
+    expect(sinceLast).toContain('aria-label="trending up"');
+    expect(sinceLast).toContain("↑");
+  });
 });

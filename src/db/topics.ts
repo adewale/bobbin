@@ -265,9 +265,9 @@ export async function getAdjacentTopics(db: D1Database, topicId: number) {
      FROM topics
      WHERE hidden = 0 AND display_suppressed = 0
      ORDER BY usage_count DESC, distinctiveness DESC, name ASC`
-  ).all();
+  ).all<TopicAdjacent & { id: number }>();
 
-  const topics = result.results as (TopicAdjacent & { id: number })[];
+  const topics = result.results;
   const index = topics.findIndex((topic) => topic.id === topicId);
 
   if (index === -1) {

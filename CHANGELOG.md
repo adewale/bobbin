@@ -1,5 +1,33 @@
 # Changelog
 
+## 2026-04-26 — Topic representation consolidated; period-summary foundation
+
+### Changed
+- All topic surfaces now render through a single `<TopicList>` component with three layouts (`run` / `stack` / `multiples`) and three modifiers (`trending`, `count`, `salient`). Replaces `TopicStrip`, `TopicRailList`, and `TopicCloud`.
+- Topic chips removed from the design language. Topics render as inline runs (`·`-separated text) or small-multiple cells. No badges, no boxes, no chip hover states.
+- Direction is encoded by typographic glyphs (`→`, `↑`, `↓`) that inherit link color. No semantic green/red.
+- Episode-rail `Since Last Episode` panel now renders Up/Down/New through `<TopicList layout="run">` with the trending modifier; topic names are linkable for the first time and the `(+5)` parenthetical prose is replaced by the `↑` glyph + a tabular-num count.
+- Episode-rail `Archive Contrast` and `Most Novel Chunks` migrated to `<TopicList>` so their topic mentions go through the same component as everything else.
+- `EpisodeNovelChunk` data shape: `topicNames: string[]` → `topics: { name; slug }[]` so the via-meta topics are linkable.
+
+### Added
+- `<TopicList>` component (`src/components/TopicList.tsx`).
+- `Period` vocabulary (`src/lib/period.ts`): `Period`, `PeriodBounds`, `periodBounds`, `previousPeriod`, `periodLabel`, `periodPath`, `parsePeriodPath`, `isWithinPeriod`. Discriminated union; `year` and `month` supported, extensible to future kinds without breaking callers.
+- Period-scoped data helpers (`src/db/periods.ts`): `getEpisodesInPeriod`, `getChunksInPeriod`, `getPeriodTopicCounts`, `getPeriodNewTopics`, `getPeriodMovers`, `getPeriodArchiveContrast`, `getMostConnectedInPeriod`. All take `PeriodBounds`, kind-agnostic.
+- Shared topic scoring (`src/lib/topic-scoring.ts`): `weightedTopicScore`, `weightedDeltaScore` (extracted from episode-rail logic so episode and period rankings are produced by the same function).
+- `buildPeriodSummary` (`src/lib/period-summary.ts`): deterministic template-driven summary helper modelled exactly on `buildTopicSummary`. Five fixed sentence shapes; tests pin exact outputs.
+- `scripts/audit-era-boundaries.ts`: corpus audit script that parses raw HTML, counts marker-term mentions per quarter, and reports first-appearance dates. Used to validate proposed era boundaries against the actual corpus.
+- `docs/monthly-summaries-spec.md`: rewritten end-to-end. Covers monthly + yearly + reserved era axis. Determinism rule, quarter/season/week explicitly out of scope, per-panel emptiness rules, era axis reserved at `/eras/<slug>/`.
+
+### Removed
+- `TopicStrip`, `TopicRailList`, `TopicCloud` components.
+- CSS: `.topic`, `.topics`, `.topic-cloud`, `.topic-tier*`, `.topic-search-results`, `.topic-related-inline`, `.topic-related-panel`, `.topic-related-count`, `.topics-list`, `.distinctive-list`, plus orphan descendant rules.
+
+### Fixed
+- TypeScript errors in `src/db/topics.ts` (`getAdjacentTopics` cast through `Record<string, unknown>`) and `src/routes/design.tsx` (`Most connected` chunks rendered through untyped `unknown` fields). `getMostConnected` now returns a typed `ConnectedChunk[]`.
+
+---
+
 ## 2026-04-25 — CI maintenance and follow-through
 
 ### Changed
@@ -25,6 +53,8 @@
 - Preview-local D1 config no longer points at the live database ID.
 - Index-creating migrations now run `PRAGMA optimize` so planner stats stay fresh after schema changes.
 - Local pipeline docs/comments now reference the canonical `wrangler.jsonc` path instead of stale `wrangler.local.jsonc` examples.
+
+---
 
 ## 2026-04-24 — Shared archive surfaces, local verification, and test stabilization
 
