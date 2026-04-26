@@ -168,7 +168,7 @@ Fallback chain: FTS5 + Vectorize → FTS5 only → LIKE keyword search
 src/
   index.tsx              Entry point, route registration, scheduled + queue handlers
   types.ts               Bindings, DB row types, parsed types
-  components/            JSX components (Layout, TopicHeader, TopicChartPanel, TopicRailList, TopicStrip, etc.)
+  components/            JSX components (Layout, TopicHeader, TopicChartPanel, TopicList, etc.)
   routes/                Hono sub-routers (home, episodes, chunks, topics, search, api)
   services/              Domain logic (search, YAKE extraction, entity detection, text similarity, n-grams)
   jobs/                  Pipeline operations (ingest, refresh, queue-handler)

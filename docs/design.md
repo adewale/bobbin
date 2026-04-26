@@ -47,8 +47,7 @@ Bobbin's current design system is text-first, editorial, and heavily shared acro
 
 - `TopicHeader`
 - `TopicChartPanel`
-- `TopicRailList`
-- `TopicStrip`
+- `TopicList` (replaces `TopicStrip`, `TopicRailList`, `TopicCloud`; layouts: `run` / `stack` / `multiples`; modifiers: `trending`, `count`, `salient`)
 - `EmptyArchiveState`
 - `BrowseSection`, `BrowseSubsection`, `BrowseRowList`, `BrowseRow`
 
