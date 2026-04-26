@@ -28,7 +28,8 @@ Every section is a deterministic projection of existing data through existing co
 - No new chart or panel types
 - No new visual language
 - No quarter / season / week / half-year periods (see *Period kinds* below)
-- **No generated prose.** No body-panel summary, no editorial intro, no descriptive sentences derived from period data. Every word on the page is either fixed UI text, a column value, or output of a deterministic helper that returns counts, names, dates, or ratios — never sentences.
+- **No interpretive prose.** No editorial verbs, no characterisation, no claims that go beyond what the data literally says. Sentences may appear *only* through fixed templates in `buildPeriodSummary` (modelled on the existing `buildTopicSummary`); see the Summary panel section below.
+- No LLM, no synthesis, no narrative generation. Every sentence on the page must be either fixed UI text or a substitution into a template enumerated in `src/lib/period-summary.ts`.
 - No "thin period" rendering branch. Sparse periods are handled by the same per-panel emptiness checks as everything else.
 
 ## Period kinds
@@ -76,9 +77,9 @@ Defining era *names* and *boundaries* from these counts is editorial work that b
 
 Calendar archive pages in the indieweb tradition are navigation aids, not destinations. Bobbin's summary pages should respect that:
 
-- The body provides navigation (representative chunks, episode timeline)
+- The body provides navigation (representative chunks, episode timeline) plus a short deterministic summary panel
 - The rail provides the analytical lens (deterministic counts and rankings)
-- There is no auto-generated prose. Every sentence-shaped element on the page must be either fixed UI text or a value pulled directly from a column or a deterministic helper. The page does not interpret, characterise, or narrate the period.
+- The summary panel uses the same template-only contract as the existing `buildTopicSummary` on topic detail pages: fixed sentence shapes populated from named observable inputs. No interpretation, no characterisation, no narrative.
 
 ## Composition Rule
 
@@ -132,15 +133,20 @@ Use the existing `main-wide` + optional rail layout.
    - episode count and chunk count, both pulled directly from `getEpisodesInPeriod` / `getChunksInPeriod`, in the existing metadata style
    - breadcrumbs back to `/summaries` and (for monthly) `/summaries/{year}`
 
-   No prose summary panel; the header is the only body-level introduction.
+2. **Summary panel**
+   - existing `body-panel` shell, identical to the `Topic summary` panel on topic detail pages
+   - rendered list comes from `buildPeriodSummary(facts)` in `src/lib/period-summary.ts`
+   - `buildPeriodSummary` is the period analogue of `buildTopicSummary` (`src/lib/topic-detail.ts`): every sentence is a fixed template populated from named inputs (`periodLabel`, `episodeCount`, `chunkCount`, span dates, `topByMentions`, new-topic count + leader, intensified/declined counts, `topContrast`)
+   - Returns at most 5 sentences. Returns `[]` for periods with zero episodes; the panel is then omitted entirely.
+   - No sentence outside the templates enumerated in `period-summary.ts` may appear here. Tests pin exact outputs for fixture inputs.
 
-2. **Representative chunks**
+3. **Representative chunks**
    - existing `body-panel-list`
    - rows use `BrowseRow` or `list-row-link`
    - sourced from `getMostConnectedInPeriod` — strict reach ranking, no editorial selection
    - omit the panel when the helper returns zero rows
 
-3. **Episode timeline**
+4. **Episode timeline**
    - existing browse-body pattern
    - monthly summary: flat episode rows in descending date order. No day grouping.
    - yearly summary: grouped by month using `BrowseSection` / `BrowseSubsection` / `BrowseRowList` / `BrowseRow`
@@ -160,6 +166,10 @@ Only existing panel types/patterns. Four panels, each deterministic:
 If all four panels are empty the rail is omitted entirely and the body renders single-column. No other rail panels.
 
 ## Required Semantics
+
+### `Summary` panel
+
+Modelled exactly on `buildTopicSummary`. The set of permitted sentence templates is the source of truth in `src/lib/period-summary.ts`. Implementation may not introduce a sentence shape that isn't enumerated there, and may not call any model, generator, or external service to fill the panel. Sentence order matches the helper's emission order. The panel is omitted when the helper returns an empty array.
 
 ### `New Topics`
 
@@ -192,6 +202,7 @@ Must link directly to existing chunk detail pages.
 
 Yearly pages reuse exactly the same sections and panel names as monthly:
 
+- `Summary` (template-driven via `buildPeriodSummary`)
 - `Representative Chunks`
 - `New Topics`
 - `Movers`
@@ -253,7 +264,8 @@ Inclusion rules (deterministic):
    - `Movers` is omitted when the previous period has zero episodes
    - each rail panel is omitted when its source helper returns zero rows
    - the rail aside is omitted entirely when all four panels are empty
-   - no auto-generated prose appears anywhere on the page (every sentence-shaped element either originates from a fixed UI string or from a column value)
+   - the `Summary` panel renders exactly the strings produced by `buildPeriodSummary` for the period's facts (no extra sentences, no rewording)
+   - the `Summary` panel is omitted when `buildPeriodSummary` returns `[]`
    - no new panel classes or summary-only UI primitives are introduced
 
 ## Dependencies in place
@@ -262,6 +274,7 @@ These pieces have already landed and are available to the summaries PR with no a
 
 - `src/components/TopicList.tsx` — `run` / `stack` / `multiples` layouts; `trending`, `count`, `salient` modifiers
 - `src/lib/period.ts` — `Period`, `PeriodBounds`, `periodBounds`, `previousPeriod`, `periodLabel`, `periodPath`, `parsePeriodPath`, `isWithinPeriod`
+- `src/lib/period-summary.ts` — `buildPeriodSummary(input)`, the deterministic template-driven analogue of `buildTopicSummary`
 - `src/lib/topic-scoring.ts` — `weightedTopicScore`, `weightedDeltaScore` (shared with episode rail)
 - `src/db/periods.ts` — every period-scoped query the spec calls for
 - `src/lib/episode-rail.ts: collectExternalLinks` — already scope-agnostic, takes any chunk array
