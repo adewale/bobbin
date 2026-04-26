@@ -1,4 +1,13 @@
-export async function getMostConnected(db: D1Database, limit = 8) {
+export interface ConnectedChunk {
+  id: number;
+  slug: string;
+  title: string;
+  episode_slug: string;
+  published_date: string;
+  reach: number;
+}
+
+export async function getMostConnected(db: D1Database, limit = 8): Promise<ConnectedChunk[]> {
   // Try precomputed reach first; fall back to computed if no reach data
   const hasReach = await db.prepare(
     "SELECT COUNT(*) as c FROM chunks WHERE reach > 0"
@@ -13,7 +22,7 @@ export async function getMostConnected(db: D1Database, limit = 8) {
        WHERE c.reach > 0
        ORDER BY c.reach DESC
        LIMIT ?`
-    ).bind(limit).all();
+    ).bind(limit).all<ConnectedChunk>();
     return result.results;
   }
 
@@ -30,6 +39,6 @@ export async function getMostConnected(db: D1Database, limit = 8) {
      GROUP BY c.id
      ORDER BY reach DESC
      LIMIT ?`
-  ).bind(limit).all();
+  ).bind(limit).all<ConnectedChunk>();
   return result.results;
 }

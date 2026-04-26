@@ -5,7 +5,7 @@ import { HelpTip } from "../components/HelpTip";
 import { Layout } from "../components/Layout";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { RichContent, RichFootnotes, parseFootnotesJson, parseRichContentJson } from "../components/RichContent";
-import { TopicRailList } from "../components/TopicRailList";
+import { TopicList } from "../components/TopicList";
 import { getCrossReferences } from "../services/cross-refs";
 import { safeJsonForHtml } from "../lib/html";
 import { getChunkBySlug, getChunkTopics, getRelatedByTopics, getThreadChunks, getAdjacentChunks } from "../db/chunks";
@@ -146,32 +146,28 @@ chunks.get("/:slug", async (c) => {
         {(topics.length > 0 || episodeBlend.distinctive.length > 0) && (
           <aside class="page-rail topics-margin rail-stack">
             {topics.length > 0 && (
-              <TopicRailList
-                title="Topics"
-                topics={topics}
-                sectionClassName="topic-tier-main"
-                listClassName="topics-list"
-                help={(
+              <section class="topic-tier-main rail-panel rail-panel-list">
+                <div class="rail-panel-heading-row">
+                  <h3>Topics</h3>
                   <HelpTip
                     label="Explain chunk topics"
                     text="The main themes in this chunk."
                   />
-                )}
-              />
+                </div>
+                <TopicList topics={topics} layout="stack" />
+              </section>
             )}
             {episodeBlend.distinctive.length > 0 && (
-              <TopicRailList
-                title="Distinctive"
-                topics={episodeBlend.distinctive}
-                sectionClassName="distinctive-topics"
-                listClassName="distinctive-list"
-                help={(
+              <section class="distinctive-topics rail-panel rail-panel-list">
+                <div class="rail-panel-heading-row">
+                  <h3>Distinctive</h3>
                   <HelpTip
                     label="Explain distinctive topics"
                     text="Topics that stand out more in this episode than they usually do across Bobbin."
                   />
-                )}
-              />
+                </div>
+                <TopicList topics={episodeBlend.distinctive} layout="stack" />
+              </section>
             )}
 
             {relatedItems.length > 0 && (

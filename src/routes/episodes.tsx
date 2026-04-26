@@ -6,7 +6,7 @@ import { HelpTip } from "../components/HelpTip";
 import { Layout } from "../components/Layout";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { RichContent, RichFootnotes, parseFootnotesJson, parseRichContentJson } from "../components/RichContent";
-import { TopicRailList } from "../components/TopicRailList";
+import { TopicList } from "../components/TopicList";
 import { monthName } from "../lib/date";
 import { collectExternalLinks } from "../lib/episode-rail";
 import { getAdjacentEpisodes, getAllEpisodesGrouped, getChunksByEpisode, getEpisodeBySlug, getEpisodeRailInsights, getEpisodeTopicsBlended } from "../db/episodes";
@@ -206,32 +206,28 @@ episodes.get("/:slug", async (c) => {
         {hasEpisodeRail && (
           <aside class="page-rail topics-margin rail-stack episode-analysis-rail">
             {blendedTopics.main.length > 0 && (
-              <TopicRailList
-                title="Topics"
-                topics={blendedTopics.main}
-                sectionClassName="topic-tier-main"
-                listClassName="topics-list"
-                help={(
+              <section class="topic-tier-main rail-panel rail-panel-list">
+                <div class="rail-panel-heading-row">
+                  <h3>Topics</h3>
                   <HelpTip
                     label="Explain episode topics"
                     text="The main themes that recur across this episode."
                   />
-                )}
-              />
+                </div>
+                <TopicList topics={blendedTopics.main} layout="stack" />
+              </section>
             )}
             {blendedTopics.distinctive.length > 0 && (
-              <TopicRailList
-                title="Distinctive"
-                topics={blendedTopics.distinctive}
-                sectionClassName="distinctive-topics"
-                listClassName="distinctive-list"
-                help={(
+              <section class="distinctive-topics rail-panel rail-panel-list">
+                <div class="rail-panel-heading-row">
+                  <h3>Distinctive</h3>
                   <HelpTip
                     label="Explain distinctive topics"
                     text="Topics that are unusually salient in this episode compared with ordinary language and the rest of the archive."
                   />
-                )}
-              />
+                </div>
+                <TopicList topics={blendedTopics.distinctive} layout="stack" />
+              </section>
             )}
 
             {railInsights.unexpectedPairings.length > 0 && (
@@ -271,7 +267,12 @@ episodes.get("/:slug", async (c) => {
                   {railInsights.mostNovelChunks.map((chunk) => (
                     <li key={chunk.slug}>
                       <a href={`/chunks/${chunk.slug}`}>{chunk.title}</a>
-                      {chunk.topicNames.length > 0 && <span class="insight-meta">via {chunk.topicNames.slice(0, 2).join(" + ")}</span>}
+                      {chunk.topics.length > 0 && (
+                        <span class="insight-meta">
+                          via{" "}
+                          <TopicList topics={chunk.topics.slice(0, 2)} layout="run" />
+                        </span>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -296,19 +297,35 @@ episodes.get("/:slug", async (c) => {
                   {railInsights.sinceLast.intensified.length > 0 && (
                     <li>
                       <span class="rail-item-title">Up</span>
-                      <span class="insight-meta">{railInsights.sinceLast.intensified.map((topic) => `${topic.name} (+${topic.delta})`).join(", ")}</span>
+                      <TopicList
+                        layout="run"
+                        topics={railInsights.sinceLast.intensified.map((topic) => ({
+                          name: topic.name,
+                          slug: topic.slug,
+                          trend: "up" as const,
+                          count: topic.delta,
+                        }))}
+                      />
                     </li>
                   )}
                   {railInsights.sinceLast.downshifted.length > 0 && (
                     <li>
                       <span class="rail-item-title">Down</span>
-                      <span class="insight-meta">{railInsights.sinceLast.downshifted.map((topic) => `${topic.name} (${topic.delta})`).join(", ")}</span>
+                      <TopicList
+                        layout="run"
+                        topics={railInsights.sinceLast.downshifted.map((topic) => ({
+                          name: topic.name,
+                          slug: topic.slug,
+                          trend: "down" as const,
+                          count: Math.abs(topic.delta),
+                        }))}
+                      />
                     </li>
                   )}
                   {railInsights.sinceLast.newTopics.length > 0 && (
                     <li>
                       <span class="rail-item-title">New</span>
-                      <span class="insight-meta">{railInsights.sinceLast.newTopics.map((topic) => topic.name).join(", ")}</span>
+                      <TopicList layout="run" topics={railInsights.sinceLast.newTopics} />
                     </li>
                   )}
                 </ul>
@@ -316,7 +333,7 @@ episodes.get("/:slug", async (c) => {
             )}
 
             {railInsights.archiveContrast.length > 0 && (
-              <section class="episode-insight-panel rail-panel">
+              <section class="episode-insight-panel rail-panel rail-panel-list">
                 <div class="rail-panel-heading-row">
                   <h4>Archive Contrast</h4>
                   <HelpTip
@@ -324,14 +341,14 @@ episodes.get("/:slug", async (c) => {
                     text="Topic-level over-indexing relative to Bobbin overall. This explains what the episode is unusually about, not which chunk is newest."
                   />
                 </div>
-                <ul class="episode-insight-list">
-                  {railInsights.archiveContrast.map((topic) => (
-                    <li key={topic.slug}>
-                      <a href={`/topics/${topic.slug}`}>{topic.name}</a>
-                      <span class="insight-meta">{topic.spikeRatio.toFixed(1)}x typical rate</span>
-                    </li>
-                  ))}
-                </ul>
+                <TopicList
+                  layout="stack"
+                  topics={railInsights.archiveContrast.map((topic) => ({
+                    name: topic.name,
+                    slug: topic.slug,
+                    count: `${topic.spikeRatio.toFixed(1)}× typical`,
+                  }))}
+                />
               </section>
             )}
 

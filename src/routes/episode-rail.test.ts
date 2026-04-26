@@ -69,7 +69,8 @@ describe("Episode detail rail insights", () => {
     expect(html).toContain("External Links");
     expect(html).toContain('class="topic-help-tip"');
     expect(html).toContain('class="rail-panel-heading-row"');
-    expect(html).toContain('class="rail-panel-list topics-list"');
+    expect(html).toContain('class="topic-tier-main rail-panel rail-panel-list"');
+    expect(html).toContain('class="topic-stack"');
     expect(html).not.toContain("Generativity Sparkline");
     expect(html).not.toContain("Novelty Sparkline");
     expect(html).not.toContain("Reference Density Map");
@@ -105,7 +106,7 @@ describe("Episode detail rail insights", () => {
     expect(html).toContain("New");
     expect(html).toContain("Up");
     expect(html).not.toContain("Gone");
-    expect(html).toContain("typical rate");
+    expect(html).toContain("× typical");
     expect(html).not.toContain('class="episode-insight-kicker"');
     expect(html).toContain('class="rail-item-title"');
     expect(html).toContain('href="https://c.example"');
@@ -115,5 +116,24 @@ describe("Episode detail rail insights", () => {
     expect(html).not.toContain('href="#curr-1" target="_blank"');
     expect(html).not.toContain('href="mailto:test@example.com" target="_blank"');
     expect(html).toContain("Bits and Bobs 2/15/24");
+  });
+
+  it("renders the trending-up glyph for intensified topics in Since Last Episode", async () => {
+    const res = await SELF.fetch("http://localhost/episodes/2024-03-20-rail");
+    const html = await res.text();
+
+    // Locate the Since Last Episode section so the assertion isn't satisfied
+    // by an arrow elsewhere on the page (or by the New row, which has no glyph).
+    const start = html.indexOf("Since Last Episode");
+    const end = html.indexOf("Archive Contrast", start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const sinceLast = html.slice(start, end);
+
+    // The glyph is appended to the topic anchor and inherits its color
+    // (no semantic green/red). Direction is shape, not hue.
+    expect(sinceLast).toContain('class="topic-trend"');
+    expect(sinceLast).toContain('aria-label="trending up"');
+    expect(sinceLast).toContain("↑");
   });
 });

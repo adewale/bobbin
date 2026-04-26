@@ -1,5 +1,5 @@
 import type { Child } from "hono/jsx";
-import { TopicStrip } from "./TopicStrip";
+import { TopicList } from "./TopicList";
 
 type TopicRelated = {
   id?: number | string;
@@ -38,12 +38,12 @@ export function TopicHeader(props: {
       </div>
 
       {props.relatedTopics && props.relatedTopics.length > 0 ? (
-        <div class="topic-related topic-related-inline">
+        <div class="topic-related">
           <span class="topic-inline-heading-row">
             <span class="topic-related-label">Related:</span>
             {props.relatedHelp}
           </span>{" "}
-          <TopicStrip topics={props.relatedTopics} variant="inline" />
+          <TopicList topics={props.relatedTopics} layout="run" />
         </div>
       ) : null}
     </>

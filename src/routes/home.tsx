@@ -5,8 +5,7 @@ import { EmptyArchiveState } from "../components/EmptyArchiveState";
 import { HelpTip } from "../components/HelpTip";
 import { Layout } from "../components/Layout";
 import { TopicChartPanel } from "../components/TopicChartPanel";
-import { TopicRailList } from "../components/TopicRailList";
-import { TopicStrip } from "../components/TopicStrip";
+import { TopicList } from "../components/TopicList";
 import { getRecentEpisodes, getChunksByEpisode, getEpisodeTopics, getNovelTopicHistory } from "../db/episodes";
 import { getTopTopics } from "../db/topics";
 import { getMostConnected } from "../db/word-stats";
@@ -70,10 +69,10 @@ home.get("/", async (c) => {
                 See all {latestEp.chunk_count} chunks &rarr;
               </a>
               {latestTopics.length > 0 && (
-                <aside class="latest-topics">
-                  <h3 class="section-heading">Topics</h3>
-                  <TopicStrip topics={latestTopics.slice(0, 10)} />
-                </aside>
+                <p class="latest-topics">
+                  <span class="topic-related-label">Topics</span>{" "}
+                  <TopicList topics={latestTopics.slice(0, 10)} layout="run" />
+                </p>
               )}
             </section>
           )}
@@ -109,18 +108,16 @@ home.get("/", async (c) => {
           </section>
 
           {topics.length > 0 && (
-            <TopicRailList
-              title="Popular Topics"
-              topics={topics}
-              sectionClassName="margin-topics"
-              listClassName="topics-list"
-              help={(
+            <section class="margin-topics rail-panel rail-panel-list">
+              <div class="rail-panel-heading-row">
+                <h3>Popular Topics</h3>
                 <HelpTip
                   label="Explain popular topics"
                   text="Frequently recurring themes across the archive."
                 />
-              )}
-            />
+              </div>
+              <TopicList topics={topics} layout="stack" />
+            </section>
           )}
 
           {novelTopicHistory.length > 1 && (() => {
