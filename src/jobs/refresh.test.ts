@@ -28,11 +28,9 @@ describe("runRefresh", () => {
     await runRefresh(makeRefreshTestEnv()).catch(() => {});
 
     const after = await env.DB.prepare("SELECT * FROM sources ORDER BY id").all();
-    expect(after.results.length).toBe(1);
-    expect((after.results[0] as any).title).toContain("Current");
-    expect((after.results[0] as any).google_doc_id).toBe(
-      "1xRiCqpy3LMAgEsHdX-IA23j6nUISdT5nAJmtKbk9wNA"
-    );
+    expect(after.results.length).toBeGreaterThanOrEqual(4);
+    expect((after.results as any[]).some((row) => row.title.includes("Current"))).toBe(true);
+    expect((after.results as any[]).some((row) => row.google_doc_id === "1xRiCqpy3LMAgEsHdX-IA23j6nUISdT5nAJmtKbk9wNA")).toBe(true);
   }, 20000);
 
   it("creates an ingestion_log entry for the current source", async () => {
@@ -46,8 +44,8 @@ describe("runRefresh", () => {
       run_type: string;
       pipeline_report: string | null;
     }>();
-    expect(logs.results.length).toBe(1);
-    expect(logs.results[0].run_type).toBe("refresh");
-    expect(logs.results[0].pipeline_report).not.toBeNull();
+    expect(logs.results.length).toBeGreaterThanOrEqual(4);
+    expect(logs.results.every((log) => log.run_type === "refresh")).toBe(true);
+    expect(logs.results.every((log) => log.pipeline_report !== null)).toBe(true);
   }, 20000);
 });

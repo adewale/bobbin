@@ -9,6 +9,7 @@
     "deploy": "wrangler deploy",
     "audit:computed": "node scripts/audit-computed-values.mjs",
     "fixture:local": "npx tsx scripts/seed-full-local-fixture.ts",
+    "maintenance:remote": "npx tsx scripts/remote-maintenance.ts",
     "test": "vitest run",
     "test:real": "vitest run --config vitest.node.config.ts",
     "test:visual": "RUN_VISUAL_TESTS=1 playwright test e2e/visual.spec.ts --project=desktop --workers=1",

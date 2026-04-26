@@ -19,7 +19,13 @@ export interface SourceRow {
   last_fetched_at: string | null;
   last_revision_id: string | null;
   is_archive: number;
+  active: number;
   latest_html: string | null;
+  last_fetch_status: string | null;
+  last_fetch_error: string | null;
+  last_refresh_started_at: string | null;
+  last_refresh_completed_at: string | null;
+  consecutive_failures: number;
   created_at: string;
 }
 

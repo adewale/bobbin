@@ -1,4 +1,5 @@
 import type { SourceRow } from "../types";
+import { KNOWN_SOURCES } from "../data/source-registry";
 
 export async function getAllSources(db: D1Database): Promise<SourceRow[]> {
   const result = await db.prepare("SELECT * FROM sources").all<SourceRow>();
@@ -15,10 +16,60 @@ export async function getLeastRecentSource(db: D1Database): Promise<SourceRow | 
   ).first<SourceRow>();
 }
 
-export async function ensureSource(db: D1Database, docId: string, title: string): Promise<void> {
+export async function ensureSource(db: D1Database, docId: string, title: string, isArchive = 0, active = 1): Promise<void> {
   await db.prepare(
-    "INSERT OR IGNORE INTO sources (google_doc_id, title) VALUES (?, ?)"
-  ).bind(docId, title).run();
+    "INSERT OR IGNORE INTO sources (google_doc_id, title, is_archive, active) VALUES (?, ?, ?, ?)"
+  ).bind(docId, title, isArchive, active).run();
+  await db.prepare(
+    "UPDATE sources SET title = ?, is_archive = ?, active = ? WHERE google_doc_id = ? AND (title != ? OR is_archive != ? OR active != ?)"
+  ).bind(title, isArchive, active, docId, title, isArchive, active).run();
+}
+
+export async function ensureKnownSources(db: D1Database): Promise<void> {
+  for (const source of KNOWN_SOURCES) {
+    await ensureSource(db, source.docId, source.title, source.isArchive, 1);
+  }
+}
+
+export async function getRefreshSources(db: D1Database): Promise<SourceRow[]> {
+  const result = await db.prepare(
+    `SELECT * FROM sources
+     WHERE title NOT LIKE '%(Empty)%'
+       AND active = 1
+     ORDER BY is_archive DESC, created_at ASC, id ASC`
+  ).all<SourceRow>();
+  return result.results;
+}
+
+export async function markSourceRefreshStarted(db: D1Database, sourceId: number): Promise<void> {
+  await db.prepare(
+    `UPDATE sources
+     SET last_refresh_started_at = datetime('now')
+     WHERE id = ?`
+  ).bind(sourceId).run();
+}
+
+export async function markSourceRefreshSucceeded(db: D1Database, sourceId: number): Promise<void> {
+  await db.prepare(
+    `UPDATE sources
+     SET last_fetched_at = datetime('now'),
+         last_fetch_status = 'ok',
+         last_fetch_error = NULL,
+         last_refresh_completed_at = datetime('now'),
+         consecutive_failures = 0
+     WHERE id = ?`
+  ).bind(sourceId).run();
+}
+
+export async function markSourceRefreshFailed(db: D1Database, sourceId: number, message: string): Promise<void> {
+  await db.prepare(
+    `UPDATE sources
+     SET last_fetch_status = 'failed',
+         last_fetch_error = ?,
+         last_refresh_completed_at = datetime('now'),
+         consecutive_failures = consecutive_failures + 1
+     WHERE id = ?`
+  ).bind(message.substring(0, 500), sourceId).run();
 }
 
 export async function updateSourceFetchedAt(db: D1Database, sourceId: number): Promise<void> {

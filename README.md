@@ -63,6 +63,16 @@ npm run audit:computed
 
 If the local database is empty, the app will show an in-product setup hint that points back to `npm run fixture:local`.
 
+For authenticated remote maintenance against the deployed worker, use:
+
+```bash
+BASE_URL="https://bobbin.adewale-883.workers.dev" \
+ADMIN_SECRET="..." \
+npm run maintenance:remote -- ingest-doc <doc-id> 100
+```
+
+The same script supports `refresh`, `enrich`, `finalize`, `backfill-source`, and `backfill-llm`.
+
 Local browser runs, local pipeline runs, and Workers Vitest database bootstrap now all apply the same checked-in D1 migration chain. That keeps the test/local schema aligned with the real app schema, including FTS triggers, secondary indexes, and D1 hardening migrations.
 
 ## Architecture

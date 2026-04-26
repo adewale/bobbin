@@ -18,6 +18,7 @@ import migration0017 from "../../migrations/0017_source_fidelity_and_llm_ingest.
 import migration0018 from "../../migrations/0018_large_artifact_chunks.sql?raw";
 import migration0019 from "../../migrations/0019_chunk_footnotes.sql?raw";
 import migration0020 from "../../migrations/0020_d1_best_practice_hardening.sql?raw";
+import migration0021 from "../../migrations/0021_sources_activity_and_health.sql?raw";
 
 const DROPS = [
   "DROP TRIGGER IF EXISTS chunks_ai",
@@ -112,6 +113,7 @@ const MIGRATIONS = [
   migration0018,
   migration0019,
   migration0020,
+  migration0021,
 ].flatMap(splitSqlStatements);
 
 export async function applyTestMigrations(db: D1Database): Promise<void> {

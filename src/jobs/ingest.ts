@@ -72,6 +72,28 @@ export interface ProcessChunkBatchResult {
   auditReport: PipelineAuditSample[];
 }
 
+interface ProcessChunkBatchOptions {
+  phraseLexiconOverride?: ReturnType<typeof buildPhraseLexicon>;
+  rebuildWordStats?: boolean;
+}
+
+export async function loadPhraseLexiconForEnrichment(db: D1Database): Promise<ReturnType<typeof buildPhraseLexicon>> {
+  const normalizedCorpus = await db.prepare(
+    `SELECT id, analysis_text, content_plain
+     FROM chunks
+     WHERE COALESCE(analysis_text, content_plain) IS NOT NULL
+       AND COALESCE(analysis_text, content_plain) != ''`
+  ).all<{ id: number; analysis_text: string | null; content_plain: string }>();
+  return buildPhraseLexicon(normalizedCorpus.results.map((row) => {
+    const normalizedText = row.analysis_text || normalizeChunkText(row.content_plain).normalizedText;
+    return {
+      chunkId: row.id,
+      normalizedText,
+      tokens: tokenizeNormalizedText(normalizedText),
+    };
+  }));
+}
+
 export interface IngestParsedEpisodesResult {
   episodesAdded: number;
   chunksAdded: number;
@@ -288,6 +310,7 @@ function buildEpisodeHybridCandidateDecisions(
     textArtifact: ReturnType<typeof normalizeChunkText>;
   }>,
   phraseLexicon: ReturnType<typeof buildPhraseLexicon>,
+  episodeContextByEpisodeId: Map<number, Array<{ id: number; normalizedText: string }>>,
 ): CandidateDecision[] {
   const byEpisode = new Map<number, typeof analyzedChunks>();
   for (const chunk of analyzedChunks) {
@@ -304,8 +327,10 @@ function buildEpisodeHybridCandidateDecisions(
     decisions.push(...decideCandidateDecisions(chunkEntityCandidates, 5));
   }
 
-  for (const [, episodeChunks] of byEpisode) {
-    const episodeText = episodeChunks.map((chunk) => chunk.textArtifact.normalizedText).join(" ");
+  for (const [episodeId, episodeChunks] of byEpisode) {
+    const episodeContext = episodeContextByEpisodeId.get(episodeId)
+      || episodeChunks.map((chunk) => ({ id: chunk.id, normalizedText: chunk.textArtifact.normalizedText }));
+    const episodeText = episodeContext.map((chunk) => chunk.normalizedText).join(" ");
     const episodeArtifact = normalizeChunkText(episodeText);
     const rawCandidates = [
       ...extractTopicCandidates(episodeArtifact, 0, 5, phraseLexicon, "yaket_bobbin"),
@@ -557,20 +582,37 @@ export async function ingestEpisodesOnly(
     const insertedChunkRows = await db.prepare(
       "SELECT id, slug, title, content_plain FROM chunks WHERE episode_id = ? ORDER BY position"
     ).bind(episodeId).all<{ id: number; slug: string; title: string; content_plain: string }>();
+    const chunkDisplayMetaBySlug = new Map(storedChunks.map((chunk) => [
+      chunk.slug,
+      {
+        linkCount: chunk.links.length,
+        imageCount: chunk.images.length,
+        maxDepth: Math.max(0, ...chunk.richContent.map((block) => block.depth)),
+        formattingHints: collectFormattingHints(chunk.richContent),
+      },
+    ]));
     insertedEpisodes.push({
       id: Number(episodeId),
       slug: episodeSlug,
       title: episode.title,
-      chunks: insertedChunkRows.results.map((row) => ({
-        id: row.id,
-        slug: row.slug,
-        title: row.title,
-        contentPlain: row.content_plain,
-        linkCount: storedChunks.find((chunk) => chunk.slug === row.slug)?.links.length || 0,
-        imageCount: storedChunks.find((chunk) => chunk.slug === row.slug)?.images.length || 0,
-        maxDepth: Math.max(0, ...(storedChunks.find((chunk) => chunk.slug === row.slug)?.richContent.map((block) => block.depth) || [0])),
-        formattingHints: collectFormattingHints(storedChunks.find((chunk) => chunk.slug === row.slug)?.richContent || []),
-      })),
+      chunks: insertedChunkRows.results.map((row) => {
+        const meta = chunkDisplayMetaBySlug.get(row.slug) || {
+          linkCount: 0,
+          imageCount: 0,
+          maxDepth: 0,
+          formattingHints: [],
+        };
+        return {
+          id: row.id,
+          slug: row.slug,
+          title: row.title,
+          contentPlain: row.content_plain,
+          linkCount: meta.linkCount,
+          imageCount: meta.imageCount,
+          maxDepth: meta.maxDepth,
+          formattingHints: meta.formattingHints,
+        };
+      }),
     });
     chunksAdded += storedChunks.length;
   }
@@ -723,7 +765,8 @@ export async function backfillExistingEpisodes(
 export async function processChunkBatch(
   db: D1Database,
   seedChunks: { id: number; episode_id: number; content_plain: string }[],
-  extractorMode: TopicExtractorMode = "naive"
+  extractorMode: TopicExtractorMode = "naive",
+  options: ProcessChunkBatchOptions = {},
 ): Promise<ProcessChunkBatchResult> {
   if (!seedChunks.length) {
     return {
@@ -741,19 +784,28 @@ export async function processChunkBatch(
   }
 
   let chunks = seedChunks;
+  let episodeContextByEpisodeId = new Map<number, Array<{ id: number; normalizedText: string }>>();
   if (extractorMode === "episode_hybrid") {
     const episodeIds = [...new Set(seedChunks.map((chunk) => chunk.episode_id))];
     const BATCH = 90;
-    const episodeChunks: Array<{ id: number; episode_id: number; content_plain: string }> = [];
+    const episodeChunks: Array<{ id: number; episode_id: number; analysis_text: string | null; content_plain: string }> = [];
     for (let i = 0; i < episodeIds.length; i += BATCH) {
       const batch = episodeIds.slice(i, i + BATCH);
       const placeholders = batch.map(() => "?").join(",");
       const rows = await db.prepare(
-        `SELECT id, episode_id, content_plain FROM chunks WHERE episode_id IN (${placeholders})`
-      ).bind(...batch).all<{ id: number; episode_id: number; content_plain: string }>();
+        `SELECT id, episode_id, analysis_text, content_plain FROM chunks WHERE episode_id IN (${placeholders})`
+      ).bind(...batch).all<{ id: number; episode_id: number; analysis_text: string | null; content_plain: string }>();
       episodeChunks.push(...rows.results);
     }
-    chunks = episodeChunks;
+    episodeContextByEpisodeId = episodeChunks.reduce((map, chunk) => {
+      const group = map.get(chunk.episode_id) || [];
+      group.push({
+        id: chunk.id,
+        normalizedText: chunk.analysis_text || normalizeChunkText(chunk.content_plain).normalizedText,
+      });
+      map.set(chunk.episode_id, group);
+      return map;
+    }, new Map<number, Array<{ id: number; normalizedText: string }>>());
   }
 
   const stageResults: PipelineStageResult[] = [];
@@ -774,6 +826,7 @@ export async function processChunkBatch(
   let uniqueTopics = new Map<string, { name: string; kind: string }>();
   let chunkTopicPairs: { chunkId: number; episodeId: number; topicSlug: string }[] = [];
   let wordRowCount = 0;
+  const rebuildWordStats = options.rebuildWordStats ?? true;
 
   await runPipelineStage("normalize_chunks", stageResults, async () => {
     analyzedChunks = chunks.map((chunk) => {
@@ -827,6 +880,17 @@ export async function processChunkBatch(
   }));
 
   await runPipelineStage("phrase_discovery", stageResults, async () => {
+    if (options.phraseLexiconOverride) {
+      phraseLexicon = options.phraseLexiconOverride;
+      return {
+        counts: {
+          lexicon_entries: phraseLexicon.length,
+          rows_written: 0,
+        },
+        detail: "reused_cached_phrase_lexicon",
+      };
+    }
+
     const normalizedCorpus = await db.prepare(
       `SELECT id, analysis_text
        FROM chunks
@@ -857,7 +921,7 @@ export async function processChunkBatch(
 
   await runPipelineStage("candidate_extraction", stageResults, async () => {
     candidateDecisions = extractorMode === "episode_hybrid"
-      ? buildEpisodeHybridCandidateDecisions(analyzedChunks, phraseLexicon)
+      ? buildEpisodeHybridCandidateDecisions(analyzedChunks, phraseLexicon, episodeContextByEpisodeId)
       : analyzedChunks.flatMap((chunk) =>
           extractCandidateDecisions(chunk.textArtifact, chunk.id, 5, phraseLexicon, extractorMode)
         );
@@ -1086,21 +1150,23 @@ export async function processChunkBatch(
     }
     await batchExec(db, ctStmts);
 
-    const etStmts = episodeIds.flatMap((epId) =>
-      chunks
-        .filter((chunk) => chunk.episode_id === epId)
-        .map((chunk) =>
-          db.prepare(
-            "INSERT OR IGNORE INTO episode_topics (episode_id, topic_id) SELECT ?, topic_id FROM chunk_topics WHERE chunk_id = ?"
-          ).bind(epId, chunk.id)
-        )
-    );
-    await batchExec(db, etStmts);
+    let episodeTopicLinksInserted = 0;
+    for (const episodeIdBatch of chunkForSqlBindings(episodeIds)) {
+      const placeholders = sqlPlaceholders(episodeIdBatch.length);
+      const result = await db.prepare(
+        `INSERT OR IGNORE INTO episode_topics (episode_id, topic_id)
+         SELECT DISTINCT c.episode_id, ct.topic_id
+         FROM chunks c
+         JOIN chunk_topics ct ON ct.chunk_id = c.id
+         WHERE c.episode_id IN (${placeholders})`
+      ).bind(...episodeIdBatch).run();
+      episodeTopicLinksInserted += result.meta.changes || 0;
+    }
 
     return {
       counts: {
         chunk_topic_links_inserted: ctStmts.length,
-        episode_topic_links_inserted: etStmts.length,
+        episode_topic_links_inserted: episodeTopicLinksInserted,
         invalid_entity_links_filtered: filteredInvalidEntityLinks,
       },
       detail: `prepared ${chunkTopicPairs.length} promotable chunk-topic links`,
@@ -1120,7 +1186,9 @@ export async function processChunkBatch(
       }
     }
     await batchExec(db, wordStmts);
-    await rebuildWordStatsAggregates(db);
+    if (rebuildWordStats) {
+      await rebuildWordStatsAggregates(db);
+    }
     return {
       counts: {
         chunk_word_rows_written: wordRowCount,
@@ -1162,12 +1230,13 @@ export async function processChunkBatch(
 export async function enrichChunks(
   db: D1Database,
   batchSize: number = 200,
-  extractorMode: TopicExtractorMode = "naive"
+  extractorMode: TopicExtractorMode = "naive",
+  options: ProcessChunkBatchOptions = {},
 ): Promise<{ chunksProcessed: number; batch?: ProcessChunkBatchResult }> {
   const chunks = await getUnenrichedChunks(db, batchSize);
   if (!chunks.length) return { chunksProcessed: 0 };
 
-  const batch = await processChunkBatch(db, chunks, extractorMode);
+  const batch = await processChunkBatch(db, chunks, extractorMode, options);
 
   return { chunksProcessed: chunks.length, batch };
 }
@@ -1465,6 +1534,7 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
     let chunkLinksInserted = 0;
     let auditRowsInserted = 0;
     let phrasesSkipped = 0;
+    const touchedEpisodeIds = new Set<number>();
     for (const phrase of phrases.results) {
       const rejectionReason = getPhrasePromotionReason({
         docCount: phrase.doc_count,
@@ -1485,12 +1555,6 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
       ).bind(phrase.slug).first<{ id: number }>();
       if (!topic) continue;
 
-      const matchingChunks = await db.prepare(
-        `SELECT id
-         FROM chunks
-         WHERE normalization_version > 0
-           AND LOWER(COALESCE(analysis_text, content_plain)) LIKE ?`
-      ).bind(`%${phrase.phrase}%`).all<{ id: number }>();
       const auditInsert = await db.prepare(
         `INSERT INTO topic_candidate_audit (
            chunk_id, topic_id, source, stage, raw_candidate, normalized_candidate,
@@ -1515,20 +1579,43 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
         phrase.slug
       ).run();
       auditRowsInserted += auditInsert.meta.changes || 0;
-      const inserts = matchingChunks.results.map((chunk) =>
-        db.prepare("INSERT OR IGNORE INTO chunk_topics (chunk_id, topic_id) VALUES (?, ?)").bind(chunk.id, topic.id)
-      );
-      await batchExec(db, inserts);
-      chunkLinksInserted += inserts.length;
+      const chunkTopicInsert = await db.prepare(
+        `INSERT OR IGNORE INTO chunk_topics (chunk_id, topic_id)
+         SELECT a.chunk_id, ?
+         FROM topic_candidate_audit a
+         WHERE a.topic_id = ?
+           AND a.slug = ?
+           AND a.source = 'phrase_lexicon'
+           AND a.decision = 'accepted'`
+      ).bind(topic.id, topic.id, phrase.slug).run();
+      chunkLinksInserted += chunkTopicInsert.meta.changes || 0;
+      const touchedEpisodes = await db.prepare(
+        `SELECT DISTINCT c.episode_id
+         FROM topic_candidate_audit a
+         JOIN chunks c ON c.id = a.chunk_id
+         WHERE a.topic_id = ?
+           AND a.slug = ?
+           AND a.source = 'phrase_lexicon'
+           AND a.decision = 'accepted'`
+      ).bind(topic.id, phrase.slug).all<{ episode_id: number }>();
+      for (const row of touchedEpisodes.results) {
+        touchedEpisodeIds.add(row.episode_id);
+      }
     }
 
-    await db.prepare("DELETE FROM episode_topics").run();
-    await db.prepare(
-      `INSERT OR IGNORE INTO episode_topics (episode_id, topic_id)
-       SELECT DISTINCT c.episode_id, ct.topic_id
-       FROM chunk_topics ct
-       JOIN chunks c ON ct.chunk_id = c.id`
-    ).run();
+    for (const episodeIdBatch of chunkForSqlBindings([...touchedEpisodeIds])) {
+      const placeholders = sqlPlaceholders(episodeIdBatch.length);
+      await db.prepare(
+        `DELETE FROM episode_topics WHERE episode_id IN (${placeholders})`
+      ).bind(...episodeIdBatch).run();
+      await db.prepare(
+        `INSERT OR IGNORE INTO episode_topics (episode_id, topic_id)
+         SELECT DISTINCT c.episode_id, ct.topic_id
+         FROM chunk_topics ct
+         JOIN chunks c ON ct.chunk_id = c.id
+         WHERE c.episode_id IN (${placeholders})`
+      ).bind(...episodeIdBatch).run();
+    }
 
     return {
       detail: `${phrases.results.length} phrases backfilled`,
@@ -1817,7 +1904,6 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
   });
 
   await runStep("reach_precompute", steps, async () => {
-    await db.prepare("UPDATE chunks SET reach = 0").run();
     const chunkIds = await db.prepare(
       "SELECT DISTINCT chunk_id as id FROM chunk_topics"
     ).all<{ id: number }>();
@@ -1837,6 +1923,12 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
          WHERE id IN (${placeholders})`
       ).bind(...batch).run();
     }
+    await db.prepare(
+      `UPDATE chunks
+       SET reach = 0
+       WHERE reach != 0
+         AND NOT EXISTS (SELECT 1 FROM chunk_topics WHERE chunk_id = chunks.id)`
+    ).run();
     return { detail: `${ids.length} chunks updated`, counts: { chunks_updated: ids.length } };
   });
 
@@ -1923,8 +2015,21 @@ export async function enrichAllChunks(
   let total = 0;
   let lastProcessed = -1;
   const start = Date.now();
+  const normalizedCorpus = await db.prepare(
+    `SELECT id, analysis_text
+     FROM chunks
+     WHERE normalization_version > 0 AND analysis_text IS NOT NULL AND analysis_text != ''`
+  ).all<{ id: number; analysis_text: string }>();
+  const phraseLexicon = buildPhraseLexicon(normalizedCorpus.results.map((row) => ({
+    chunkId: row.id,
+    normalizedText: row.analysis_text,
+    tokens: tokenizeNormalizedText(row.analysis_text),
+  })));
   while (Date.now() - start < maxMs) {
-    const result = await enrichChunks(db, batchSize, extractorMode);
+    const result = await enrichChunks(db, batchSize, extractorMode, {
+      phraseLexiconOverride: phraseLexicon,
+      rebuildWordStats: false,
+    });
     if (result.chunksProcessed === 0) break;
     if (result.batch && onBatch) {
       onBatch(result.batch);
@@ -1933,6 +2038,9 @@ export async function enrichAllChunks(
     if (result.chunksProcessed === lastProcessed) break;
     lastProcessed = result.chunksProcessed;
     total += result.chunksProcessed;
+  }
+  if (total > 0) {
+    await rebuildWordStatsAggregates(db);
   }
   return total;
 }

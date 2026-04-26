@@ -40,5 +40,10 @@ The docs must be shared as "anyone with the link can view".
 
 Known doc IDs:
 - 1xRiCqpy3LMAgEsHdX-IA23j6nUISdT5nAJmtKbk9wNA (current)
-- 1ptHfoKWn0xbNSJgdkH8_3z4PHLC_f36MutFTTRf14I0 (archive 1)
-- 1GrEFrdF_IzRVXbGH1lG0aQMlvsB71XihPPqQN-ONTuo (archive 2)
+- 1WC16fr5iEwzpK8u11yvYd6cCHPvq6Ce4WnrkpJ49vYw (archive notes)
+- 1IPwKwmEgrL6R2lVe9IaPIu0sPB4O_ZNy8ZA0N0W3yw0 (archive essays)
+- 1BZCiakRHDd2I337FmJv8RGcrcycapXPXN_wHPO5-DaA (archive 2023-2024)
+
+Older spec doc IDs that are not part of the active corpus today:
+- 1ptHfoKWn0xbNSJgdkH8_3z4PHLC_f36MutFTTRf14I0 (returns 401 to the public mobilebasic fetch path)
+- 1GrEFrdF_IzRVXbGH1lG0aQMlvsB71XihPPqQN-ONTuo (returns 401 to the public mobilebasic fetch path)

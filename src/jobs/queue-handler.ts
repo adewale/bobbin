@@ -11,8 +11,9 @@ import { slugify } from "../lib/slug";
 import { batchExec, collectInBatches, sqlPlaceholders } from "../lib/db";
 import { extractCorpusNgrams } from "../services/ngram-extractor";
 import { extractPMIPhrases } from "../services/pmi-phrases";
+import { rebuildWordStatsAggregates } from "../services/word-stats";
 import { enrichEpisodeIdsWithLlm } from "../services/llm-ingest";
-import { processChunkBatch } from "./ingest";
+import { loadPhraseLexiconForEnrichment, processChunkBatch } from "./ingest";
 import type { Bindings } from "../types";
 
 export interface EnrichmentMessage {
@@ -147,7 +148,12 @@ export async function handleEnrichBatch(db: D1Database, chunkIds: number[]) {
   if (!chunkRows.length) return;
 
   // Use the shared processChunkBatch — single source of truth
-  await processChunkBatch(db, chunkRows);
+  const phraseLexicon = await loadPhraseLexiconForEnrichment(db);
+  await processChunkBatch(db, chunkRows, "naive", {
+    phraseLexiconOverride: phraseLexicon,
+    rebuildWordStats: false,
+  });
+  await rebuildWordStatsAggregates(db);
 }
 
 export async function handleEnrichmentBatch(

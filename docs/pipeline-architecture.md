@@ -12,6 +12,7 @@ The pipeline is deliberately split so the expensive semantic step happens once p
 Operational note:
 
 - test bootstrap and local pipeline bootstrap both apply the checked-in D1 migration chain directly, so schema behavior matches the real app path instead of a separate handwritten test schema.
+- refresh now iterates all configured non-empty sources in `sources`, rather than hardcoding a single current-doc ID.
 
 ## End-to-end flow
 
@@ -216,6 +217,10 @@ Admin routes:
 
 - `GET /api/backfill-source?doc=...&offset=...&limit=...&llm=0|1`
 - `GET /api/backfill-llm?doc=...&limit=...`
+
+Operational helper:
+
+- `npm run maintenance:remote -- <command>` with `BASE_URL` and `ADMIN_SECRET`
 
 Use `backfill-source` when you need to repair:
 

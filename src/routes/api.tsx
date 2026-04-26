@@ -13,13 +13,58 @@ import { keywordSearch } from "../db/search";
 import { collectInBatches, MAX_SQL_BINDINGS, sqlPlaceholders } from "../lib/db";
 import { safeParseInt, escapeLike } from "../lib/html";
 import { applyTopicBoost } from "../services/search-topics";
+import { describeSource } from "../data/source-registry";
 import { expandEntityAliases } from "../lib/entity-aliases";
+import { ensureKnownSources, ensureSource } from "../db/sources";
 import { KNOWN_ENTITIES } from "../data/known-entities";
 import { combinePipelineReports, summarizeEnrichBatches, summarizeFinalizeResult } from "../services/pipeline-report";
 import { normalizeTopicExtractorMode } from "../services/yake-runtime";
 import { runRefresh } from "../jobs/refresh";
 
 const api = new Hono<AppEnv>();
+
+async function tryCreatePipelineLog(db: D1Database, sourceId: number | null, runType: "refresh" | "manual_ingest" | "enrich" | "finalize") {
+  try {
+    return await createIngestionLog(db, sourceId, runType);
+  } catch (error) {
+    console.error("Pipeline log create failed:", error);
+    return null;
+  }
+}
+
+async function tryCompletePipelineLog(
+  db: D1Database,
+  logId: number | null,
+  episodesAdded: number,
+  chunksAdded: number,
+  pipelineReport?: unknown,
+  status: "completed" | "partial" = "completed",
+) {
+  if (!logId) return;
+  try {
+    await completeIngestionLog(db, logId, episodesAdded, chunksAdded, pipelineReport, status);
+  } catch (error) {
+    console.error("Pipeline log complete failed:", error);
+  }
+}
+
+async function tryFailPipelineLog(db: D1Database, logId: number | null, errorMessage: string, pipelineReport?: unknown) {
+  if (!logId) return;
+  try {
+    await failIngestionLog(db, logId, errorMessage, pipelineReport);
+  } catch (error) {
+    console.error("Pipeline log fail failed:", error);
+  }
+}
+
+async function tryRecordPipeline(db: D1Database, logId: number | null, summary: unknown, stages: unknown[]) {
+  if (!logId) return;
+  try {
+    await recordPipelineRun(db, logId, summary as any, stages as any);
+  } catch (error) {
+    console.error("Pipeline metrics write failed:", error);
+  }
+}
 
 // Auth middleware for admin endpoints (S1)
 function requireAuth(c: any): Response | null {
@@ -80,16 +125,16 @@ api.get("/ingest", async (c) => {
   const extractorMode = normalizeTopicExtractorMode(c.env.TOPIC_EXTRACTOR_MODE);
 
   try {
-    const sources = await c.env.DB.prepare("SELECT * FROM sources").all();
-    if (!sources.results.length) {
-      await c.env.DB.prepare(
-        "INSERT OR IGNORE INTO sources (google_doc_id, title) VALUES ('1xRiCqpy3LMAgEsHdX-IA23j6nUISdT5nAJmtKbk9wNA', 'Bits and Bobs (Current)')"
-      ).run();
-    }
+    await ensureKnownSources(c.env.DB);
 
     let source: any;
     if (docId) {
       source = await c.env.DB.prepare("SELECT * FROM sources WHERE google_doc_id = ?").bind(docId).first();
+      if (!source) {
+        const described = describeSource(docId);
+        await ensureSource(c.env.DB, described.docId, described.title, described.isArchive);
+        source = await c.env.DB.prepare("SELECT * FROM sources WHERE google_doc_id = ?").bind(docId).first();
+      }
     } else {
       // Default: pick the most recently created source (the "current" doc),
       // not the oldest last_fetched_at (which may be an archive)
@@ -101,7 +146,7 @@ api.get("/ingest", async (c) => {
     if (!source) return c.json({ error: "No source found" }, 404);
 
     sourceForLog = source as { id: number; title: string; google_doc_id: string };
-    logId = await createIngestionLog(c.env.DB, source.id, "manual_ingest");
+    logId = await tryCreatePipelineLog(c.env.DB, source.id, "manual_ingest");
     const fetched = await fetchGoogleDoc(source.google_doc_id);
     await c.env.DB.prepare(
       "UPDATE sources SET latest_html = NULL WHERE id = ?"
@@ -126,7 +171,7 @@ api.get("/ingest", async (c) => {
       "UPDATE sources SET last_fetched_at = datetime('now') WHERE id = ?"
     ).bind(source.id).run();
 
-    await completeIngestionLog(c.env.DB, logId, result.episodesAdded, result.chunksAdded, {
+    await tryCompletePipelineLog(c.env.DB, logId, result.episodesAdded, result.chunksAdded, {
       endpoint: "/api/ingest",
       extractor_mode: extractorMode,
       source_id: source.id,
@@ -147,7 +192,7 @@ api.get("/ingest", async (c) => {
       result.finalize,
       source.id,
     );
-    await recordPipelineRun(c.env.DB, logId, runReport.summary, runReport.stages);
+    await tryRecordPipeline(c.env.DB, logId, runReport.summary, runReport.stages);
 
     return c.json({
       status: "ok",
@@ -159,16 +204,14 @@ api.get("/ingest", async (c) => {
     });
   } catch (e: any) {
     console.error("Ingest error:", e); // B2: log the error
-    if (logId) {
-      await failIngestionLog(c.env.DB, logId, e instanceof Error ? e.message : String(e), {
-        endpoint: "/api/ingest",
-        extractor_mode: extractorMode,
-        source_id: sourceForLog?.id || null,
-        source_title: sourceForLog?.title || null,
-        fetch_doc_id: sourceForLog?.google_doc_id || null,
-        batch_requested: limit,
-      });
-    }
+    await tryFailPipelineLog(c.env.DB, logId, e instanceof Error ? e.message : String(e), {
+      endpoint: "/api/ingest",
+      extractor_mode: extractorMode,
+      source_id: sourceForLog?.id || null,
+      source_title: sourceForLog?.title || null,
+      fetch_doc_id: sourceForLog?.google_doc_id || null,
+      batch_requested: limit,
+    });
     return c.json({ error: "Ingestion failed" }, 500); // S5: generic message
   }
 });
@@ -314,10 +357,10 @@ api.get("/enrich", async (c) => {
   const extractorMode = normalizeTopicExtractorMode(c.env.TOPIC_EXTRACTOR_MODE);
 
   try {
-    logId = await createIngestionLog(c.env.DB, null, "enrich");
+    logId = await tryCreatePipelineLog(c.env.DB, null, "enrich");
     const result = await enrichChunks(c.env.DB, batchSize, extractorMode);
     const complete = await isEnrichmentComplete(c.env.DB);
-    await completeIngestionLog(c.env.DB, logId, 0, result.chunksProcessed, {
+    await tryCompletePipelineLog(c.env.DB, logId, 0, result.chunksProcessed, {
       endpoint: "/api/enrich",
       extractor_mode: extractorMode,
       batch_size: batchSize,
@@ -326,7 +369,7 @@ api.get("/enrich", async (c) => {
     });
     if (result.batch) {
       const runReport = summarizeEnrichBatches("enrich", extractorMode, [result.batch]);
-      await recordPipelineRun(c.env.DB, logId, runReport.summary, runReport.stages);
+      await tryRecordPipeline(c.env.DB, logId, runReport.summary, runReport.stages);
     }
     return c.json({
       status: "ok",
@@ -335,13 +378,11 @@ api.get("/enrich", async (c) => {
     });
   } catch (e: any) {
     console.error("Enrich error:", e);
-    if (logId) {
-      await failIngestionLog(c.env.DB, logId, e instanceof Error ? e.message : String(e), {
-        endpoint: "/api/enrich",
-        extractor_mode: extractorMode,
-        batch_size: batchSize,
-      });
-    }
+    await tryFailPipelineLog(c.env.DB, logId, e instanceof Error ? e.message : String(e), {
+      endpoint: "/api/enrich",
+      extractor_mode: extractorMode,
+      batch_size: batchSize,
+    });
     return c.json({ error: "Enrichment failed" }, 500);
   }
 });
@@ -463,10 +504,10 @@ api.get("/finalize", async (c) => {
   const extractorMode = normalizeTopicExtractorMode(c.env.TOPIC_EXTRACTOR_MODE);
 
   try {
-    logId = await createIngestionLog(c.env.DB, null, "finalize");
+    logId = await tryCreatePipelineLog(c.env.DB, null, "finalize");
     const result = await finalizeEnrichment(c.env.DB, c.env.ENRICHMENT_QUEUE);
     const failedSteps = result.steps.filter(s => s.status === "error");
-    await completeIngestionLog(
+    await tryCompletePipelineLog(
       c.env.DB,
       logId,
       0,
@@ -475,19 +516,17 @@ api.get("/finalize", async (c) => {
       failedSteps.length > 0 ? "partial" : "completed"
     );
     const runReport = summarizeFinalizeResult("finalize", extractorMode, result);
-    await recordPipelineRun(c.env.DB, logId, runReport.summary, runReport.stages);
+    await tryRecordPipeline(c.env.DB, logId, runReport.summary, runReport.stages);
     if (failedSteps.length > 0) {
       return c.json({ status: "partial", failed_count: failedSteps.length, ...result });
     }
     return c.json({ status: "ok", ...result });
   } catch (e: any) {
     console.error("Finalize error:", e);
-    if (logId) {
-      await failIngestionLog(c.env.DB, logId, e instanceof Error ? e.message : String(e), {
-        endpoint: "/api/finalize",
-        extractor_mode: extractorMode,
-      });
-    }
+    await tryFailPipelineLog(c.env.DB, logId, e instanceof Error ? e.message : String(e), {
+      endpoint: "/api/finalize",
+      extractor_mode: extractorMode,
+    });
     return c.json({
       error: "Finalization failed",
       failed_step: e.message?.substring(0, 200),
