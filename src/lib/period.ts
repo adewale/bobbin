@@ -70,16 +70,24 @@ export function periodPath(period: Period): string {
 
 // Parse from URL params. Both inputs are raw strings from the route. Returns
 // null for any malformed input — the route handler should treat that as 404.
+//
+// The shape checks are deliberately strict because URL params reach this
+// function unsanitised: `Number()` would otherwise accept `"2026.0"`,
+// `"  2026"`, `"2.026e3"`, `"+2026"`, hex literals, and so on. Rejecting
+// before coercion keeps URL-shape and type-shape aligned.
+const YEAR_PATTERN = /^\d{4}$/;
+const MONTH_PATTERN = /^(0?[1-9]|1[0-2])$/;
+
 export function parsePeriodPath(yearStr: string, monthStr?: string): Period | null {
+  if (!YEAR_PATTERN.test(yearStr)) return null;
   const year = Number(yearStr);
-  if (!Number.isInteger(year) || year < 1900 || year > 9999) return null;
 
   if (monthStr === undefined) {
     return { kind: "year", year };
   }
 
+  if (!MONTH_PATTERN.test(monthStr)) return null;
   const month = Number(monthStr);
-  if (!Number.isInteger(month) || month < 1 || month > 12) return null;
 
   return { kind: "month", year, month };
 }

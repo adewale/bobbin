@@ -114,6 +114,29 @@ describe("parsePeriodPath", () => {
     expect(parsePeriodPath("12345")).toBeNull();
   });
 
+  it("rejects year strings that Number() would otherwise accept", () => {
+    // These all coerce to a valid number via Number() but are not URL-shaped.
+    // The route handler should treat them as 404s, not as 2026.
+    expect(parsePeriodPath("2026.0")).toBeNull();
+    expect(parsePeriodPath("2026 ")).toBeNull();
+    expect(parsePeriodPath(" 2026")).toBeNull();
+    expect(parsePeriodPath("2.026e3")).toBeNull();
+    expect(parsePeriodPath("+2026")).toBeNull();
+    expect(parsePeriodPath("-2026")).toBeNull();
+    expect(parsePeriodPath("0x7E2")).toBeNull();
+    expect(parsePeriodPath("")).toBeNull();
+  });
+
+  it("rejects month strings that Number() would otherwise accept", () => {
+    expect(parsePeriodPath("2026", "4.0")).toBeNull();
+    expect(parsePeriodPath("2026", " 4")).toBeNull();
+    expect(parsePeriodPath("2026", "4 ")).toBeNull();
+    expect(parsePeriodPath("2026", "+4")).toBeNull();
+    expect(parsePeriodPath("2026", "-4")).toBeNull();
+    expect(parsePeriodPath("2026", "")).toBeNull();
+    expect(parsePeriodPath("2026", "4e0")).toBeNull();
+  });
+
   it("round-trips through periodPath", () => {
     const original = { kind: "month" as const, year: 2026, month: 4 };
     const path = periodPath(original);
