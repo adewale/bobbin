@@ -52,6 +52,15 @@ AI-history inflection points (ChatGPT shock, reasoning turn, agent era) cut acro
 - Era data lives in a curated TS file (e.g. `src/data/eras.ts`), not the database
 - Era pages may carry an editorial intro that calendar pages do not
 
+**Corpus-grounded constraint.** Era boundaries must be derived from the actual Bobbin corpus, not from general AI history. As of 2026-04, the local corpus spans only 2024-12-09 → 2026-04-06 (≈17 months, 69 episodes), entirely within what a general AI-history timeline would call the "agent era". Externally-sourced era schemes (e.g. "ChatGPT shock 2022", "Reasoning Turn late 2024") fall partly or wholly outside the corpus and would produce empty or near-empty pages. See `scripts/audit-era-boundaries.ts` for a reproducible check; re-run it before defining era boundaries.
+
+Visible within-corpus inflections to consider when era pages are eventually built:
+- **Vibe-coding moment** — the term `vibe coding` first appears in March 2025 and dominates Q1–Q3 2025 before fading
+- **Cursor → Claude Code shift** — `Cursor` peaks in Q2/Q3 2025 then disappears; `Claude Code` ramps from March 2025 onward and persists through 2026
+- **Agent maturity** — `agent` and `swarm` are present from the corpus start and stay strong throughout
+
+These are *within* the 17-month window; they would be near-invisible at year-grain. Era pages remain out of scope for v1; this section captures what they should look like when built.
+
 ## IA Position
 
 `Summaries` is a first-class archive family alongside:
@@ -224,7 +233,7 @@ Recommended structure:
 - metadata: episode count, chunk count
 - a year row links to `/summaries/{year}`; month rows under it link to `/summaries/{year}/{month}`
 
-Empty months (no episodes) must not be listed.
+Empty months (no episodes) must not be listed. A year with fewer than ~5 episodes (e.g. 2024 in the current corpus, which has 3) should render as a "thin" entry — no rail panels, no Movers comparison — and may opt out of the index entirely if the editorial judgement is that it isn't worth a yearly page. The threshold is editorial, not algorithmic; the route handler should degrade gracefully when comparison data would be misleading rather than throwing.
 
 ## Implementation Order
 
