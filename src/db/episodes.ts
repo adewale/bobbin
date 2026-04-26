@@ -1,4 +1,5 @@
 import type { EpisodeRow, ChunkRow, TopicRow } from "../types";
+import { weightedDeltaScore, weightedTopicScore } from "../lib/topic-scoring";
 import { getTrendingTopicsForEpisode, type TrendingTopic } from "./topics";
 
 export interface EpisodeUnexpectedPairing {
@@ -471,12 +472,4 @@ export async function getEpisodeRailInsights(
     sinceLast,
     archiveContrast,
   };
-}
-
-function weightedDeltaScore(delta: number, currentCount: number, previousCount: number, distinctiveness: number) {
-  return Math.abs(delta) * weightedTopicScore(Math.max(currentCount, previousCount), distinctiveness);
-}
-
-function weightedTopicScore(count: number, distinctiveness: number) {
-  return Math.log1p(Math.max(count, 1)) * (1 + Math.max(distinctiveness, 0) / 10);
 }
