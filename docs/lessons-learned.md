@@ -740,3 +740,73 @@ The lesson is: **when timeline gaps persist after the pipeline is otherwise heal
 65. "Episodes and chunks inserted" is not the same operational state as "fully integrated into the enriched corpus".
 66. Production maintenance paths need intentional design, logging, and tooling; otherwise they fail at the worst possible moment.
 67. Persistent timeline gaps often point to source-access problems, not just ingestion-logic problems.
+
+## What we learned in the topic-representation consolidation and period-summary foundation pass
+
+This pass spanned two related concerns: collapsing every topic-rendering surface into a single `<TopicList>` component, and laying the data + helper foundation for period summary pages without building the routes themselves. The work surfaced a different class of failure than the earlier passes — not parser bugs or schema drift, but failures of intellectual discipline in spec-writing, delegated research, and self-reporting.
+
+### Illustrative text in spec diagrams gets read as spec text
+
+To illustrate the Summary panel, we drew an ASCII diagram with invented bullet text — *"Vibe coding surfaced as a dominant frame for AI-assisted development"*, *"marking the start of a Cursor → Claude Code shift"*. The underlying trajectories were real (the audit script later confirmed Cursor mentions peak then fade), but the framing was invented. The user spotted it. If they hadn't, those phrases could have shaped the implementation by simple repetition.
+
+The lesson is: **illustrative text in spec diagrams becomes specification by reuse**. Either populate diagrams with values from the actual corpus, mark filler explicitly as `[placeholder]`, or use observably-true neutral wording. The diagram is not a sketch; it is part of the contract.
+
+### "No generated prose" is too strong; the right rule is "templates over named inputs"
+
+When the fabricated bullets were caught, the spec was tightened to forbid generated prose outright and the Summary panel was dropped. That over-corrected. The existing `buildTopicSummary` already proves that sentences can be produced deterministically — fixed templates populated from named observable inputs, no interpretation, no model. Once the contract was specified precisely (`buildPeriodSummary(input): string[]` with five enumerated templates and pinning tests), the panel came back and the fabrication risk did not.
+
+The lesson is: **distinguish the real risk (free-form generated prose) from the surface that triggered it (sentence-shaped output)**. Templates over named inputs are safe and provable; LLM-style synthesis is not. Don't amputate the safe form to avoid the unsafe one.
+
+### `may`, `should`, `optionally` are spec smells
+
+The first cut of the summaries spec contained `(optional)`, `optionally grouped by day`, `may be empty when too sparse`, and `the threshold is editorial, not algorithmic`. Each one became an implementation question without a deterministic answer — an opportunity for invention at code-writing time. The cleanup replaced every `may` with either a per-helper render-iff rule or a removal.
+
+The lesson is: **vague spec language pushes decisions to implementation time, which means it pushes them to whichever assumption the implementer happens to make**. Specs that mean to be enforced should say `iff`, not `may`.
+
+### Research agents inherit the framing in the prompt
+
+We told a research agent the corpus "starts ~2020-2021 and runs through 2026" — an assumption never verified. The agent took it as given and produced an AI-history era schema grounded in that premise. The corpus actually starts December 2024. Four of the five proposed eras predate the corpus entirely.
+
+The lesson is: **assert only what you have checked when prompting research agents; ask the agent to discover the rest**. The cost of skipping that check was a research artefact that had to be re-grounded against the corpus afterwards instead of being usable as it stood.
+
+### Confident research output needs a corpus-grounded sanity check
+
+The agent's five-era schema was coherent and plausible. It would have been easy to fold straight into the spec. A short audit script (`scripts/audit-era-boundaries.ts`, ~80 lines) parsed the raw HTML, counted marker-term mentions per quarter, and reported first-appearance dates. The audit found that the proposed era windows concentrate 0%, 0%, 0%, 62%, and 97% of their marker mentions inside their proposed boundaries — the schema does not fit the corpus.
+
+The lesson is: **confident output is not the same as correct output**, especially when the agent's training is broader than the local corpus. A research-grade audit script is cheap, repeatable, and worth committing as code so future contributors can re-run it as the corpus grows.
+
+### "Pre-existing" is not a synonym for "out of scope"
+
+Four TypeScript errors lived on `main` and the branch inherited them. They were treated as out-of-scope until the user said *"fix what's broken"*. One of them (`getMostConnected` returning untyped `Record<string, unknown>[]`) sat next to code being actively modified in the same PR — fixing it took ten minutes, with the side effect of typing every future call site as well.
+
+The lesson is: **breakage adjacent to active work is in scope, regardless of provenance**. The cost of the fix is usually small; the cost of letting it persist is that nobody fixes it next time either.
+
+### Validate the shape of strings, not the value of `Number()`
+
+`parsePeriodPath` initially used `Number(yearStr)` and then bounded the result. `Number()` is happy to accept `"2026.0"`, `"2.026e3"`, `" 2026"`, `"+2026"`, `"0x7E2"` — every one of which would silently render a summary page for a URL the route never permitted. The reviewer caught it. The fix is shape regex before coercion (`/^\d{4}$/` and `/^(0?[1-9]|1[0-2])$/`).
+
+The lesson is: **for any string crossing an unsanitised boundary, validate the URL-shape with a regex, not the parsed numeric value**. URL params, query strings, form fields, and headers all reach the parser as `string`, and `Number()` will coerce things you never meant to accept.
+
+### Quantitative claims in PR descriptions deserve the same rigour as code
+
+The first PR description claimed "20 tests in `periods.test.ts`" (actually 13), "16 tests in `period.test.ts`" (actually 25), and a `monthly-summaries-spec.md → period-summaries-spec.md` rename that never happened. Each was caught in review.
+
+The lesson is: **`grep -c "  it("` for test counts, `git log --diff-filter=R` for renames**. Memory is unreliable; counts and rename claims read as facts and inform reviewer trust. The cost of getting them wrong is not technical, it is social.
+
+### Consolidate before you extend
+
+The `<TopicList>` consolidation wasn't strictly required for summaries to be built — episode pages already worked with the old three components. But the summaries spec's "no new visual primitives" rule is now mechanically enforceable, because every topic surface in the codebase routes through one component. Adding the period-summaries layer on top of consolidated primitives took a fraction of the design work it would have taken on top of the previous five-component sprawl.
+
+The lesson is: **a new feature is much cheaper to specify when the surface beneath it is already coherent**. Foundational cleanup pays for itself the first time you reuse the cleaned surface.
+
+### Updated lesson list
+
+68. Illustrative text in spec diagrams becomes specification by reuse; populate with corpus values, mark `[placeholder]`, or stay observably-true.
+69. The right anti-fabrication rule is "templates over named inputs only", not "no generated prose"; templates are safe and provable, free-form synthesis is not.
+70. `may`, `should`, `optionally`, and `if appropriate` are spec smells that push decisions to implementation time.
+71. Research agents inherit the framing in the prompt; assert only what you have checked and let the agent discover the rest.
+72. Confident research output is not the same as correct output; a short corpus-grounded audit script is cheap and worth committing.
+73. "Pre-existing" is not a synonym for "out of scope"; breakage adjacent to active work is in scope.
+74. For string inputs from unsanitised boundaries, validate the URL-shape with a regex, not the parsed value of `Number()`.
+75. Verify quantitative claims in PR descriptions with the same rigour as code; reviewer trust is the cost of getting them wrong.
+76. Consolidate before you extend; the new feature is cheaper to specify when the surface beneath it is already coherent.
