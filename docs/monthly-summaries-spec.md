@@ -17,9 +17,9 @@ URL parsing and labelling are centralised in `src/lib/period.ts`. Use `parsePeri
 
 ## Goal
 
-Provide canonical summary pages for a calendar period of Bobbin content.
+Provide canonical period pages for a calendar slice of Bobbin content.
 
-The page is a synthesis of existing archive functionality. It must reuse or parameterize existing data logic, interaction patterns, and visual components. It must not introduce new UI elements.
+Every section is a deterministic projection of existing data through existing components. The page does not interpret, characterise, narrate, or generate prose. It must reuse or parameterize existing data logic, interaction patterns, and visual components. It must not introduce new UI elements.
 
 ## Non-goals
 
@@ -28,6 +28,8 @@ The page is a synthesis of existing archive functionality. It must reuse or para
 - No new chart or panel types
 - No new visual language
 - No quarter / season / week / half-year periods (see *Period kinds* below)
+- **No generated prose.** No body-panel summary, no editorial intro, no descriptive sentences derived from period data. Every word on the page is either fixed UI text, a column value, or output of a deterministic helper that returns counts, names, dates, or ratios — never sentences.
+- No "thin period" rendering branch. Sparse periods are handled by the same per-panel emptiness checks as everything else.
 
 ## Period kinds
 
@@ -45,21 +47,22 @@ Two calendar period kinds are supported. The `Period` type in `src/lib/period.ts
 
 ## Era axis (reserved, future work)
 
-AI-history inflection points (ChatGPT shock, reasoning turn, agent era) cut across calendar boundaries. A future hand-curated `/eras/<slug>/` axis can sit alongside `/summaries/`, sharing the same data helpers (which take `PeriodBounds`, kind-agnostic) and the same component layer. Until eras are built:
+`/eras/<slug>/` is reserved as a future axis sitting alongside `/summaries/`. Until a separate spec defines it:
 
 - Do not surface era links from summary pages
 - Reserve the `/eras/` URL space — do not use it for anything else
-- Era data lives in a curated TS file (e.g. `src/data/eras.ts`), not the database
-- Era pages may carry an editorial intro that calendar pages do not
+- Era data, when built, must live in a committed source file (e.g. `src/data/eras.ts`); routes must not generate era boundaries at request time
 
-**Corpus-grounded constraint.** Era boundaries must be derived from the actual Bobbin corpus, not from general AI history. As of 2026-04, the local corpus spans only 2024-12-09 → 2026-04-06 (≈17 months, 69 episodes), entirely within what a general AI-history timeline would call the "agent era". Externally-sourced era schemes (e.g. "ChatGPT shock 2022", "Reasoning Turn late 2024") fall partly or wholly outside the corpus and would produce empty or near-empty pages. See `scripts/audit-era-boundaries.ts` for a reproducible check; re-run it before defining era boundaries.
+**Corpus-grounded constraint.** When eras are eventually defined, their boundaries must be derived from the actual Bobbin corpus, not from general AI history. As of 2026-04, the local corpus spans only 2024-12-09 → 2026-04-06 (69 episodes), entirely within what a general AI-history timeline would call the "agent era". Externally-sourced era schemes would produce empty or near-empty pages. `scripts/audit-era-boundaries.ts` provides a reproducible audit (first-appearance dates and per-quarter mention counts of marker terms); run it before proposing era boundaries.
 
-Visible within-corpus inflections to consider when era pages are eventually built:
-- **Vibe-coding moment** — the term `vibe coding` first appears in March 2025 and dominates Q1–Q3 2025 before fading
-- **Cursor → Claude Code shift** — `Cursor` peaks in Q2/Q3 2025 then disappears; `Claude Code` ramps from March 2025 onward and persists through 2026
-- **Agent maturity** — `agent` and `swarm` are present from the corpus start and stay strong throughout
+Audit observations as of 2026-04 (raw output from the script — counts, not interpretations):
 
-These are *within* the 17-month window; they would be near-invisible at year-grain. Era pages remain out of scope for v1; this section captures what they should look like when built.
+- `vibe coding` — first appears 2025-03-10; quarterly mention bins ▅ ▅ ▅ ▁ across 2025 Q1–Q4
+- `Cursor` — first appears 2025-01-27; quarterly mention bins ▁ ▃ ▃ · across 2025 Q1–Q4 (dot = zero)
+- `Claude Code` — first appears 2025-03-17; quarterly mention bins ▃ ▃ ▅ ▅ ▅ ▅ ▃ across 2025 Q1 → 2026 Q2
+- `agent` and `swarm` — present from the first episode (2024-12-09); sustained across the corpus
+
+Defining era *names* and *boundaries* from these counts is editorial work that belongs in the eras spec, not here.
 
 ## IA Position
 
@@ -71,11 +74,11 @@ These are *within* the 17-month window; they would be near-invisible at year-gra
 
 ## Indieweb-aligned restraint
 
-Calendar archive pages in the indieweb tradition are navigation aids, not destinations. The synthesis lives in hand-written retrospectives or topic pages. Bobbin's summary pages should respect that:
+Calendar archive pages in the indieweb tradition are navigation aids, not destinations. Bobbin's summary pages should respect that:
 
-- The auto-generated `Summary` body panel is lightweight (3–5 bullets at most), and may be empty when the period is too sparse to summarise meaningfully
-- A future enhancement may allow a hand-written intro to override the auto-bullets — when present, prefer the editorial voice
-- Calendar pages should not try to be dashboards. The rail provides the analytical lens; the body provides navigation
+- The body provides navigation (representative chunks, episode timeline)
+- The rail provides the analytical lens (deterministic counts and rankings)
+- There is no auto-generated prose. Every sentence-shaped element on the page must be either fixed UI text or a value pulled directly from a column or a deterministic helper. The page does not interpret, characterise, or narrate the period.
 
 ## Composition Rule
 
@@ -90,13 +93,11 @@ Every summary section must be built from an existing page pattern:
 
 Explicit reuse targets:
 
-- summary bullet/paragraph block → same `body-panel` treatment used by `Topic summary`
 - representative chunk list → same `body-panel-list` + row treatment used by `Most Connected`
 - episode timeline → same browse-body pattern used by `/episodes`
 - right-rail sections → same `rail-stack` + `rail-panel` system used on episode/topic/chunk/home rails
 - right-rail heading/help treatment → same `rail-panel-heading-row` + `topic-help-tip`
 - topic-bearing rail rows → `<TopicList layout="stack">` with the appropriate modifier
-- inline topic mentions in body prose → `<TopicList layout="run">`
 - links to chunks, episodes, topics → existing page routes only; no summary-only destinations
 
 No bespoke summary-only chrome.
@@ -128,34 +129,35 @@ Use the existing `main-wide` + optional rail layout.
 
 1. **Header**
    - period label via `periodLabel(period)` — "April 2026" or "2026"
-   - episode count / chunk count in existing metadata style
+   - episode count and chunk count, both pulled directly from `getEpisodesInPeriod` / `getChunksInPeriod`, in the existing metadata style
    - breadcrumbs back to `/summaries` and (for monthly) `/summaries/{year}`
 
-2. **Summary panel** (optional)
-   - existing `body-panel`
-   - up to 5 bullets generated from period aggregates
-   - omit entirely when the period is too sparse to summarise
+   No prose summary panel; the header is the only body-level introduction.
 
-3. **Representative chunks**
+2. **Representative chunks**
    - existing `body-panel-list`
    - rows use `BrowseRow` or `list-row-link`
-   - sourced from `getMostConnectedInPeriod`
+   - sourced from `getMostConnectedInPeriod` — strict reach ranking, no editorial selection
+   - omit the panel when the helper returns zero rows
 
-4. **Episode timeline**
+3. **Episode timeline**
    - existing browse-body pattern
-   - monthly summary: flat episode rows in descending date order, optionally grouped by day
-   - yearly summary: grouped by month
-   - reuse `BrowseSection` / `BrowseSubsection` / `BrowseRowList` / `BrowseRow`
+   - monthly summary: flat episode rows in descending date order. No day grouping.
+   - yearly summary: grouped by month using `BrowseSection` / `BrowseSubsection` / `BrowseRowList` / `BrowseRow`
+   - omit the panel when there are no episodes (the route 404s before reaching this case in practice)
 
 ### Right rail
 
-Only existing panel types/patterns. Candidate panels:
+Only existing panel types/patterns. Four panels, each deterministic:
 
-1. **`New Topics`** — `<TopicList layout="stack">` over `getPeriodNewTopics`
-2. **`Movers`** — `<TopicList layout="stack">` with `trending` modifier (↑ for risers, ↓ for fallers, inheriting link color), over `getPeriodMovers`
-3. **`Archive Contrast`** — `<TopicList layout="stack">` with `count` modifier carrying the spike ratio (e.g. `2.4× typical`), over `getPeriodArchiveContrast`
-4. **`External Links`** — bespoke ul (matches `episode-insight-panel rail-panel` shape), over `collectExternalLinks(chunksInPeriod)`
-5. **`Most Novel Chunks`** (optional) — same panel pattern used on episode pages, scoped to the period
+| Panel | Render iff | Source | Component |
+|---|---|---|---|
+| `New Topics` | helper returns ≥ 1 topic | `getPeriodNewTopics(db, bounds)` | `<TopicList layout="stack">` |
+| `Movers` | the previous period has ≥ 1 episode AND the helper returns ≥ 1 mover | `getPeriodMovers(db, current, previous)` | `<TopicList layout="stack">` with `trending` modifier (↑ for risers, ↓ for fallers, inheriting link color) and `count` carrying the absolute delta |
+| `Archive Contrast` | helper returns ≥ 1 topic | `getPeriodArchiveContrast(db, bounds)` | `<TopicList layout="stack">` with `count` modifier carrying the spike ratio (e.g. `2.4× typical`) |
+| `External Links` | helper returns ≥ 1 link | `collectExternalLinks(chunksInPeriod)` | bespoke ul (matches `episode-insight-panel rail-panel` shape) |
+
+If all four panels are empty the rail is omitted entirely and the body renders single-column. No other rail panels.
 
 ## Required Semantics
 
@@ -188,20 +190,19 @@ Must link directly to existing chunk detail pages.
 - comparison period = previous year
 - structure must remain visually consistent with monthly summaries — same page type at a larger aggregation level, not a different dashboard
 
-Yearly pages should therefore reuse the same sections and panel names whenever possible:
+Yearly pages reuse exactly the same sections and panel names as monthly:
 
-- `Summary` (optional)
+- `Representative Chunks`
 - `New Topics`
 - `Movers`
 - `Archive Contrast`
-- `Representative Chunks`
 - `External Links`
 - episode timeline/browse body
 
 The only meaningful structural difference is the grouping inside the browse body:
 
-- monthly: day-level or flat episode rows
-- yearly: month-level grouping
+- monthly: flat episode rows in descending date order
+- yearly: month-level grouping via `BrowseSection` / `BrowseSubsection`
 
 ## Reuse Mapping
 
@@ -233,7 +234,11 @@ Recommended structure:
 - metadata: episode count, chunk count
 - a year row links to `/summaries/{year}`; month rows under it link to `/summaries/{year}/{month}`
 
-Empty months (no episodes) must not be listed. A year with fewer than ~5 episodes (e.g. 2024 in the current corpus, which has 3) should render as a "thin" entry — no rail panels, no Movers comparison — and may opt out of the index entirely if the editorial judgement is that it isn't worth a yearly page. The threshold is editorial, not algorithmic; the route handler should degrade gracefully when comparison data would be misleading rather than throwing.
+Inclusion rules (deterministic):
+
+- A year row is listed iff `getEpisodesInPeriod` returns ≥ 1 episode for that year
+- A month row is listed iff `getEpisodesInPeriod` returns ≥ 1 episode for that month
+- No "thin" / "thick" distinction; sparse periods are listed and link to a sparse summary page. The summary page handles its own emptiness via the per-panel rules above.
 
 ## Implementation Order
 
@@ -242,9 +247,13 @@ Empty months (no episodes) must not be listed. A year with fewer than ~5 episode
 3. Render monthly and yearly summary pages using only existing body/rail/browse primitives
 4. Add tests proving:
    - route shape and 404 behaviour for malformed periods
-   - `New` means new to corpus
+   - 404 for periods with zero episodes
+   - `New` means new to corpus (not new vs the previous period)
    - monthly `Movers` compares to previous month; yearly `Movers` compares to previous year
-   - empty months render the empty state, not a broken panel
+   - `Movers` is omitted when the previous period has zero episodes
+   - each rail panel is omitted when its source helper returns zero rows
+   - the rail aside is omitted entirely when all four panels are empty
+   - no auto-generated prose appears anywhere on the page (every sentence-shaped element either originates from a fixed UI string or from a column value)
    - no new panel classes or summary-only UI primitives are introduced
 
 ## Dependencies in place
