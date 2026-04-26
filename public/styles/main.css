@@ -55,7 +55,8 @@ a:focus-visible { outline-offset: 1px; }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
   .episode-chunks details[open] .chunk-body { animation: slideDown 0.15s ease-out; }
   @keyframes slideDown { from { opacity: 0; } to { opacity: 1; } }
-  .topic { transition: background 0.15s, color 0.15s, border-color 0.15s; }
+  .topic-run a,
+  .topic-stack a { transition: color 0.15s; }
   .word-stats-bars tr { transition: background 0.1s; }
   .brush-bar { transition: background 0.15s, opacity 0.15s; }
 }
@@ -298,17 +299,67 @@ a:hover {
 @media (max-width: 768px) { .multiples-grid { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 480px) { .multiples-grid { grid-template-columns: repeat(2, 1fr); } }
 
-/* === Topics === */
-.topics { display: flex; flex-wrap: wrap; gap: 0.3rem; margin: 0.5rem 0; }
-.topic { display: inline-block; padding: 0.35rem 0.6rem; background: var(--bg-warm); color: var(--text-muted); border: 1px solid var(--border); border-radius: 3px; font-size: var(--text-caption); font-family: var(--font-ui); text-decoration: none; min-height: 2rem; line-height: 1.4; }
-.topic:hover { background: var(--accent-light); color: var(--accent); border-color: var(--accent); text-decoration: none; }
-.topic .count { opacity: 0.6; font-size: var(--text-caption); }
-.topic-cloud { display: flex; flex-wrap: wrap; gap: 0.4rem; }
-.topic-tier { margin: var(--space-lg) 0; }
-.topic-search-results { display: flex; flex-wrap: wrap; gap: 0.3rem; margin: 0.5rem 0; }
-.topic-tier h2 { font-family: var(--font-ui); font-size: var(--text-secondary); font-weight: 600; font-style: normal; margin-bottom: var(--space-sm); text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-light); }
-details.topic-tier summary { font-family: var(--font-ui); font-size: var(--text-secondary); color: var(--text-muted); cursor: pointer; margin-bottom: var(--space-sm); }
-details.topic-tier .topic-cloud { margin-top: var(--space-sm); }
+/* === Topic representations ===
+ * Two layouts cover every topic surface:
+ *   .topic-run       — inline, dot-separated text run (latest panel, marginalia,
+ *                       related, search results)
+ *   .topic-stack     — vertical link list inside rail panels
+ * Plus .multiple-cell (Small Multiples grid) where trend matters.
+ *
+ * Direction is encoded by typographic glyphs (↑ / ↓), inheriting link color.
+ * No chips, no badges, no semantic up/down hues.
+ */
+.topic-run {
+  font-family: var(--font-ui);
+  font-size: var(--text-secondary);
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+.topic-run a {
+  color: var(--text-muted);
+  text-decoration: none;
+}
+.topic-run a:hover { color: var(--accent-dark); }
+.topic-run a.is-salient { font-weight: 600; color: var(--accent-dark); }
+.topic-run-sep {
+  color: var(--text-light);
+  margin: 0 0.3rem;
+}
+.topic-run .topic-trend,
+.topic-stack .topic-trend {
+  margin-left: 0.2rem;
+  color: inherit;
+}
+.topic-run .topic-count {
+  margin-left: 0.25rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-light);
+  font-size: var(--text-caption);
+}
+
+.topic-stack {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.topic-stack li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.3rem 0;
+}
+.topic-stack a {
+  flex: 1;
+  min-width: 0;
+}
+.topic-stack a.is-salient { font-weight: 600; color: var(--accent-dark); }
+.topic-stack .topic-count {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-light);
+  font-size: var(--text-caption);
+  white-space: nowrap;
+}
 
 /* Topics as Tufte marginalia (desktop) / below content (mobile) */
 .topics-margin {
@@ -317,7 +368,6 @@ details.topic-tier .topic-cloud { margin-top: var(--space-sm); }
 .topics-margin h3 { font-size: var(--text-secondary); font-family: var(--font-ui); color: var(--text-light); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; margin-bottom: 0.3rem; }
 @media (min-width: 769px) {
   .topics-margin { width: 100%; margin: 0; font-size: var(--text-secondary); }
-  .topics-margin .topics { display: flex; flex-wrap: wrap; gap: 0.3rem; }
 }
 @media (max-width: 768px) {
   .topics-margin { margin: 1.5rem 0 0; order: 99; }
@@ -360,7 +410,6 @@ details.topic-tier .topic-cloud { margin-top: var(--space-sm); }
 }
 .body-panel > .section-heading,
 .latest-episode-panel > .section-heading { margin-bottom: 0.5rem; }
-.latest-topics > .section-heading { margin-bottom: var(--space-xs); }
 .body-panel-list ul {
   list-style: none;
 }
@@ -448,8 +497,6 @@ details.topic-tier .topic-cloud { margin-top: var(--space-sm); }
 .rail-panel-list a:hover { color: var(--rail-link-hover); }
 .rail-panel-list time,
 .rail-panel-list .insight-meta { display: block; }
-.topics-list li,
-.distinctive-list li { padding: 0.3rem 0; }
 
 /* Trending topics indicator */
 .episode-insight-context {
@@ -702,8 +749,7 @@ mark { background: color-mix(in srgb, var(--accent-light) 60%, transparent); col
 .topic-mentions { font-variant-numeric: tabular-nums; }
 .topic-distinctiveness { font-family: var(--font-ui); font-size: var(--text-secondary); color: var(--text-muted); margin: 0; }
 .topic-related { font-family: var(--font-ui); font-size: var(--text-secondary); color: var(--text-muted); margin-bottom: var(--space-md); }
-.topic-related-label { font-weight: 600; color: var(--text-muted); }
-.topic-related-inline a { color: var(--accent-dark); }
+.topic-related-label { font-weight: 600; color: var(--text-muted); margin-right: 0.35rem; }
 .topic-inline-heading-row,
 .section-heading-row {
   display: flex;
@@ -782,8 +828,6 @@ mark { background: color-mix(in srgb, var(--accent-light) 60%, transparent); col
   position: sticky;
   top: 1rem;
 }
-.topic-related-panel .topic { display: flex; flex-direction: column; align-items: flex-start; gap: 0.15rem; min-height: auto; }
-.topic-related-count { font-size: var(--text-micro); color: var(--text-light); line-height: 1.3; }
 .topic-rank-svg { width: 100%; height: auto; display: block; }
 .topic-adjacent-kicker {
   text-transform: uppercase;
@@ -947,21 +991,15 @@ mark { background: color-mix(in srgb, var(--accent-light) 60%, transparent); col
 .component-topic-header h1 {
   margin-bottom: var(--space-xs);
 }
-.component-inline-label,
-.component-inline-strip {
-  font-family: var(--font-ui);
-  font-size: var(--text-secondary);
-  color: var(--text-muted);
-  margin-bottom: 0;
-}
 .component-inline-strip {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
   align-items: baseline;
-}
-.component-inline-strip a {
-  color: var(--accent-dark);
+  font-family: var(--font-ui);
+  font-size: var(--text-secondary);
+  color: var(--text-muted);
+  margin-bottom: 0;
 }
 .component-topic-rail-row {
   display: grid;
@@ -1011,5 +1049,4 @@ mark { background: color-mix(in srgb, var(--accent-light) 60%, transparent); col
 .latest-chunks li { padding: 0.15rem 0; }
 .latest-chunks li::before { content: '\201C'; color: var(--text-light); }
 .latest-chunks li::after { content: '\201D'; color: var(--text-light); }
-.latest-topics { margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border); font-family: var(--font-ui); }
-.latest-topics .topics { display: flex; flex-wrap: wrap; gap: 0.25rem; }
+.latest-topics { margin: 0.75rem 0 0; padding-top: 0.75rem; border-top: 1px solid var(--border); font-family: var(--font-ui); font-size: var(--text-secondary); color: var(--text-muted); }

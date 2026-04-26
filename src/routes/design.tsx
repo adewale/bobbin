@@ -9,10 +9,8 @@ import { Pagination } from "../components/Pagination";
 import { RichContent, RichFootnotes, parseFootnotesJson, parseRichContentJson } from "../components/RichContent";
 import { SearchForm } from "../components/SearchForm";
 import { TopicChartPanel } from "../components/TopicChartPanel";
-import { TopicCloud } from "../components/TopicCloud";
 import { TopicHeader } from "../components/TopicHeader";
-import { TopicRailList } from "../components/TopicRailList";
-import { TopicStrip } from "../components/TopicStrip";
+import { TopicList } from "../components/TopicList";
 import { getRecentEpisodes } from "../db/episodes";
 import { getTopTopics } from "../db/topics";
 import { getMostConnected } from "../db/word-stats";
@@ -149,8 +147,8 @@ design.get("/", async (c) => {
     },
     {
       href: "#topics",
-      title: "Topics are navigation chips, not decorative badges",
-      meta: "They stay compact, text-first, and tied directly to topic pages.",
+      title: "Topics are text runs, not chips",
+      meta: "One TopicList component. Direction is shape (↑ ↓), not color. No badges or boxes around topic names.",
     },
     {
       href: "#source-fidelity",
@@ -188,11 +186,11 @@ design.get("/", async (c) => {
     },
     {
       title: "Topics and relationship views",
-      description: "Components that move from compact topic links to richer topic summaries and charts.",
+      description: "One TopicList component covers every topic surface; richer relationship framing layers on top.",
       items: [
-        { href: "#topics", title: "TopicStrip", meta: "Chip and inline topic link variants" },
-        { href: "#topics", title: "TopicCloud", meta: "Dense topic browsing surface" },
-        { href: "#topics", title: "TopicRailList", meta: "Compact topic rail list" },
+        { href: "#topics", title: "TopicList (run)", meta: "Inline dot-separated topic run for marginalia and related" },
+        { href: "#topics", title: "TopicList (stack)", meta: "Vertical rail list with optional count and trend" },
+        { href: "#topics", title: "TopicList (multiples)", meta: "Small-multiples grid with sparklines" },
         { href: "#topics", title: "TopicHeader", meta: "Topic detail title, counts, and relationships" },
         { href: "#topics", title: "TopicChartPanel", meta: "Shared chart framing for section and rail variants" },
       ],
@@ -344,7 +342,8 @@ design.get("/", async (c) => {
           <section id="topics" class="body-panel">
             <h2 class="section-heading">Topics and relationship surfaces</h2>
             <p>
-              Topic components progress from compact navigation to richer editorial framing without changing the basic text-first visual language.
+              Every topic surface in Bobbin renders through a single TopicList component with one of three layouts.
+              Direction is conveyed by typographic glyphs (↑ ↓) that inherit link color — never by hue.
             </p>
             {topicSample && (
               <div class="component-topic-stack">
@@ -359,28 +358,51 @@ design.get("/", async (c) => {
 
                 {topicStripTopics.length > 0 && (
                   <>
-                    <div class="component-chip-strip">
-                      <p class="component-inline-label">Chip strip</p>
-                      <TopicStrip topics={topicStripTopics} />
-                    </div>
+                    <p class="component-inline-strip">
+                      <strong class="section-meta-label">Run</strong>
+                      <TopicList
+                        topics={topicStripTopics.slice(0, 5).map((topic) => ({
+                          id: topic.id,
+                          name: topic.name,
+                          slug: topic.slug,
+                        }))}
+                        layout="run"
+                      />
+                    </p>
 
                     <p class="component-inline-strip">
-                      <strong class="section-meta-label">Inline strip</strong>
-                      <TopicStrip topics={topicStripTopics.slice(0, 4)} variant="inline" />
+                      <strong class="section-meta-label">Run · trending</strong>
+                      <TopicList
+                        topics={topicStripTopics.slice(0, 5).map((topic, index) => ({
+                          id: topic.id,
+                          name: topic.name,
+                          slug: topic.slug,
+                          trend: index === 0 ? "up" as const : index === 1 ? "down" as const : undefined,
+                          salient: index === 0,
+                        }))}
+                        layout="run"
+                      />
                     </p>
                   </>
                 )}
 
-                {topics.length > 0 ? <TopicCloud topics={topics} /> : <p>No topics available yet.</p>}
-
                 <div class="component-topic-rail-row">
                   {topicStripTopics.length > 0 && (
-                    <TopicRailList
-                      title="Topic rail list"
-                      topics={topicStripTopics.slice(0, 5)}
-                      sectionClassName="component-topic-rail"
-                      listClassName="topics-list"
-                    />
+                    <section class="component-topic-rail rail-panel rail-panel-list">
+                      <div class="rail-panel-heading-row">
+                        <h3>Stack</h3>
+                      </div>
+                      <TopicList
+                        topics={topicStripTopics.slice(0, 5).map((topic, index) => ({
+                          id: topic.id,
+                          name: topic.name,
+                          slug: topic.slug,
+                          count: topic.usage_count,
+                          trend: index === 0 ? "up" as const : undefined,
+                        }))}
+                        layout="stack"
+                      />
+                    </section>
                   )}
 
                   {chartEpisodes.length > 1 && (
@@ -402,6 +424,18 @@ design.get("/", async (c) => {
                     />
                   )}
                 </div>
+
+                {topics.length > 0 && (
+                  <TopicList
+                    layout="multiples"
+                    topics={topics.slice(0, 8).map((topic) => ({
+                      id: topic.id,
+                      name: topic.name,
+                      slug: topic.slug,
+                      count: topic.usage_count,
+                    }))}
+                  />
+                )}
 
                 {chartEpisodes.length > 1 && (
                   <TopicChartPanel

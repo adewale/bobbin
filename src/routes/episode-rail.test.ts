@@ -69,7 +69,8 @@ describe("Episode detail rail insights", () => {
     expect(html).toContain("External Links");
     expect(html).toContain('class="topic-help-tip"');
     expect(html).toContain('class="rail-panel-heading-row"');
-    expect(html).toContain('class="rail-panel-list topics-list"');
+    expect(html).toContain('class="topic-tier-main rail-panel rail-panel-list"');
+    expect(html).toContain('class="topic-stack"');
     expect(html).not.toContain("Generativity Sparkline");
     expect(html).not.toContain("Novelty Sparkline");
     expect(html).not.toContain("Reference Density Map");

@@ -26,7 +26,8 @@ Favicon: SVG "B" in Libre Franklin 700, accent-dark (#8b2e00), served as `/favic
 Interaction patterns:
 - Accordions for multi-line chunks (chevron rotates on open)
 - Single-line chunks are plain rows, not expandable
-- Topics as pills with hover state (border + background shift to accent)
+- Topics as inline runs (`·` separated) or small-multiple cells; no pills. One `<TopicList>` component renders every topic surface via three layouts (`run`, `stack`, `multiples`) plus three modifiers (`salient`, `trending`, `count`).
+- Direction is conveyed by typographic glyphs (`→`, `↑`, `↓`) in flow, inheriting link color. No semantic up/down hues.
 - Breadcrumb navigation with / separators
 - Active nav item: accent underline
 - Search icon in header, with the page-level search form retained on the search route
@@ -37,4 +38,4 @@ Data visualization: Topics index uses small-multiple sparklines. Topic detail pa
 
 Mobile: 44px minimum touch targets. Header compresses (smaller font, tighter gaps). Margin notes become inline bordered blocks. Topics move below content.
 
-What it is not: No dark mode. No card shadows. No gradients. No rounded corners beyond 3-6px on small elements. No icons beyond the search magnifying glass. No loading spinners. No skeleton screens.
+What it is not: No dark mode. No card shadows. No gradients. No rounded corners beyond 3-6px on small elements. No icons beyond the search magnifying glass. No loading spinners. No skeleton screens. No chips or badges around topic names. No green/red semantic colors.

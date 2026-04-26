@@ -6,7 +6,7 @@ import { HelpTip } from "../components/HelpTip";
 import { Layout } from "../components/Layout";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { RichContent, RichFootnotes, parseFootnotesJson, parseRichContentJson } from "../components/RichContent";
-import { TopicRailList } from "../components/TopicRailList";
+import { TopicList } from "../components/TopicList";
 import { monthName } from "../lib/date";
 import { collectExternalLinks } from "../lib/episode-rail";
 import { getAdjacentEpisodes, getAllEpisodesGrouped, getChunksByEpisode, getEpisodeBySlug, getEpisodeRailInsights, getEpisodeTopicsBlended } from "../db/episodes";
@@ -206,32 +206,28 @@ episodes.get("/:slug", async (c) => {
         {hasEpisodeRail && (
           <aside class="page-rail topics-margin rail-stack episode-analysis-rail">
             {blendedTopics.main.length > 0 && (
-              <TopicRailList
-                title="Topics"
-                topics={blendedTopics.main}
-                sectionClassName="topic-tier-main"
-                listClassName="topics-list"
-                help={(
+              <section class="topic-tier-main rail-panel rail-panel-list">
+                <div class="rail-panel-heading-row">
+                  <h3>Topics</h3>
                   <HelpTip
                     label="Explain episode topics"
                     text="The main themes that recur across this episode."
                   />
-                )}
-              />
+                </div>
+                <TopicList topics={blendedTopics.main} layout="stack" />
+              </section>
             )}
             {blendedTopics.distinctive.length > 0 && (
-              <TopicRailList
-                title="Distinctive"
-                topics={blendedTopics.distinctive}
-                sectionClassName="distinctive-topics"
-                listClassName="distinctive-list"
-                help={(
+              <section class="distinctive-topics rail-panel rail-panel-list">
+                <div class="rail-panel-heading-row">
+                  <h3>Distinctive</h3>
                   <HelpTip
                     label="Explain distinctive topics"
                     text="Topics that are unusually salient in this episode compared with ordinary language and the rest of the archive."
                   />
-                )}
-              />
+                </div>
+                <TopicList topics={blendedTopics.distinctive} layout="stack" />
+              </section>
             )}
 
             {railInsights.unexpectedPairings.length > 0 && (

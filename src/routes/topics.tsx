@@ -5,6 +5,7 @@ import { HelpTip } from "../components/HelpTip";
 import { Layout } from "../components/Layout";
 import { TopicChartPanel } from "../components/TopicChartPanel";
 import { TopicHeader } from "../components/TopicHeader";
+import { TopicList } from "../components/TopicList";
 import { getAdjacentTopics, getRelatedTopics, getTopTopicsWithSparklines, getTopicBySlug, getTopicChunkCount, getTopicChunks, getTopicDriftChunks, getTopicEpisodes, getTopicRankHistory, getTopicSparkline, getTopicWordStats } from "../db/topics";
 import { safeParseInt } from "../lib/html";
 import { Breadcrumbs } from "../components/Breadcrumbs";
@@ -42,35 +43,32 @@ topics.get("/", async (c) => {
       )}
 
       {topicsWithSparklines.length > 0 && (
-        <section class="topic-multiples">
-          <div class="multiples-grid">
-            {topicsWithSparklines.map(topic => {
-              const max = Math.max(...topic.sparkline, 1);
-              const w = 180, h = 40, pad = 2;
-              const points = topic.sparkline.map((v: number, i: number) => {
-                const x = topic.sparkline.length === 1 ? w / 2 : (i / (topic.sparkline.length - 1)) * (w - pad * 2) + pad;
-                const y = h - pad - (v / max) * (h - pad * 2);
-                return `${x},${y}`;
-              }).join(" ");
-
-              return (
-                <a
-                  key={topic.id}
-                  href={`/topics/${topic.slug}`}
-                  class="multiple-cell"
-                  title={`${topic.name} — ${topic.usage_count} chunk${topic.usage_count !== 1 ? "s" : ""}`}
-                >
-                  <span class="multiple-name">{topic.name}</span>
-                  <span class="multiple-count">{topic.usage_count}</span>
-                  <svg viewBox={`0 0 ${w} ${h}`} class="multiple-spark rail-sparkline" role="img" aria-label={`Usage trend for ${topic.name}`}>
-                    <title>{`${topic.name}: ${topic.usage_count} chunks`}</title>
-                    <polyline points={points} fill="none" stroke="var(--rail-signal-color)" stroke-width="1.5" />
-                  </svg>
-                </a>
-              );
-            })}
-          </div>
-        </section>
+        <TopicList
+          layout="multiples"
+          topics={topicsWithSparklines.map((topic) => ({
+            id: topic.id,
+            name: topic.name,
+            slug: topic.slug,
+            count: topic.usage_count,
+          }))}
+          spark={(topic) => {
+            const source = topicsWithSparklines.find((t) => t.id === topic.id);
+            if (!source) return null;
+            const max = Math.max(...source.sparkline, 1);
+            const w = 180, h = 40, pad = 2;
+            const points = source.sparkline.map((v: number, i: number) => {
+              const x = source.sparkline.length === 1 ? w / 2 : (i / (source.sparkline.length - 1)) * (w - pad * 2) + pad;
+              const y = h - pad - (v / max) * (h - pad * 2);
+              return `${x},${y}`;
+            }).join(" ");
+            return (
+              <svg viewBox={`0 0 ${w} ${h}`} class="multiple-spark rail-sparkline" role="img" aria-label={`Usage trend for ${source.name}`}>
+                <title>{`${source.name}: ${source.usage_count} chunks`}</title>
+                <polyline points={points} fill="none" stroke="var(--rail-signal-color)" stroke-width="1.5" />
+              </svg>
+            );
+          }}
+        />
       )}
 
       <script src="/scripts/topic-filter.js" defer></script>

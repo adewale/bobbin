@@ -97,19 +97,18 @@ Only existing panel types/patterns. Candidate panels:
 1. `New Topics`
 - reuse the episode-rail/new-to-corpus logic, aggregated for the period
 
-2. `Up`
+2. `Movers`
 - reuse salience-weighted delta logic, but aggregated period vs previous comparable period
+- single panel for both directions: rows render through `<TopicList layout="stack">` with the `trending` modifier (↑ for risers, ↓ for fallers, inheriting link color)
 
-3. `Down`
-- same as above
-
-4. `Archive Contrast`
+3. `Archive Contrast`
 - reuse the existing topic-level over-indexing logic, but for the period
+- renders through `<TopicList layout="stack">` with the `count` modifier carrying the distinctiveness multiplier
 
-5. `External Links`
+4. `External Links`
 - deduplicated links across the period, using the existing external-link extraction
 
-6. `Most Novel Chunks`
+5. `Most Novel Chunks`
 - optional if not already surfaced in the main column; if used, keep the same existing panel treatment
 
 ## Required Semantics
@@ -118,9 +117,9 @@ Only existing panel types/patterns. Candidate panels:
 
 `New` means new to the corpus, not just new relative to the previous month.
 
-### `Up / Down`
+### `Movers`
 
-Must use the same salience-weighted delta logic already used on episode pages.
+Must use the same salience-weighted delta logic already used on episode pages. Direction is encoded by the `↑`/`↓` glyph appended to each topic anchor; never by color. A topic with no detectable change does not appear.
 
 ### `Archive Contrast`
 
@@ -148,8 +147,7 @@ Yearly pages should therefore reuse the same sections and panel names whenever p
 
 - `Summary`
 - `New Topics`
-- `Up`
-- `Down`
+- `Movers`
 - `Archive Contrast`
 - `Representative Chunks`
 - `External Links`
@@ -162,7 +160,7 @@ The only meaningful structural difference is the grouping inside the browse body
 
 ## Reuse Mapping
 
-- Period `Up / Down / New`: parameterize `getEpisodeRailInsights()`-style logic into period-scoped queries/helpers
+- Period `Movers / New`: parameterize `getEpisodeRailInsights()`-style logic into period-scoped queries/helpers; render rows through `<TopicList layout="stack">`
 - Period `Archive Contrast`: reuse existing episode/topic contrast query shape at period scope
 - Period `External Links`: reuse `collectExternalLinks()` across all chunks in the period
 - Period episode listing: reuse `BrowseIndex` components
@@ -172,7 +170,7 @@ The only meaningful structural difference is the grouping inside the browse body
 
 - No new color roles
 - No new card styles
-- No new chip style
+- No chips. Topics render through the shared `<TopicList>` component (`run`, `stack`, or `multiples` layout).
 - No new summary-only widget
 - If a summary needs a chart, it must reuse an existing sparkline/small-chart treatment already present in the product
 
@@ -197,6 +195,6 @@ Recommended structure:
 4. Add tests proving:
    - route shape
    - `New` means new to corpus
-   - monthly `Up / Down` compare to previous month
-   - yearly `Up / Down` compare to previous year
+   - monthly `Movers` compares to previous month
+   - yearly `Movers` compares to previous year
    - no new panel classes or summary-only UI primitives are introduced
