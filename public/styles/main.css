@@ -43,7 +43,11 @@
 }
 
 html { font-size: 18px; line-height: 1.7; color: var(--text); background: var(--bg); scrollbar-gutter: stable; }
-body { font-family: var(--font-body); }
+body {
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
 
 /* WCAG AA: visible focus indicator for keyboard navigation */
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -176,10 +180,10 @@ footer a { color: inherit; }
 footer a:hover { color: var(--accent-dark); }
 
 /* === Typography === */
-h1 { font-family: var(--font-body); font-size: var(--text-display); margin-bottom: var(--space-sm); line-height: 1.25; font-weight: 400; font-style: italic; }
-h2 { font-family: var(--font-body); font-size: var(--text-heading); margin: 1.5rem 0 0.5rem; line-height: 1.3; font-weight: 400; }
-h3 { font-family: var(--font-ui); font-size: var(--text-subhead); font-weight: 600; margin: 1rem 0 0.3rem; }
-p { margin-bottom: var(--space-md); }
+h1 { font-family: var(--font-body); font-size: var(--text-display); margin-bottom: var(--space-sm); line-height: 1.25; font-weight: 400; font-style: italic; text-wrap: balance; }
+h2 { font-family: var(--font-body); font-size: var(--text-heading); margin: 1.5rem 0 0.5rem; line-height: 1.3; font-weight: 400; text-wrap: balance; }
+h3 { font-family: var(--font-ui); font-size: var(--text-subhead); font-weight: 600; margin: 1rem 0 0.3rem; text-wrap: balance; }
+p { margin-bottom: var(--space-md); text-wrap: pretty; }
 a {
   color: var(--text);
   text-decoration: underline;
@@ -204,8 +208,21 @@ a:hover {
 .search-form { display: flex; gap: 0.5rem; max-width: 100%; margin-bottom: var(--space-md); }
 .search-form input { flex: 1; padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-radius: 4px; font-size: var(--text-body); font-family: var(--font-ui); background: var(--bg-card); }
 .search-form input:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
-.search-form button { padding: 0.5rem 1rem; background: var(--accent); color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: var(--text-secondary); font-family: var(--font-ui); font-weight: 600; }
+.search-form button {
+  padding: 0.5rem 1rem;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-weight: 600;
+  min-height: 2.5rem;
+  transition: background 0.15s, transform 0.1s;
+}
 .search-form button:hover { background: var(--accent-dark); }
+.search-form button:active { transform: scale(0.96); }
 
 /* === Cards === */
 .episode-card { padding: var(--space-md) 0; border-bottom: 1px solid var(--border); }
@@ -267,7 +284,7 @@ a:hover {
 .rich-list-item { margin: 0.2rem 0; }
 .rich-block-content { display: inline; }
 .rich-image-figure { display: block; margin: 0.75rem 0; }
-.rich-image { max-width: 100%; height: auto; display: block; border-radius: 4px; }
+.rich-image { max-width: 100%; height: auto; display: block; border-radius: 4px; outline: 1px solid rgba(0, 0, 0, 0.08); outline-offset: -1px; }
 .rich-image-figure figcaption { font-size: var(--text-caption); font-family: var(--font-ui); color: var(--text-light); margin-top: 0.3rem; }
 .rich-separator { border: 0; border-top: 1px solid var(--border); margin: 0.85rem 0; }
 @media (max-width: 768px) {
@@ -577,13 +594,33 @@ a:hover {
 .breadcrumbs a { color: inherit; }
 .breadcrumbs li { display: flex; align-items: center; }
 .breadcrumbs li:not(:last-child)::after { content: '/'; color: var(--border); margin: 0 0.35rem; }
-.breadcrumbs a { color: var(--text-light); text-decoration: none; padding: 0.25rem 0; }
+.breadcrumbs a {
+  color: var(--text-light);
+  text-decoration: none;
+  padding: 0.5rem 0;
+  display: inline-block;
+  min-height: 2.25rem;
+  line-height: 1.25rem;
+}
 .breadcrumbs a:hover { color: var(--accent); }
 
 /* === Pagination === */
 .pagination { display: flex; justify-content: center; align-items: center; gap: 1rem; margin: var(--space-xl) 0; font-size: var(--text-secondary); font-family: var(--font-ui); }
-.pagination a { padding: 0.35rem 0.75rem; border: 1px solid var(--border); border-radius: 3px; text-decoration: none; color: var(--text-muted); }
+.pagination a {
+  padding: 0.65rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  text-decoration: none;
+  color: var(--text-muted);
+  min-height: 2.5rem;
+  min-width: 2.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s, transform 0.1s;
+}
 .pagination a:hover { background: var(--accent-light); color: var(--accent); }
+.pagination a:active { transform: scale(0.96); }
 
 /* === Timeline === */
 .timeline-years, .timeline-months { list-style: none; }
@@ -692,14 +729,33 @@ mark { background: color-mix(in srgb, var(--accent-light) 60%, transparent); col
 
 /* === Chunk prev/next navigation === */
 .chunk-nav { display: flex; justify-content: space-between; gap: 1rem; margin: var(--space-xl) 0; padding: 1rem 0; border-top: 1px solid var(--border); font-family: var(--font-ui); font-size: var(--text-secondary); }
-.chunk-nav a { text-decoration: none; color: var(--text-muted); max-width: 45%; }
+.chunk-nav a {
+  text-decoration: none;
+  color: var(--text-muted);
+  max-width: 45%;
+  min-height: 2.5rem;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.35rem 0;
+  transition: color 0.15s, transform 0.1s;
+}
 .chunk-nav a:hover { color: var(--accent); }
+.chunk-nav a:active { transform: scale(0.96); }
 .chunk-nav .nav-next { text-align: right; margin-left: auto; }
 
 /* === Episode nav (prev/next) === */
 .episode-nav { display: flex; justify-content: space-between; gap: 1rem; margin: var(--space-xl) 0; padding: 1rem 0; border-top: 1px solid var(--border); font-family: var(--font-ui); font-size: var(--text-secondary); }
-.episode-nav a { text-decoration: none; color: var(--text-muted); }
+.episode-nav a {
+  text-decoration: none;
+  color: var(--text-muted);
+  min-height: 2.5rem;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.35rem 0;
+  transition: color 0.15s, transform 0.1s;
+}
 .episode-nav a:hover { color: var(--accent); }
+.episode-nav a:active { transform: scale(0.96); }
 .episode-nav .nav-next { margin-left: auto; }
 
 /* === Unified Browse page === */
