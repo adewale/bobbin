@@ -8,6 +8,7 @@ import { topicRoutes } from "./routes/topics";
 import { searchRoutes } from "./routes/search";
 import { apiRoutes } from "./routes/api";
 import { designRoutes } from "./routes/design";
+import { summaryRoutes } from "./routes/summaries";
 import { runRefresh } from "./jobs/refresh";
 import { handleEnrichmentBatch, type EnrichmentMessage } from "./jobs/queue-handler";
 
@@ -34,6 +35,7 @@ app.route("/", homeRoutes);
 app.route("/episodes", episodeRoutes);
 app.route("/chunks", chunkRoutes);
 app.route("/topics", topicRoutes);
+app.route("/summaries", summaryRoutes);
 app.route("/search", searchRoutes);
 app.route("/api", apiRoutes);
 app.route("/design", designRoutes);

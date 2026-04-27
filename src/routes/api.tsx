@@ -18,6 +18,7 @@ import { expandEntityAliases } from "../lib/entity-aliases";
 import { ensureKnownSources, ensureSource } from "../db/sources";
 import { KNOWN_ENTITIES } from "../data/known-entities";
 import { combinePipelineReports, summarizeEnrichBatches, summarizeFinalizeResult } from "../services/pipeline-report";
+import { persistChunkEmbeddingCache } from "../services/topic-similarity";
 import { normalizeTopicExtractorMode } from "../services/yake-runtime";
 import { runRefresh } from "../jobs/refresh";
 
@@ -332,6 +333,7 @@ api.get("/embed", async (c) => {
     // P1: batch embedding instead of per-chunk calls
     const texts = (chunks.results as any[]).map((c) => c.content_plain);
     const result = await c.env.AI.run("@cf/baai/bge-base-en-v1.5", { text: texts });
+    await persistChunkEmbeddingCache(c.env.DB, chunks.results as Array<{ id: number }>, (result as any).data);
 
     const vectors = (chunks.results as any[]).map((chunk, i) => ({
       id: chunk.vector_id,
@@ -617,7 +619,14 @@ api.get("/topics", async (c) => {
   if (!q || q.length < 2) return c.json({ topics: [] });
 
   const result = await c.env.DB.prepare(
-    "SELECT name, slug, usage_count FROM topics WHERE name LIKE ? ESCAPE '\\' AND usage_count >= 1 ORDER BY usage_count DESC LIMIT 10"
+    `SELECT name, slug, usage_count
+     FROM topics
+     WHERE name LIKE ? ESCAPE '\\'
+       AND usage_count >= 1
+       AND hidden = 0
+       AND display_suppressed = 0
+     ORDER BY usage_count DESC
+     LIMIT 10`
   ).bind(`%${escapeLike(q)}%`).all();
 
   return c.json({ topics: result.results });

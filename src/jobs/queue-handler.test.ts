@@ -3,11 +3,11 @@
  * Tests through DB effects since the individual handlers are module-private.
  * We simulate what the handlers do by calling the same SQL patterns.
  */
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import { env } from "cloudflare:test";
 import { applyTestMigrations } from "../../test/helpers/migrations";
 import { slugify } from "../lib/slug";
-import { handleEnrichBatch, shouldRetryQueueMessage } from "./queue-handler";
+import { handleEnrichBatch, handleEnrichmentBatch, shouldRetryQueueMessage } from "./queue-handler";
 
 beforeEach(async () => {
   await applyTestMigrations(env.DB);
@@ -26,6 +26,10 @@ beforeEach(async () => {
       "INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (1, 'chunk-3', 'Chunk 3', 'Agent swarm patterns in distributed systems.', 'Agent swarm patterns in distributed systems.', 2)"
     ),
   ]);
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe("compute-related handler behavior", () => {
@@ -365,6 +369,85 @@ describe("enrich-batch handler", () => {
       "SELECT COUNT(*) as c FROM chunks WHERE slug = 'chunk-3' AND enriched = 1"
     ).first<{ c: number }>();
     expect(untouched!.c).toBe(1);
+  });
+});
+
+describe("queue message event logs", () => {
+  it("emits one wide JSON success line per processed message", async () => {
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('ecosystem', 'ecosystem', 2)"),
+      env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('platform', 'platform', 2)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 1)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (2, 1)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 2)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (2, 2)"),
+    ]);
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const ack = vi.fn();
+    const retry = vi.fn();
+
+    await handleEnrichmentBatch(
+      {
+        messages: [
+          {
+            body: { type: "compute-related", topicId: 1 },
+            ack,
+            retry,
+          },
+        ],
+      } as any,
+      { DB: env.DB, ENRICHMENT_QUEUE: {} } as any,
+    );
+
+    expect(ack).toHaveBeenCalledTimes(1);
+    expect(retry).not.toHaveBeenCalled();
+    expect(logSpy).toHaveBeenCalledTimes(1);
+
+    const payload = JSON.parse(String(logSpy.mock.calls[0][0]));
+    expect(payload.event).toBe("queue_message");
+    expect(payload.message_type).toBe("compute-related");
+    expect(payload.status).toBe("ok");
+    expect(payload.elapsed_ms).toBeGreaterThanOrEqual(0);
+    expect(payload.topic_id).toBe(1);
+  });
+
+  it("emits one wide JSON error line and retries retryable failures", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const ack = vi.fn();
+    const retry = vi.fn();
+
+    await handleEnrichmentBatch(
+      {
+        messages: [
+          {
+            body: { type: "compute-related", topicId: 1 },
+            ack,
+            retry,
+          },
+        ],
+      } as any,
+      {
+        DB: {
+          prepare() {
+            throw new Error("SQLITE_BUSY test failure");
+          },
+        },
+        ENRICHMENT_QUEUE: {},
+      } as any,
+    );
+
+    expect(retry).toHaveBeenCalledTimes(1);
+    expect(ack).not.toHaveBeenCalled();
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+
+    const payload = JSON.parse(String(errorSpy.mock.calls[0][0]));
+    expect(payload.event).toBe("queue_message");
+    expect(payload.message_type).toBe("compute-related");
+    expect(payload.status).toBe("error");
+    expect(payload.retry).toBe(true);
+    expect(payload.error).toContain("SQLITE_BUSY");
+    expect(payload.elapsed_ms).toBeGreaterThanOrEqual(0);
   });
 });
 

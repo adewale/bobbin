@@ -11,6 +11,7 @@ type LayoutProps = PropsWithChildren<{
 
 const NAV_ITEMS = [
   { href: "/episodes", label: "Episodes" },
+  { href: "/summaries", label: "Summaries" },
   { href: "/topics", label: "Topics" },
 ];
 

@@ -136,6 +136,39 @@ describe("Document frequency quality gate (df≥5)", () => {
     const popular = await env.DB.prepare("SELECT usage_count FROM topics WHERE slug = 'popular'").first<any>();
     expect(popular.usage_count).toBeGreaterThanOrEqual(5);
   });
+
+  it("uses a corpus-relative episode-support threshold instead of a fixed usage threshold", async () => {
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO episodes (source_id, slug, title, published_date, year, month, day, chunk_count) VALUES (1, '2025-01-20', 'Ep 3', '2025-01-20', 2025, 1, 20, 1)"),
+      env.DB.prepare("INSERT INTO episodes (source_id, slug, title, published_date, year, month, day, chunk_count) VALUES (1, '2025-01-27', 'Ep 4', '2025-01-27', 2025, 1, 27, 1)"),
+      env.DB.prepare("INSERT INTO episodes (source_id, slug, title, published_date, year, month, day, chunk_count) VALUES (1, '2025-02-03', 'Ep 5', '2025-02-03', 2025, 2, 3, 1)"),
+      env.DB.prepare("INSERT INTO episodes (source_id, slug, title, published_date, year, month, day, chunk_count) VALUES (1, '2025-02-10', 'Ep 6', '2025-02-10', 2025, 2, 10, 1)"),
+      env.DB.prepare("INSERT INTO episodes (source_id, slug, title, published_date, year, month, day, chunk_count) VALUES (1, '2025-02-17', 'Ep 7', '2025-02-17', 2025, 2, 17, 1)"),
+      env.DB.prepare("INSERT INTO episodes (source_id, slug, title, published_date, year, month, day, chunk_count) VALUES (1, '2025-02-24', 'Ep 8', '2025-02-24', 2025, 2, 24, 1)"),
+      env.DB.prepare("INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (3, 'chunk-5', 'C5', 'Threshold topic.', 'Threshold topic.', 0)"),
+      env.DB.prepare("INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (4, 'chunk-6', 'C6', 'Threshold topic.', 'Threshold topic.', 0)"),
+      env.DB.prepare("INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (5, 'chunk-7', 'C7', 'Threshold topic.', 'Threshold topic.', 0)"),
+      env.DB.prepare("INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (6, 'chunk-8', 'C8', 'Weak topic.', 'Weak topic.', 0)"),
+      env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('threshold survivor', 'threshold-survivor', 3)"),
+      env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('threshold prune', 'threshold-prune', 3)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (5, 1)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (6, 1)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (7, 1)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 2)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (2, 2)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (8, 2)"),
+    ]);
+
+    await finalizeEnrichment(env.DB);
+
+    const survivor = await env.DB.prepare("SELECT episode_support, usage_count FROM topics WHERE slug = 'threshold-survivor'").first<{ episode_support: number; usage_count: number }>();
+    const pruned = await env.DB.prepare("SELECT usage_count FROM topics WHERE slug = 'threshold-prune'").first<{ usage_count: number } | null>();
+
+    expect(survivor).not.toBeNull();
+    expect(survivor!.episode_support).toBe(3);
+    expect(survivor!.usage_count).toBeGreaterThan(0);
+    expect(!pruned || pruned.usage_count === 0).toBe(true);
+  });
 });
 
 describe("enrichAllChunks (Issue 4)", () => {
@@ -240,6 +273,7 @@ describe("Related slugs computation", () => {
       env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (3, 2)"),
       env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (4, 2)"),
       env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (5, 2)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (6, 2)"),
     ]);
 
     await finalizeEnrichment(env.DB);
@@ -308,6 +342,174 @@ describe("Related slugs computation", () => {
     for (const slug of parsed) {
       expect(typeof slug).toBe("string");
     }
+  });
+
+  it("computes similarity-backed related topics from cached chunk embeddings", async () => {
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO topics (name, slug, kind, usage_count) VALUES ('alpha engine', 'alpha-engine', 'concept', 0)"),
+      env.DB.prepare("INSERT INTO topics (name, slug, kind, usage_count) VALUES ('beta lattice', 'beta-lattice', 'concept', 0)"),
+      env.DB.prepare("INSERT INTO topics (name, slug, kind, usage_count) VALUES ('gamma harbor', 'gamma-harbor', 'concept', 0)"),
+      env.DB.prepare("INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (2, 'chunk-8', 'Chunk 8', 'Alpha beta continuation.', 'Alpha beta continuation.', 2)"),
+      env.DB.prepare("INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (2, 'chunk-9', 'Chunk 9', 'Gamma beta continuation.', 'Gamma beta continuation.', 3)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 1)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (2, 1)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (3, 1)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (4, 1)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (8, 1)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 2)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (2, 2)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (3, 2)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (4, 2)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (8, 2)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (9, 2)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 3)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (2, 3)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (3, 3)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (4, 3)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (9, 3)"),
+      env.DB.prepare("INSERT INTO chunk_vector_cache (chunk_id, vector_json) VALUES (1, '[1,0,0]')"),
+      env.DB.prepare("INSERT INTO chunk_vector_cache (chunk_id, vector_json) VALUES (2, '[0.9,0.1,0]')"),
+      env.DB.prepare("INSERT INTO chunk_vector_cache (chunk_id, vector_json) VALUES (3, '[0.95,0.05,0]')"),
+      env.DB.prepare("INSERT INTO chunk_vector_cache (chunk_id, vector_json) VALUES (4, '[0.2,0.8,0]')"),
+      env.DB.prepare("INSERT INTO chunk_vector_cache (chunk_id, vector_json) VALUES (8, '[0.98,0.02,0]')"),
+      env.DB.prepare("INSERT INTO chunk_vector_cache (chunk_id, vector_json) VALUES (9, '[0.15,0.85,0]')"),
+      env.DB.prepare("INSERT INTO topic_dirty (topic_id, reason) VALUES (1, 'test')"),
+      env.DB.prepare("INSERT INTO topic_dirty (topic_id, reason) VALUES (2, 'test')"),
+      env.DB.prepare("INSERT INTO topic_dirty (topic_id, reason) VALUES (3, 'test')"),
+    ]);
+
+    const result = await finalizeEnrichment(env.DB);
+    const similarityStep = result.steps.find((step) => step.name === 'topic_similarity');
+    const related = await env.DB.prepare("SELECT related_slugs FROM topics WHERE slug = 'alpha-engine'").first<{ related_slugs: string | null }>();
+    const score = await env.DB.prepare(
+      "SELECT cosine_score, jaccard_score, combined_score FROM topic_similarity_scores WHERE topic_id = 1 AND related_topic_id = 2"
+    ).first<{ cosine_score: number | null; jaccard_score: number; combined_score: number }>();
+
+    expect(similarityStep).toBeDefined();
+    expect(similarityStep!.counts.topic_pairs_written).toBeGreaterThan(0);
+    expect(related).not.toBeNull();
+    expect(JSON.parse(related!.related_slugs || '[]')).toContain('beta-lattice');
+    expect(score).not.toBeNull();
+    expect(score!.cosine_score).not.toBeNull();
+    expect(score!.combined_score).toBeGreaterThan(score!.jaccard_score);
+  });
+
+  it("performs alias-aware merges before string similarity clustering", async () => {
+    await env.DB.batch([
+      env.DB.prepare("UPDATE chunks SET content_plain = 'Simon Willison wrote this piece.' WHERE id = 1"),
+      env.DB.prepare("UPDATE chunks SET content_plain = 'Willison explored this pattern again.' WHERE id = 2"),
+      env.DB.prepare("UPDATE chunks SET content_plain = 'Simon Willison mentioned it once more.' WHERE id = 3"),
+      env.DB.prepare("UPDATE chunks SET content_plain = 'Another Willison note for the archive.' WHERE id = 4"),
+      env.DB.prepare("UPDATE chunks SET content_plain = 'Willison returned in episode two.' WHERE id = 6"),
+      env.DB.prepare("INSERT INTO topics (name, slug, kind, usage_count) VALUES ('Simon Willison', 'simon-willison', 'entity', 6)"),
+      env.DB.prepare("INSERT INTO topics (name, slug, kind, usage_count) VALUES ('willison', 'willison', 'entity', 6)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 1)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (2, 1)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (3, 1)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (4, 1)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (6, 1)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 2)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (2, 2)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (3, 2)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (4, 2)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (6, 2)"),
+      env.DB.prepare("INSERT INTO topic_dirty (topic_id, reason) VALUES (2, 'alias')"),
+    ]);
+
+    const result = await finalizeEnrichment(env.DB);
+    const aliasStep = result.steps.find((step) => step.name === 'alias_merge');
+    const merged = await env.DB.prepare("SELECT usage_count, hidden, display_reason FROM topics WHERE slug = 'willison'").first<{ usage_count: number; hidden: number; display_reason: string | null } | null>();
+    const canonical = await env.DB.prepare("SELECT usage_count FROM topics WHERE slug = 'simon-willison'").first<{ usage_count: number }>();
+    const archived = await env.DB.prepare("SELECT archive_reason FROM topic_lineage_archive WHERE slug = 'willison'").first<{ archive_reason: string } | null>();
+
+    expect(aliasStep).toBeDefined();
+    expect(aliasStep!.counts.topics_merged).toBeGreaterThanOrEqual(1);
+    expect(merged).toBeNull();
+    expect(archived).not.toBeNull();
+    expect(archived!.archive_reason).toBe('zero_usage_lineage');
+    expect(canonical).not.toBeNull();
+    expect(canonical!.usage_count).toBeGreaterThan(0);
+  });
+
+  it("scopes merge and similarity work to dirty topics when possible", async () => {
+    await env.DB.batch([
+      env.DB.prepare("UPDATE chunks SET content_plain = 'Dirty topic again in episode two.' WHERE id = 6"),
+      env.DB.prepare("INSERT INTO topics (name, slug, kind, usage_count) VALUES ('dirty topic', 'dirty-topic', 'concept', 6)"),
+      env.DB.prepare("INSERT INTO topics (name, slug, kind, usage_count) VALUES ('stable topic', 'stable-topic', 'concept', 6)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 1)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (2, 1)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (3, 1)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (4, 1)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (6, 1)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 2)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (2, 2)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (3, 2)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (4, 2)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (6, 2)"),
+      env.DB.prepare("INSERT INTO topic_dirty (topic_id, reason) VALUES (1, 'dirty')"),
+    ]);
+
+    const result = await finalizeEnrichment(env.DB);
+    const stemStep = result.steps.find((step) => step.name === 'stem_merge');
+    const diceStep = result.steps.find((step) => step.name === 'similarity_cluster');
+    const dirtyRows = await env.DB.prepare("SELECT COUNT(*) as c FROM topic_dirty").first<{ c: number }>();
+
+    expect(stemStep).toBeDefined();
+    expect(diceStep).toBeDefined();
+    expect(stemStep!.counts.topics_considered).toBe(1);
+    expect(diceStep!.counts.topics_considered).toBe(1);
+    expect(dirtyRows!.c).toBe(0);
+  });
+
+  it("keeps unchanged neighbors when an affected topic is incrementally rescored", async () => {
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO topics (name, slug, kind, usage_count) VALUES ('alpha engine', 'alpha-engine', 'concept', 0)"),
+      env.DB.prepare("INSERT INTO topics (name, slug, kind, usage_count) VALUES ('beta lattice', 'beta-lattice', 'concept', 0)"),
+      env.DB.prepare("INSERT INTO topics (name, slug, kind, usage_count) VALUES ('delta harbor', 'delta-harbor', 'concept', 0)"),
+      env.DB.prepare("INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (2, 'incremental-chunk-8', 'Chunk 8', 'Delta stands alone again in episode two.', 'Delta stands alone again in episode two.', 3)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 1)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (2, 1)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (5, 1)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (6, 1)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 2)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (2, 2)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (3, 2)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (4, 2)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (5, 2)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (6, 2)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (3, 3)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (4, 3)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (7, 3)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (8, 3)"),
+      env.DB.prepare("INSERT INTO chunk_vector_cache (chunk_id, vector_json) VALUES (1, '[1,0]')"),
+      env.DB.prepare("INSERT INTO chunk_vector_cache (chunk_id, vector_json) VALUES (2, '[1,0]')"),
+      env.DB.prepare("INSERT INTO chunk_vector_cache (chunk_id, vector_json) VALUES (3, '[0,1]')"),
+      env.DB.prepare("INSERT INTO chunk_vector_cache (chunk_id, vector_json) VALUES (4, '[0,1]')"),
+      env.DB.prepare("INSERT INTO chunk_vector_cache (chunk_id, vector_json) VALUES (5, '[1,0]')"),
+      env.DB.prepare("INSERT INTO chunk_vector_cache (chunk_id, vector_json) VALUES (6, '[1,0]')"),
+      env.DB.prepare("INSERT INTO chunk_vector_cache (chunk_id, vector_json) VALUES (7, '[0,1]')"),
+      env.DB.prepare("INSERT INTO chunk_vector_cache (chunk_id, vector_json) VALUES (8, '[0,1]')"),
+      env.DB.prepare("INSERT INTO topic_dirty (topic_id, reason) VALUES (1, 'dirty')"),
+    ]);
+
+    await finalizeEnrichment(env.DB);
+
+    const beta = await env.DB.prepare("SELECT related_slugs FROM topics WHERE slug = 'beta-lattice'").first<{ related_slugs: string | null }>();
+    expect(beta).not.toBeNull();
+    expect(JSON.parse(beta!.related_slugs || '[]')).toContain('delta-harbor');
+  });
+
+  it("clears dirty rows even when dirty topics become ineligible before similarity refresh", async () => {
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO topics (name, slug, kind, usage_count) VALUES ('fleeting topic', 'fleeting-topic', 'concept', 1)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 1)"),
+      env.DB.prepare("INSERT INTO topic_dirty (topic_id, reason) VALUES (1, 'dirty')"),
+    ]);
+
+    await finalizeEnrichment(env.DB);
+
+    const dirtyRows = await env.DB.prepare("SELECT COUNT(*) as c FROM topic_dirty").first<{ c: number }>();
+    expect(dirtyRows!.c).toBe(0);
   });
 });
 

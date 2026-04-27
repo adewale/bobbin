@@ -167,6 +167,28 @@ describe("getPeriodNewTopics", () => {
     expect(names).not.toContain("llms"); // first seen in March
     expect(names).not.toContain("ecosystem"); // first seen in March
   });
+
+  it("ranks and limits new topics by in-period mentions, not later corpus growth", async () => {
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO topics (id, name, slug, usage_count, distinctiveness) VALUES (6, 'April Brief', 'april-brief', 3, 20.0)"),
+      env.DB.prepare("INSERT INTO topics (id, name, slug, usage_count, distinctiveness) VALUES (7, 'Future Popular', 'future-popular', 6, 5.0)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (5, 6)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (6, 6)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (7, 6)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (8, 7)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (10, 7)"),
+      env.DB.prepare("INSERT INTO chunks (episode_id, slug, title, content, content_plain, position, reach) VALUES (5, 'may-2', 'May 2', 'x', 'x', 1, 1)"),
+      env.DB.prepare("INSERT INTO chunks (episode_id, slug, title, content, content_plain, position, reach) VALUES (5, 'may-3', 'May 3', 'x', 'x', 2, 1)"),
+      env.DB.prepare("INSERT INTO chunks (episode_id, slug, title, content, content_plain, position, reach) VALUES (5, 'may-4', 'May 4', 'x', 'x', 3, 1)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (11, 7)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (12, 7)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (13, 7)"),
+    ]);
+
+    const newTopics = await getPeriodNewTopics(env.DB, APRIL, 1);
+    expect(newTopics).toHaveLength(1);
+    expect(newTopics[0].slug).toBe("april-brief");
+  });
 });
 
 describe("getPeriodArchiveContrast", () => {
@@ -182,6 +204,24 @@ describe("getPeriodArchiveContrast", () => {
       expect(topic.spikeRatio).toBeGreaterThan(1.5);
     });
   });
+
+  it("orders equal spike ratios deterministically by topic name", async () => {
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO topics (id, name, slug, usage_count, distinctiveness) VALUES (6, 'Alpha', 'alpha', 5, 5.0)"),
+      env.DB.prepare("INSERT INTO topics (id, name, slug, usage_count, distinctiveness) VALUES (7, 'Beta', 'beta', 5, 5.0)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (5, 6)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (6, 6)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (7, 6)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (8, 6)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (5, 7)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (6, 7)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (7, 7)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (8, 7)"),
+    ]);
+
+    const contrast = await getPeriodArchiveContrast(env.DB, APRIL, 2);
+    expect(contrast.map((topic) => topic.slug)).toEqual(["alpha", "beta"]);
+  });
 });
 
 describe("getMostConnectedInPeriod", () => {
@@ -195,5 +235,15 @@ describe("getMostConnectedInPeriod", () => {
     const chunks = await getMostConnectedInPeriod(env.DB, APRIL, 5);
     const slugs = chunks.map((c) => c.slug);
     expect(slugs).not.toContain("may-1"); // reach 10 but outside April
+  });
+
+  it("breaks equal reach ties deterministically by slug", async () => {
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO chunks (episode_id, slug, title, content, content_plain, position, reach) VALUES (4, 'aa-tie', 'AA Tie', 'x', 'x', 2, 50)"),
+      env.DB.prepare("INSERT INTO chunks (episode_id, slug, title, content, content_plain, position, reach) VALUES (4, 'zz-tie', 'ZZ Tie', 'x', 'x', 3, 50)"),
+    ]);
+
+    const chunks = await getMostConnectedInPeriod(env.DB, APRIL, 2);
+    expect(chunks.map((chunk) => chunk.slug)).toEqual(["aa-tie", "zz-tie"]);
   });
 });

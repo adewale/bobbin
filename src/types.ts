@@ -76,9 +76,12 @@ export interface TopicRow {
   name: string;
   slug: string;
   usage_count: number;
+  episode_support: number;
   distinctiveness: number;
   kind: string;
   related_slugs: string | null;
+  burst_score: number;
+  burst_peak_quarter: string | null;
   display_suppressed: number;
   display_reason: string | null;
   hidden: number;

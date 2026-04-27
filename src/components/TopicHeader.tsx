@@ -12,13 +12,20 @@ type TopicWordStats = {
   distinctiveness: number;
 };
 
+type TopicBurstStats = {
+  score: number;
+  peakQuarter: string | null;
+};
+
 export function TopicHeader(props: {
   title: string;
   totalChunks: number;
   totalEpisodes: number;
   wordStats?: TopicWordStats | null;
+  burstStats?: TopicBurstStats | null;
   relatedTopics?: TopicRelated[];
   distinctivenessHelp?: Child;
+  burstHelp?: Child;
   relatedHelp?: Child;
 }) {
   return (
@@ -33,6 +40,15 @@ export function TopicHeader(props: {
           <div class="topic-distinctiveness topic-inline-heading-row">
             <span>{props.wordStats.distinctiveness.toFixed(1)}&times; distinctiveness vs baseline</span>
             {props.distinctivenessHelp}
+          </div>
+        ) : null}
+        {props.burstStats && props.burstStats.score > 1 ? (
+          <div class="topic-burst topic-inline-heading-row">
+            <span>
+              {props.burstStats.score.toFixed(1)}x burst
+              {props.burstStats.peakQuarter ? ` in ${props.burstStats.peakQuarter.replace("-", " ")}` : ""}
+            </span>
+            {props.burstHelp}
           </div>
         ) : null}
       </div>

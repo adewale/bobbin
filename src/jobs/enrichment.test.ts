@@ -127,18 +127,17 @@ describe("Phase 8: Enrichment pipeline improvements", () => {
         env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (2, 1)"),
         env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (3, 1)"),
         env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (4, 1)"),
+        env.DB.prepare("INSERT INTO chunk_words (chunk_id, word, count) VALUES (1, 'ecosystem', 1)"),
+        env.DB.prepare("INSERT INTO chunk_words (chunk_id, word, count) VALUES (2, 'ecosystem', 1)"),
+        env.DB.prepare("INSERT INTO chunk_words (chunk_id, word, count) VALUES (3, 'ecosystem', 1)"),
+        env.DB.prepare("INSERT INTO chunk_words (chunk_id, word, count) VALUES (4, 'ecosystem', 1)"),
       ]);
-
-      const seedName = "ecosystem";
-      await env.DB.prepare(
-        "INSERT OR IGNORE INTO word_stats (word, total_count, doc_count, distinctiveness) VALUES (?, 100, 10, 25.5)"
-      ).bind(seedName).run();
 
       await finalizeEnrichment(env.DB);
 
       const topicWithDist = await env.DB.prepare(
         "SELECT distinctiveness FROM topics WHERE name = ?"
-      ).bind(seedName).first<{ distinctiveness: number }>();
+      ).bind("ecosystem").first<{ distinctiveness: number }>();
       if (topicWithDist) {
         expect(topicWithDist.distinctiveness).toBeGreaterThan(0);
       }

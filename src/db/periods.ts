@@ -12,6 +12,7 @@
 
 import type { ChunkRow, EpisodeRow } from "../types";
 import type { PeriodBounds } from "../lib/period";
+import { topicSupportThreshold } from "../lib/topic-metrics";
 import { weightedDeltaScore, weightedTopicScore } from "../lib/topic-scoring";
 import type { TrendingTopic } from "./topics";
 
@@ -104,31 +105,32 @@ export async function getPeriodTopicCounts(
 export async function getPeriodNewTopics(
   db: D1Database,
   bounds: PeriodBounds,
-  limit = 8,
+  limit?: number,
 ): Promise<PeriodNewTopic[]> {
   const result = await db.prepare(
     `SELECT t.id, t.name, t.slug, t.distinctiveness,
-            COUNT(*) AS chunk_count,
+            SUM(CASE WHEN e.published_date BETWEEN ? AND ? THEN 1 ELSE 0 END) AS period_chunk_count,
             MIN(e.published_date) AS first_seen
      FROM chunk_topics ct
      JOIN chunks c ON ct.chunk_id = c.id
      JOIN episodes e ON e.id = c.episode_id
      JOIN topics t ON ct.topic_id = t.id
-     WHERE t.hidden = 0 AND t.display_suppressed = 0
-     GROUP BY t.id
-     HAVING first_seen BETWEEN ? AND ?
-     ORDER BY chunk_count DESC, t.name ASC`
-  ).bind(bounds.start, bounds.end).all();
+      WHERE t.hidden = 0 AND t.display_suppressed = 0
+      GROUP BY t.id
+      HAVING first_seen BETWEEN ? AND ?
+      ORDER BY period_chunk_count DESC, t.name ASC`
+  ).bind(bounds.start, bounds.end, bounds.start, bounds.end).all();
 
-  return (result.results as any[])
+  const scored = (result.results as any[])
     .map((row) => ({
       name: String(row.name),
       slug: String(row.slug),
-      score: weightedTopicScore(Number(row.chunk_count), Number(row.distinctiveness ?? 0)),
+      score: weightedTopicScore(Number(row.period_chunk_count), Number(row.distinctiveness ?? 0)),
     }))
     .sort((left, right) => right.score - left.score || left.name.localeCompare(right.name))
-    .slice(0, limit)
     .map(({ name, slug }) => ({ name, slug }));
+
+  return typeof limit === "number" ? scored.slice(0, limit) : scored;
 }
 
 // Movers: salience-weighted intensified / downshifted topics relative to a
@@ -137,7 +139,7 @@ export async function getPeriodMovers(
   db: D1Database,
   current: PeriodBounds,
   previous: PeriodBounds,
-  limit = 5,
+  limit?: number,
 ): Promise<PeriodMovers> {
   const [currentTopics, previousTopics] = await Promise.all([
     getPeriodTopicCounts(db, current),
@@ -171,15 +173,20 @@ export async function getPeriodMovers(
   const intensified = scored
     .filter((topic) => topic.delta > 0)
     .sort((left, right) => right.score - left.score || left.name.localeCompare(right.name))
-    .slice(0, limit)
     .map(({ name, slug, delta }) => ({ name, slug, delta }));
 
   const downshifted = [...scored.filter((topic) => topic.delta < 0), ...disappeared]
     .sort((left, right) => right.score - left.score || left.name.localeCompare(right.name))
-    .slice(0, limit)
     .map(({ name, slug, delta }) => ({ name, slug, delta }));
 
-  return { intensified, downshifted };
+  if (typeof limit !== "number") {
+    return { intensified, downshifted };
+  }
+
+  return {
+    intensified: intensified.slice(0, limit),
+    downshifted: downshifted.slice(0, limit),
+  };
 }
 
 // Archive contrast: topics over-indexed within the period vs the rest of
@@ -190,6 +197,10 @@ export async function getPeriodArchiveContrast(
   bounds: PeriodBounds,
   limit = 5,
 ): Promise<TrendingTopic[]> {
+  const totalEpisodeCount = await db.prepare(
+    `SELECT COUNT(*) as c FROM episodes`
+  ).first<{ c: number }>();
+  const minEpisodeSupport = topicSupportThreshold(totalEpisodeCount?.c ?? 0);
   const periodTopicsResult = await db.prepare(
     `SELECT t.id, t.name, t.slug, t.usage_count,
             COUNT(*) AS period_count
@@ -197,19 +208,15 @@ export async function getPeriodArchiveContrast(
      JOIN chunks c ON ct.chunk_id = c.id
      JOIN episodes e ON e.id = c.episode_id
      JOIN topics t ON ct.topic_id = t.id
-     WHERE e.published_date BETWEEN ? AND ?
-       AND t.usage_count >= 5
-       AND t.hidden = 0 AND t.display_suppressed = 0
-     GROUP BY t.id`
-  ).bind(bounds.start, bounds.end).all();
+      WHERE e.published_date BETWEEN ? AND ?
+        AND (t.episode_support >= ? OR (t.episode_support = 0 AND t.usage_count >= ?))
+        AND t.hidden = 0 AND t.display_suppressed = 0
+      GROUP BY t.id`
+  ).bind(bounds.start, bounds.end, minEpisodeSupport, minEpisodeSupport).all();
 
   const periodEpisodeCount = await db.prepare(
     `SELECT COUNT(*) as c FROM episodes WHERE published_date BETWEEN ? AND ?`
   ).bind(bounds.start, bounds.end).first<{ c: number }>();
-
-  const totalEpisodeCount = await db.prepare(
-    `SELECT COUNT(*) as c FROM episodes`
-  ).first<{ c: number }>();
 
   const periodEps = Math.max(periodEpisodeCount?.c ?? 0, 1);
   const totalEps = Math.max(totalEpisodeCount?.c ?? 0, 1);
@@ -228,7 +235,7 @@ export async function getPeriodArchiveContrast(
       } as TrendingTopic;
     })
     .filter((topic) => topic.spikeRatio > 1.5)
-    .sort((left, right) => right.spikeRatio - left.spikeRatio)
+    .sort((left, right) => right.spikeRatio - left.spikeRatio || left.name.localeCompare(right.name))
     .slice(0, limit);
 }
 
@@ -247,11 +254,11 @@ export async function getMostConnectedInPeriod(
     const result = await db.prepare(
       `SELECT c.id, c.slug, c.title, c.reach,
               e.slug as episode_slug, e.published_date
-       FROM chunks c
-       JOIN episodes e ON e.id = c.episode_id
-       WHERE e.published_date BETWEEN ? AND ? AND c.reach > 0
-       ORDER BY c.reach DESC
-       LIMIT ?`
+        FROM chunks c
+        JOIN episodes e ON e.id = c.episode_id
+        WHERE e.published_date BETWEEN ? AND ? AND c.reach > 0
+        ORDER BY c.reach DESC, e.published_date DESC, c.slug ASC
+        LIMIT ?`
     ).bind(bounds.start, bounds.end, limit).all();
     return (result.results as any[]).map((row) => ({
       id: Number(row.id),
@@ -272,12 +279,12 @@ export async function getMostConnectedInPeriod(
      JOIN chunk_topics ct ON c.id = ct.chunk_id
      JOIN topics t ON ct.topic_id = t.id
      JOIN episodes e ON c.episode_id = e.id
-     WHERE e.published_date BETWEEN ? AND ?
-       AND t.hidden = 0 AND t.display_suppressed = 0
-     GROUP BY c.id
-     ORDER BY reach DESC
-     LIMIT ?`
-  ).bind(bounds.start, bounds.end, limit).all();
+      WHERE e.published_date BETWEEN ? AND ?
+        AND t.hidden = 0 AND t.display_suppressed = 0
+      GROUP BY c.id
+      ORDER BY reach DESC, e.published_date DESC, c.slug ASC
+      LIMIT ?`
+   ).bind(bounds.start, bounds.end, limit).all();
 
   return (result.results as any[]).map((row) => ({
     id: Number(row.id),

@@ -93,6 +93,18 @@ describe("Topic detail page — word_stats integration", () => {
     expect(html).not.toContain("highly distinctive");
   });
 
+  it("shows burst score when available", async () => {
+    await env.DB.prepare(
+      "UPDATE topics SET burst_score = 2.4, burst_peak_quarter = '2025-Q1' WHERE slug = 'llms'"
+    ).run();
+
+    const res = await SELF.fetch("http://localhost/topics/llms");
+    const html = await res.text();
+
+    expect(html).toContain("2.4x burst");
+    expect(html).toContain("2025 Q1");
+  });
+
   it("shows related topics from co-occurrence", async () => {
     const res = await SELF.fetch("http://localhost/topics/llms");
     const html = await res.text();

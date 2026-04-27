@@ -237,7 +237,8 @@ export interface TopicDisplayDecision {
 }
 
 export function computeTopicDisplayDecisions(
-  topics: { slug: string; name: string; usage_count: number; distinctiveness: number; kind?: string; hidden?: number; episode_support?: number }[]
+  topics: { slug: string; name: string; usage_count: number; distinctiveness: number; kind?: string; hidden?: number; episode_support?: number }[],
+  minimumEpisodeSupport = 2,
 ): TopicDisplayDecision[] {
   const phraseTopics = topics
     .filter((topic) => topic.name.includes(" ") && (topic.hidden ?? 0) === 0)
@@ -285,7 +286,7 @@ export function computeTopicDisplayDecisions(
       };
     }
 
-    if ((topic.episode_support ?? 0) < 2) {
+    if ((topic.episode_support ?? 0) < minimumEpisodeSupport) {
       return {
         slug: topic.slug,
         displaySuppressed: true,

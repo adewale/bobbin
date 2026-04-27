@@ -156,11 +156,18 @@ topics.get("/:slug", async (c) => {
             totalChunks={total}
             totalEpisodes={episodes.length}
             wordStats={wordStats}
+            burstStats={topic.burst_score > 1 ? { score: topic.burst_score, peakQuarter: topic.burst_peak_quarter } : null}
             relatedTopics={relatedTopics}
             distinctivenessHelp={(
               <HelpTip
                 label="Explain distinctiveness"
                 text="How much more common this term is here than in ordinary English. Higher values mean the topic is more characteristic of this corpus."
+              />
+            )}
+            burstHelp={(
+              <HelpTip
+                label="Explain burst score"
+                text="Peak quarter intensity across the topic's active span. Higher values mean attention was concentrated into a shorter stretch rather than spread evenly over time."
               />
             )}
             relatedHelp={(
