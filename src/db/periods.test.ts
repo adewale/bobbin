@@ -88,11 +88,11 @@ async function seed() {
   ]);
 
   await env.DB.batch([
-    env.DB.prepare("INSERT INTO topics (name, slug, usage_count, distinctiveness) VALUES ('agent', 'agent', 6, 5.0)"),
-    env.DB.prepare("INSERT INTO topics (name, slug, usage_count, distinctiveness) VALUES ('llms', 'llms', 4, 8.0)"),
-    env.DB.prepare("INSERT INTO topics (name, slug, usage_count, distinctiveness) VALUES ('codex', 'codex', 2, 12.0)"),
-    env.DB.prepare("INSERT INTO topics (name, slug, usage_count, distinctiveness) VALUES ('legacy', 'legacy', 4, 3.0)"),
-    env.DB.prepare("INSERT INTO topics (name, slug, usage_count, distinctiveness) VALUES ('ecosystem', 'ecosystem', 6, 7.0)"),
+    env.DB.prepare("INSERT INTO topics (name, slug, usage_count, episode_support, distinctiveness) VALUES ('agent', 'agent', 6, 1, 5.0)"),
+    env.DB.prepare("INSERT INTO topics (name, slug, usage_count, episode_support, distinctiveness) VALUES ('llms', 'llms', 4, 3, 8.0)"),
+    env.DB.prepare("INSERT INTO topics (name, slug, usage_count, episode_support, distinctiveness) VALUES ('codex', 'codex', 2, 2, 12.0)"),
+    env.DB.prepare("INSERT INTO topics (name, slug, usage_count, episode_support, distinctiveness) VALUES ('legacy', 'legacy', 4, 3, 3.0)"),
+    env.DB.prepare("INSERT INTO topics (name, slug, usage_count, episode_support, distinctiveness) VALUES ('ecosystem', 'ecosystem', 6, 1, 7.0)"),
   ]);
 
   await env.DB.batch([
@@ -135,6 +135,18 @@ describe("getEpisodesInPeriod", () => {
     const slugs = episodes.map((e) => e.slug);
     expect(slugs).not.toContain("2025-03-03");
     expect(slugs).not.toContain("2025-05-05");
+  });
+
+  it("computes chunk_count from real chunk rows instead of trusting drifted episode metadata", async () => {
+    await env.DB.prepare(
+      "UPDATE episodes SET chunk_count = 99 WHERE slug = '2025-04-07'"
+    ).run();
+
+    const episodes = await getEpisodesInPeriod(env.DB, APRIL);
+    expect(episodes.map((episode) => ({ slug: episode.slug, chunk_count: episode.chunk_count }))).toEqual([
+      { slug: "2025-04-07", chunk_count: 3 },
+      { slug: "2025-04-21", chunk_count: 2 },
+    ]);
   });
 });
 
@@ -261,6 +273,14 @@ describe("getPeriodArchiveContrast", () => {
     const contrast = await getPeriodArchiveContrast(legacyTopicsSchemaDb(env.DB), APRIL, 5);
     expect(contrast.map((topic) => topic.slug)).toEqual(["llms"]);
     expect(contrast[0]?.spikeRatio).toBeGreaterThan(1.5);
+  });
+
+  it("uses the permissive fallback when episode_support exists but is still zero-filled", async () => {
+    await env.DB.prepare("UPDATE topics SET episode_support = 0").run();
+
+    const zeroFilled = await getPeriodArchiveContrast(env.DB, APRIL, 5);
+
+    expect(zeroFilled.map((topic) => topic.slug)).toEqual(["codex", "llms"]);
   });
 });
 

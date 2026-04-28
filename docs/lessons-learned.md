@@ -2,7 +2,7 @@
 
 ## What happened
 
-We built Bobbin — a searchable archive of Alex Komoroske's "Bits and Bobs" newsletter — on Cloudflare's platform (Workers, D1, Vectorize, Workers AI) in a single session. Seven commits tell the story:
+We built Bobbin — a searchable archive of Alex Komoroske's "Bits and Bobs" newsletter — on Cloudflare's platform (Workers, D1, Vectorize, Workers AI) in a single session. Six commits tell the story:
 
 1. **9a40f60** — Built the entire app in one shot (6,706 lines, 59 files)
 2. **2209a3b** — Added FTS5 search, diff view, RSS, reactive concordance

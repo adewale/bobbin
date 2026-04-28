@@ -92,6 +92,10 @@ function yearSection(html: string, year: string) {
   return html.split(`<h2><a href="/summaries/${year}">${year}</a></h2>`)[1]?.split("</section>")[0] ?? "";
 }
 
+function rowFragment(html: string, href: string) {
+  return html.split(`href="${href}"`)[1]?.split("</li>")[0] ?? "";
+}
+
 describe("GET /summaries", () => {
   it("lists only years and months that have episodes", async () => {
     const res = await SELF.fetch("http://localhost/summaries");
@@ -104,9 +108,10 @@ describe("GET /summaries", () => {
     expect(html).toContain('href="/summaries/2024"');
     expect(html).toContain('href="/summaries/2024/2"');
     expect(html).not.toContain('href="/summaries/2025/2"');
-    expect(html).toContain("April 2025");
-    expect(html).toContain("1 episode");
-    expect(html).toContain("4 chunks");
+
+    const aprilRow = rowFragment(html, "/summaries/2025/4");
+    expect(aprilRow).toContain(">April 2025<");
+    expect(aprilRow).toContain(">2 episodes, 4 chunks<");
   });
 
   it("uses canonical published-date periods and actual chunk rows for index links and counts", async () => {
@@ -385,6 +390,23 @@ describe("GET /summaries/:year", () => {
     expect(html).toContain("May");
     expect(maySection).toContain("Mismatched month episode");
     expect(aprilSection).not.toContain("Mismatched month episode");
+  });
+
+  it("uses real chunk rows for yearly timeline counts even if episode.chunk_count drifts", async () => {
+    await env.DB.prepare(
+      "UPDATE episodes SET chunk_count = 99 WHERE slug = '2025-04-07-s'"
+    ).run();
+
+    const res = await SELF.fetch("http://localhost/summaries/2025");
+    expect(res.status).toBe(200);
+
+    const html = await res.text();
+    const timeline = html.split(">Episode Timeline<")[1] ?? "";
+    const aprilRow = rowFragment(timeline, "/episodes/2025-04-07-s");
+    expect(aprilRow).toContain(">Bits and Bobs 4/7/25<");
+    expect(aprilRow).toContain(">2 chunks<");
+    expect(html).toContain(">2 episodes, 4 chunks<");
+    expect(html).not.toContain(">99 chunks<");
   });
 
   it("omits the Movers panel when the previous comparable period has zero episodes", async () => {

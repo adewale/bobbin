@@ -12,8 +12,8 @@
 
 import type { ChunkRow, EpisodeRow } from "../types";
 import type { PeriodBounds } from "../lib/period";
-import { topicSupportThreshold } from "../lib/topic-metrics";
 import { weightedDeltaScore, weightedTopicScore } from "../lib/topic-scoring";
+import { loadTopicSupportContext, topicSupportBindings, topicSupportClause } from "./topic-support";
 import type { TrendingTopic } from "./topics";
 
 export interface PeriodTopicCount {
@@ -49,19 +49,19 @@ export interface PeriodConnectedChunk {
   reach: number;
 }
 
-async function topicsHasColumn(db: D1Database, columnName: string): Promise<boolean> {
-  const result = await db.prepare("PRAGMA table_info(topics)").all<{ name: string }>();
-  return result.results.some((row) => row.name === columnName);
-}
-
 export async function getEpisodesInPeriod(
   db: D1Database,
   bounds: PeriodBounds,
 ): Promise<EpisodeRow[]> {
   const result = await db.prepare(
-    `SELECT * FROM episodes
-     WHERE published_date BETWEEN ? AND ?
-     ORDER BY published_date ASC`
+    `SELECT e.id, e.source_id, e.slug, e.title, e.published_date, e.year, e.month, e.day,
+            e.summary, COUNT(c.id) as chunk_count, e.format, e.content_markdown,
+            e.rich_content_json, e.links_json, e.created_at, e.updated_at
+     FROM episodes e
+     LEFT JOIN chunks c ON c.episode_id = e.id
+     WHERE e.published_date BETWEEN ? AND ?
+     GROUP BY e.id
+     ORDER BY e.published_date ASC`
   ).bind(bounds.start, bounds.end).all<EpisodeRow>();
   return result.results;
 }
@@ -202,30 +202,22 @@ export async function getPeriodArchiveContrast(
   bounds: PeriodBounds,
   limit = 5,
 ): Promise<TrendingTopic[]> {
+  const supportContext = await loadTopicSupportContext(db);
   const totalEpisodeCount = await db.prepare(
     `SELECT COUNT(*) as c FROM episodes`
   ).first<{ c: number }>();
-  const minEpisodeSupport = topicSupportThreshold(totalEpisodeCount?.c ?? 0);
-  const hasEpisodeSupport = await topicsHasColumn(db, "episode_support");
   const periodTopicsResult = await db.prepare(
     `SELECT t.id, t.name, t.slug, t.usage_count,
             COUNT(*) AS period_count
      FROM chunk_topics ct
-     JOIN chunks c ON ct.chunk_id = c.id
-     JOIN episodes e ON e.id = c.episode_id
-     JOIN topics t ON ct.topic_id = t.id
-       WHERE e.published_date BETWEEN ? AND ?
-         AND ${hasEpisodeSupport
-           ? "(t.episode_support >= ? OR (t.episode_support = 0 AND t.usage_count >= ?))"
-           : "t.usage_count >= ?"}
-         AND t.hidden = 0 AND t.display_suppressed = 0
-       GROUP BY t.id`
-  ).bind(
-    bounds.start,
-    bounds.end,
-    minEpisodeSupport,
-    ...(hasEpisodeSupport ? [minEpisodeSupport] : []),
-  ).all();
+      JOIN chunks c ON ct.chunk_id = c.id
+      JOIN episodes e ON e.id = c.episode_id
+      JOIN topics t ON ct.topic_id = t.id
+        WHERE e.published_date BETWEEN ? AND ?
+          AND ${topicSupportClause("t.", supportContext.hasEpisodeSupport)}
+          AND t.hidden = 0 AND t.display_suppressed = 0
+        GROUP BY t.id`
+  ).bind(bounds.start, bounds.end, ...topicSupportBindings(supportContext)).all();
 
   const periodEpisodeCount = await db.prepare(
     `SELECT COUNT(*) as c FROM episodes WHERE published_date BETWEEN ? AND ?`
