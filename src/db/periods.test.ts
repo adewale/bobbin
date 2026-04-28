@@ -11,6 +11,40 @@ import {
   getPeriodTopicCounts,
 } from "./periods";
 
+function legacyTopicsSchemaDb(db: D1Database): D1Database {
+  const wrap = (sql: string, statement: D1PreparedStatement): D1PreparedStatement => ({
+    bind: (...args: unknown[]) => wrap(sql, statement.bind(...args)),
+    first: (...args: unknown[]) => {
+      if (sql.includes("episode_support")) {
+        throw new Error("D1_ERROR: no such column: t.episode_support at offset 291: SQLITE_ERROR");
+      }
+      return statement.first(...args as []);
+    },
+    all: async (...args: unknown[]) => {
+      if (/PRAGMA\s+table_info\(topics\)/i.test(sql)) {
+        const result = await statement.all(...args as []);
+        return {
+          ...result,
+          results: (result.results as Array<{ name?: string }>).filter((row) => row.name !== "episode_support"),
+        };
+      }
+      if (sql.includes("episode_support")) {
+        throw new Error("D1_ERROR: no such column: t.episode_support at offset 291: SQLITE_ERROR");
+      }
+      return statement.all(...args as []);
+    },
+    raw: (...args: unknown[]) => statement.raw(...args as []),
+    run: (...args: unknown[]) => statement.run(...args as []),
+  } as D1PreparedStatement);
+
+  return {
+    prepare: (sql: string) => wrap(sql, db.prepare(sql)),
+    batch: (...args: Parameters<D1Database["batch"]>) => db.batch(...args),
+    exec: (...args: Parameters<D1Database["exec"]>) => db.exec(...args),
+    dump: (...args: Parameters<D1Database["dump"]>) => db.dump(...args),
+  } as D1Database;
+}
+
 // A small fixture spanning three months across two years so period bounds
 // have something to bite into and movers/new-topics have prior data to
 // compare against.
@@ -221,6 +255,12 @@ describe("getPeriodArchiveContrast", () => {
 
     const contrast = await getPeriodArchiveContrast(env.DB, APRIL, 2);
     expect(contrast.map((topic) => topic.slug)).toEqual(["alpha", "beta"]);
+  });
+
+  it("falls back cleanly when the local topics schema predates episode_support", async () => {
+    const contrast = await getPeriodArchiveContrast(legacyTopicsSchemaDb(env.DB), APRIL, 5);
+    expect(contrast.map((topic) => topic.slug)).toEqual(["llms"]);
+    expect(contrast[0]?.spikeRatio).toBeGreaterThan(1.5);
   });
 });
 

@@ -810,3 +810,69 @@ The lesson is: **a new feature is much cheaper to specify when the surface benea
 74. For string inputs from unsanitised boundaries, validate the URL-shape with a regex, not the parsed value of `Number()`.
 75. Verify quantitative claims in PR descriptions with the same rigour as code; reviewer trust is the cost of getting them wrong.
 76. Consolidate before you extend; the new feature is cheaper to specify when the surface beneath it is already coherent.
+
+## What we learned in the stale-local-schema and interaction-layout-shift pass
+
+The next round of work looked small from the outside: a broken `/summaries/2026` route in local dev, then a broken `/topics` page, then an accordion that felt terrible to open. In practice, those bugs exposed two recurring failure modes that normal green test suites hide very effectively: persisted local state drifting behind the code, and interaction bugs that only appear with real content volume.
+
+### Fresh test databases can hide stale local databases
+
+The summaries bug was not a route bug. The route was fine. The failure came from `getPeriodArchiveContrast()` assuming `topics.episode_support` existed because every worker test calls `applyTestMigrations()` and therefore always gets the latest schema. The persisted Wrangler local D1 database was older and still lacked the column.
+
+The same pattern broke `/topics` and episode-detail rail paths through `db/topics.ts`, where helpers still queried `episode_support` and `topic_similarity_scores` directly.
+
+The lesson is: **a test database that is always rebuilt from the latest migration chain proves latest-schema correctness, but it does not prove compatibility with a persisted local database that may be behind**.
+
+### Shared data helpers need compatibility strategy, not route-by-route patching
+
+Once the stale-schema problem showed up in summaries, it would have been easy to patch that route in isolation. That would have been the wrong level. The real break lived in shared topic helpers that multiple routes depended on:
+
+- summaries via archive contrast
+- topics index via top-topic selection
+- episode rail via trending/archive comparisons
+- related-topic surfaces via similarity cache lookup
+
+The fix that held was to make the shared helpers schema-aware:
+
+- detect whether `episode_support` exists
+- detect whether similarity-cache tables exist
+- fall back to `usage_count` or co-occurrence logic when they do not
+
+The lesson is: **when multiple routes break the same way, patch the common query layer first; otherwise you only move the crash to the next page**.
+
+### Load-time CLS and interaction-time instability are different bugs
+
+The External Links accordion felt awful because opening it blew the page from ~2,000px tall to ~62,000px tall, then widened the opened panel past the rail. A browser-level load CLS check did not catch it, because the page loaded stably; the instability only happened after a click.
+
+That matters because Web Vitals CLS is mostly about unexpected shifts during load, while a user-triggered expansion can still be terrible UX without showing up as a bad CLS number.
+
+The lesson is: **audit layout stability in two modes: page load and user interaction. A clean load-time CLS score does not mean your expanders, drawers, or accordions are safe**.
+
+### Tiny fixtures hide long-list UI failures
+
+The first summaries tests seeded only a tiny number of external links, so the accordion looked fine in tests. The real page had a long list, which exposed both the height explosion and the width blowout. Once we measured it in a browser, the fix became obvious:
+
+- constrain the opened body to an internal scroller
+- force wrapping instead of letting long content widen the panel
+
+The lesson is: **any UI that renders unbounded content needs a worst-case fixture, not just a representative fixture**.
+
+### Internal consistency improves when we remove the optional surface entirely
+
+After stabilizing the External Links accordion, the right product decision was still to remove it from summaries altogether. Summaries already had three rail concepts that matched the section's purpose:
+
+- New Topics
+- Movers
+- Archive Contrast
+
+External links were valid data, but not essential to the summaries surface, and they were the only rail panel that needed special container behavior.
+
+The lesson is: **the cleanest fix for an inconsistent surface is often subtraction. If one panel needs special rules that the rest of the page does not, reconsider whether it belongs there at all**.
+
+### Updated lesson list
+
+77. A latest-schema test database does not prove compatibility with a persisted local database; local schema drift needs its own checks or fallbacks.
+78. When multiple routes break the same way, patch the shared query/helper layer instead of route-level call sites.
+79. Load-time CLS and interaction-time layout instability are different failure modes and both need explicit verification.
+80. Long-list UI components need worst-case fixtures, not only representative fixtures.
+81. If one panel needs special containment rules that the rest of a surface does not, question the panel before you normalize the complexity.

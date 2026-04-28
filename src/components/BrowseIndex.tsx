@@ -1,6 +1,6 @@
 import type { Child } from "hono/jsx";
 
-export function BrowseSection(props: { id?: string; title: string | number; children: Child }) {
+export function BrowseSection(props: { id?: string; title: Child; children: Child }) {
   return (
     <section class="browse-year" id={props.id}>
       <h2>{props.title}</h2>

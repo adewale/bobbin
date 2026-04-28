@@ -1,4 +1,5 @@
 import { Context, Hono } from "hono";
+import type { Child } from "hono/jsx";
 import { BrowseRow, BrowseRowList, BrowseSection, BrowseSubsection } from "../components/BrowseIndex";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { EmptyArchiveState } from "../components/EmptyArchiveState";
@@ -16,7 +17,6 @@ import {
   getPeriodTopicCounts,
 } from "../db/periods";
 import { monthName } from "../lib/date";
-import { collectExternalLinks } from "../lib/episode-rail";
 import {
   parsePeriodPath,
   periodBounds,
@@ -44,6 +44,13 @@ type PeriodIndexYear = {
   episodeCount: number;
   chunkCount: number;
   months: PeriodIndexMonth[];
+  cards: Array<{
+    key: string;
+    title: string;
+    count: number | string;
+    sparkline: number[];
+    ariaLabel: string;
+  }>;
 };
 
 function plural(n: number, singular: string) {
@@ -52,6 +59,25 @@ function plural(n: number, singular: string) {
 
 function countMeta(episodeCount: number, chunkCount: number) {
   return `${plural(episodeCount, "episode")}, ${plural(chunkCount, "chunk")}`;
+}
+
+function multipleSparkline(points: number[], label: string, title: string) {
+  const max = Math.max(...points, 1);
+  const w = 180;
+  const h = 40;
+  const pad = 2;
+  const renderedPoints = points.map((value, index) => {
+    const x = points.length === 1 ? w / 2 : (index / (points.length - 1)) * (w - pad * 2) + pad;
+    const y = h - pad - (value / max) * (h - pad * 2);
+    return `${x},${y}`;
+  }).join(" ");
+
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} class="multiple-spark rail-sparkline" role="img" aria-label={label}>
+      <title>{title}</title>
+      <polyline points={renderedPoints} fill="none" stroke="var(--rail-signal-color)" stroke-width="1.5" />
+    </svg>
+  );
 }
 
 function periodPartsFromDate(isoDate: string) {
@@ -82,27 +108,61 @@ async function buildIndexYears(db: D1Database): Promise<PeriodIndexYear[]> {
           getChunksInPeriod(db, periodBounds(yearPeriod)),
           Promise.all(
             [...months]
-              .sort((left, right) => right - left)
+              .sort((left, right) => left - right)
               .map(async (month) => {
                 const period = { kind: "month", year, month } as const;
-                const [monthEpisodes, monthChunks] = await Promise.all([
+                const [monthEpisodes, monthChunks, monthNewTopics, monthContrast] = await Promise.all([
                   getEpisodesInPeriod(db, periodBounds(period)),
                   getChunksInPeriod(db, periodBounds(period)),
+                  getPeriodNewTopics(db, periodBounds(period)),
+                  getPeriodArchiveContrast(db, periodBounds(period), 1),
                 ]);
                 return {
                   period,
                   episodeCount: monthEpisodes.length,
                   chunkCount: monthChunks.length,
+                  newTopicCount: monthNewTopics.length,
+                  peakSpikeRatio: monthContrast[0]?.spikeRatio ?? 0,
                 };
               })
           ),
         ]);
+
+        const byMonth = new Map(monthRows.map((month) => [month.period.month, month]));
+        const monthlyChunkCounts = Array.from({ length: 12 }, (_, index) => byMonth.get(index + 1)?.chunkCount ?? 0);
+        const monthlyNewTopicCounts = Array.from({ length: 12 }, (_, index) => byMonth.get(index + 1)?.newTopicCount ?? 0);
+        const monthlySpikeRatios = Array.from({ length: 12 }, (_, index) => byMonth.get(index + 1)?.peakSpikeRatio ?? 0);
+        const totalNewTopics = monthRows.reduce((sum, month) => sum + month.newTopicCount, 0);
+        const peakSpikeRatio = Math.max(...monthlySpikeRatios, 0);
 
         return {
           period: yearPeriod,
           episodeCount: yearEpisodes.length,
           chunkCount: yearChunks.length,
           months: monthRows,
+          cards: [
+            {
+              key: "chunk-volume",
+              title: "Chunk volume",
+              count: yearChunks.length,
+              sparkline: monthlyChunkCounts,
+              ariaLabel: `${year} monthly chunk volume`,
+            },
+            {
+              key: "new-topics",
+              title: "New topics",
+              count: totalNewTopics,
+              sparkline: monthlyNewTopicCounts,
+              ariaLabel: `${year} monthly new topic discovery`,
+            },
+            {
+              key: "spikiest-months",
+              title: "Spikiest months",
+              count: peakSpikeRatio > 0 ? `${peakSpikeRatio.toFixed(1)}x peak` : "No spikes",
+              sparkline: monthlySpikeRatios,
+              ariaLabel: `${year} monthly archive contrast peaks`,
+            },
+          ],
         };
       })
   );
@@ -165,7 +225,24 @@ function groupedEpisodes(episodes: Array<{ id: number; slug: string; title: stri
     group.push(episode);
     byMonth.set(month, group);
   }
-  return [...byMonth.entries()].sort((left, right) => right[0] - left[0]);
+  return [...byMonth.entries()].sort((left, right) => left[0] - right[0]);
+}
+
+function SummaryAccordion(props: {
+  title: string;
+  meta?: string;
+  className?: string;
+  children: Child;
+}) {
+  return (
+    <details class={["summary-accordion", props.className].filter(Boolean).join(" ")}>
+      <summary>
+        <span class="summary-accordion-title">{props.title}</span>
+        {props.meta ? <span class="summary-accordion-meta">{props.meta}</span> : null}
+      </summary>
+      <div class="summary-accordion-body">{props.children}</div>
+    </details>
+  );
 }
 
 summaries.get("/", async (c) => {
@@ -192,13 +269,31 @@ summaries.get("/", async (c) => {
           )}
 
           {years.map((year) => (
-            <BrowseSection key={year.period.year} title={year.period.year}>
+            <BrowseSection
+              key={year.period.year}
+              title={<a href={periodPath(year.period)}>{year.period.year}</a>}
+            >
+              <div class="topic-multiples summary-year-cards" aria-label={`${year.period.year} summary cards`}>
+                <div class="multiples-grid">
+                  {year.cards.map((card) => (
+                    <a
+                      key={`${year.period.year}-${card.key}`}
+                      href={periodPath(year.period)}
+                      class="multiple-cell"
+                      title={`${year.period.year} ${card.title}`}
+                    >
+                      <span class="multiple-name">{card.title}</span>
+                      <span class="multiple-count">{card.count}</span>
+                      {multipleSparkline(
+                        card.sparkline,
+                        card.ariaLabel,
+                        `${year.period.year} ${card.title}: ${card.count}`,
+                      )}
+                    </a>
+                  ))}
+                </div>
+              </div>
               <BrowseRowList>
-                <BrowseRow
-                  href={periodPath(year.period)}
-                  title={periodLabel(year.period)}
-                  meta={countMeta(year.episodeCount, year.chunkCount)}
-                />
                 {year.months.map((month) => (
                   <BrowseRow
                     key={`${month.period.year}-${month.period.month}`}
@@ -242,7 +337,6 @@ async function renderPeriodPage(c: Context<AppEnv>, period: Period) {
     : [null, null];
 
   const moverTopics = moversList(displayMovers);
-  const links = collectExternalLinks(chunks);
   const topTopic = topicCounts[0];
   const topNew = topNewTopic(allNewTopics, topicCounts);
   const summaryLines = buildPeriodSummary({
@@ -261,7 +355,7 @@ async function renderPeriodPage(c: Context<AppEnv>, period: Period) {
       : undefined,
   });
 
-  const hasRail = displayNewTopics.length > 0 || moverTopics.length > 0 || archiveContrast.length > 0 || links.length > 0;
+  const hasRail = displayNewTopics.length > 0 || moverTopics.length > 0 || archiveContrast.length > 0;
   const layoutClass = hasRail ? "page-with-rail page-with-rail--aligned" : "page-shell";
   const bodyClass = hasRail ? "page-body" : "page-body page-body-single";
   const orderedEpisodes = [...episodes].sort((left, right) => right.published_date.localeCompare(left.published_date));
@@ -324,18 +418,25 @@ async function renderPeriodPage(c: Context<AppEnv>, period: Period) {
             <h2 class="section-heading">Episode Timeline</h2>
             {period.kind === "year" ? (
               groupedEpisodes(orderedEpisodes).map(([month, monthEpisodes]) => (
-                <BrowseSubsection key={month} title={monthName(month)}>
-                  <BrowseRowList>
-                    {monthEpisodes.map((episode) => (
-                      <BrowseRow
-                        key={episode.id}
-                        href={`/episodes/${episode.slug}`}
-                        title={episode.title}
-                        meta={plural(episode.chunk_count, "chunk")}
-                      />
-                    ))}
-                  </BrowseRowList>
-                </BrowseSubsection>
+                <SummaryAccordion
+                  key={month}
+                  title={monthName(month)}
+                  meta={countMeta(monthEpisodes.length, monthEpisodes.reduce((sum, episode) => sum + episode.chunk_count, 0))}
+                  className="summary-accordion--body"
+                >
+                  <BrowseSubsection title={monthName(month)}>
+                    <BrowseRowList>
+                      {monthEpisodes.map((episode) => (
+                        <BrowseRow
+                          key={episode.id}
+                          href={`/episodes/${episode.slug}`}
+                          title={episode.title}
+                          meta={plural(episode.chunk_count, "chunk")}
+                        />
+                      ))}
+                    </BrowseRowList>
+                  </BrowseSubsection>
+                </SummaryAccordion>
               ))
             ) : (
               <BrowseRowList>
@@ -400,27 +501,6 @@ async function renderPeriodPage(c: Context<AppEnv>, period: Period) {
               </section>
             )}
 
-            {links.length > 0 && (
-              <section class="episode-insight-panel rail-panel">
-                <div class="rail-panel-heading-row">
-                  <h3>External Links</h3>
-                  <HelpTip
-                    label="Explain external links"
-                    text="Deduplicated external URLs mentioned inside this period, with links back to the chunk that cited them."
-                  />
-                </div>
-                <ul class="episode-insight-list">
-                  {links.map((link) => (
-                    <li key={link.href}>
-                      <a href={link.href} target="_blank" rel="noreferrer">{link.label}</a>
-                      <span class="insight-meta">
-                        via <a href={`/chunks/${link.chunkSlug}`}>{link.chunkTitle}</a>
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            )}
           </aside>
         )}
       </div>

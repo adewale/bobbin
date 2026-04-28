@@ -23,7 +23,38 @@ export interface TrendingTopic {
 
 export { chunkForSqlBindings } from "../lib/db";
 
+async function topicsHasColumn(db: D1Database, columnName: string): Promise<boolean> {
+  const result = await db.prepare("PRAGMA table_info(topics)").all<{ name: string }>();
+  return result.results.some((row) => row.name === columnName);
+}
+
+async function tableExists(db: D1Database, tableName: string): Promise<boolean> {
+  const result = await db.prepare(
+    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?"
+  ).bind(tableName).first<{ name: string }>();
+  return Boolean(result?.name);
+}
+
+function topicSupportClause(alias: string, hasEpisodeSupport: boolean): string {
+  return hasEpisodeSupport
+    ? `(${alias}episode_support >= ? OR (${alias}episode_support = 0 AND ${alias}usage_count >= ?))`
+    : `${alias}usage_count >= ?`;
+}
+
+function topicSupportBindings(minEpisodeSupport: number, hasEpisodeSupport: boolean): number[] {
+  const minimumFallbackUsage = Math.max(minEpisodeSupport, 3);
+  return hasEpisodeSupport
+    ? [minEpisodeSupport, minEpisodeSupport]
+    : [minimumFallbackUsage];
+}
+
 async function loadTopicSupportThreshold(db: D1Database): Promise<number> {
+  const hasEpisodeSupport = await topicsHasColumn(db, "episode_support");
+  if (!hasEpisodeSupport) {
+    const totalEpisodes = await db.prepare("SELECT COUNT(*) as c FROM episodes").first<{ c: number }>();
+    return topicSupportThreshold(totalEpisodes?.c ?? 0);
+  }
+
   const populated = await db.prepare(
     "SELECT COUNT(*) as c FROM topics WHERE usage_count > 0 AND episode_support > 0"
   ).first<{ c: number }>();
@@ -35,6 +66,7 @@ async function loadTopicSupportThreshold(db: D1Database): Promise<number> {
 
 export async function getTrendingTopicsForEpisode(db: D1Database, episodeId: number, limit = 3): Promise<TrendingTopic[]> {
   const minEpisodeSupport = await loadTopicSupportThreshold(db);
+  const hasEpisodeSupport = await topicsHasColumn(db, "episode_support");
   // Get topic counts for this episode (only topics with sufficient corpus usage)
   const epTopics = await db.prepare(
     `SELECT t.id, t.name, t.slug, COUNT(*) as ep_count, t.usage_count
@@ -42,10 +74,10 @@ export async function getTrendingTopicsForEpisode(db: D1Database, episodeId: num
      JOIN chunks c ON ct.chunk_id = c.id
      JOIN topics t ON ct.topic_id = t.id
      WHERE c.episode_id = ?
-       AND (t.episode_support >= ? OR (t.episode_support = 0 AND t.usage_count >= ?))
-       AND t.hidden = 0 AND t.display_suppressed = 0
-      GROUP BY t.id`
-  ).bind(episodeId, minEpisodeSupport, minEpisodeSupport).all();
+        AND ${topicSupportClause("t.", hasEpisodeSupport)}
+        AND t.hidden = 0 AND t.display_suppressed = 0
+       GROUP BY t.id`
+  ).bind(episodeId, ...topicSupportBindings(minEpisodeSupport, hasEpisodeSupport)).all();
 
   // Get total episode count
   const totalEps = await db.prepare("SELECT COUNT(*) as c FROM episodes").first<{ c: number }>();
@@ -190,19 +222,23 @@ export async function getTopicEpisodes(db: D1Database, topicId: number) {
 
 export async function getRelatedTopics(db: D1Database, topicId: number, limit = 6) {
   const minEpisodeSupport = await loadTopicSupportThreshold(db);
-  const cached = await db.prepare(
-    `SELECT t.name, t.slug, s.overlap_count as co_count
-     FROM topic_similarity_scores s
-     JOIN topics t ON t.id = s.related_topic_id
-     WHERE s.topic_id = ?
-       AND t.hidden = 0
-       AND t.display_suppressed = 0
-       AND (t.episode_support >= ? OR (t.episode_support = 0 AND t.usage_count >= ?))
-     ORDER BY s.combined_score DESC, s.overlap_count DESC, t.name ASC
-     LIMIT ?`
-  ).bind(topicId, minEpisodeSupport, minEpisodeSupport, limit).all<{ name: string; slug: string; co_count: number }>();
-  if (cached.results.length > 0) {
-    return cached.results as { name: string; slug: string; co_count: number }[];
+  const hasEpisodeSupport = await topicsHasColumn(db, "episode_support");
+  const hasSimilarityTable = await tableExists(db, "topic_similarity_scores");
+  if (hasSimilarityTable) {
+    const cached = await db.prepare(
+      `SELECT t.name, t.slug, s.overlap_count as co_count
+       FROM topic_similarity_scores s
+       JOIN topics t ON t.id = s.related_topic_id
+       WHERE s.topic_id = ?
+         AND t.hidden = 0
+         AND t.display_suppressed = 0
+         AND ${topicSupportClause("t.", hasEpisodeSupport)}
+       ORDER BY s.combined_score DESC, s.overlap_count DESC, t.name ASC
+       LIMIT ?`
+    ).bind(topicId, ...topicSupportBindings(minEpisodeSupport, hasEpisodeSupport), limit).all<{ name: string; slug: string; co_count: number }>();
+    if (cached.results.length > 0) {
+      return cached.results as { name: string; slug: string; co_count: number }[];
+    }
   }
 
   const result = await db.prepare(
@@ -213,11 +249,11 @@ export async function getRelatedTopics(db: D1Database, topicId: number, limit = 
       WHERE ct1.topic_id = ?
         AND t.hidden = 0
         AND t.display_suppressed = 0
-        AND (t.episode_support >= ? OR (t.episode_support = 0 AND t.usage_count >= ?))
+        AND ${topicSupportClause("t.", hasEpisodeSupport)}
       GROUP BY ct2.topic_id
       ORDER BY co_count DESC
       LIMIT ?`
-  ).bind(topicId, minEpisodeSupport, minEpisodeSupport, limit).all();
+  ).bind(topicId, ...topicSupportBindings(minEpisodeSupport, hasEpisodeSupport), limit).all();
   return result.results as { name: string; slug: string; co_count: number }[];
 }
 
@@ -316,29 +352,30 @@ export async function getAdjacentTopics(db: D1Database, topicId: number) {
 
 export async function getTopTopicsWithSparklines(db: D1Database, limit?: number) {
   const minEpisodeSupport = await loadTopicSupportThreshold(db);
+  const hasEpisodeSupport = await topicsHasColumn(db, "episode_support");
   const minimumEpisodeSupportFloor = Math.max(minEpisodeSupport, 1);
   const minimumFallbackUsage = Math.max(minEpisodeSupport, 3);
   // Fetch a wide pool of candidates — we'll rank by temporal interest after computing sparklines.
   const candidateQuery = limit
     ? db.prepare(
         `SELECT id, name, slug, usage_count, distinctiveness FROM topics
-         WHERE (episode_support >= ? OR (episode_support = 0 AND usage_count >= ?)) AND hidden = 0 AND display_suppressed = 0
+         WHERE ${topicSupportClause("", hasEpisodeSupport)} AND hidden = 0 AND display_suppressed = 0
          ORDER BY usage_count * CASE
                WHEN distinctiveness > 0 THEN distinctiveness
                WHEN name LIKE '% %' THEN 20
-              ELSE 1
-            END DESC
+               ELSE 1
+             END DESC
          LIMIT ?`
-      ).bind(minimumEpisodeSupportFloor, minimumFallbackUsage, limit * 4)
+      ).bind(...(hasEpisodeSupport ? [minimumEpisodeSupportFloor, minimumFallbackUsage] : [minimumFallbackUsage]), limit * 4)
     : db.prepare(
         `SELECT id, name, slug, usage_count, distinctiveness FROM topics
-         WHERE (episode_support >= ? OR (episode_support = 0 AND usage_count >= ?)) AND hidden = 0 AND display_suppressed = 0
+         WHERE ${topicSupportClause("", hasEpisodeSupport)} AND hidden = 0 AND display_suppressed = 0
          ORDER BY usage_count * CASE
                WHEN distinctiveness > 0 THEN distinctiveness
                WHEN name LIKE '% %' THEN 20
-              ELSE 1
-            END DESC`
-      ).bind(minimumEpisodeSupportFloor, minimumFallbackUsage);
+               ELSE 1
+             END DESC`
+      ).bind(...(hasEpisodeSupport ? [minimumEpisodeSupportFloor, minimumFallbackUsage] : [minimumFallbackUsage]));
 
   const candidates = await candidateQuery.all<TopicRow>();
 

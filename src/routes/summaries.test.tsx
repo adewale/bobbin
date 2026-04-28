@@ -82,6 +82,16 @@ function subsectionFragment(html: string, heading: string) {
   return html.split(`<h3>${heading}</h3>`)[1]?.split("</div>")[0] ?? "";
 }
 
+function indexOfOrThrow(html: string, needle: string) {
+  const index = html.indexOf(needle);
+  expect(index).toBeGreaterThanOrEqual(0);
+  return index;
+}
+
+function yearSection(html: string, year: string) {
+  return html.split(`<h2><a href="/summaries/${year}">${year}</a></h2>`)[1]?.split("</section>")[0] ?? "";
+}
+
 describe("GET /summaries", () => {
   it("lists only years and months that have episodes", async () => {
     const res = await SELF.fetch("http://localhost/summaries");
@@ -118,6 +128,38 @@ describe("GET /summaries", () => {
     expect(html).not.toContain('href="/summaries/2030"');
     expect(html).not.toContain('href="/summaries/2030/12"');
     expect(html).not.toContain("99 chunks");
+  });
+
+  it("uses the year heading as the only year link and orders months from January to December", async () => {
+    const res = await SELF.fetch("http://localhost/summaries");
+    expect(res.status).toBe(200);
+
+    const html = await res.text();
+    const section2025 = yearSection(html, "2025");
+    expect(section2025).not.toContain('class="list-row-title">2025<');
+
+    const january = indexOfOrThrow(html, ">January 2025<");
+    const march = indexOfOrThrow(html, ">March 2025<");
+    const april = indexOfOrThrow(html, ">April 2025<");
+    expect(january).toBeLessThan(march);
+    expect(march).toBeLessThan(april);
+  });
+
+  it("adds three topic-card-style year metrics for chunk volume, new topics, and spikiest months", async () => {
+    const res = await SELF.fetch("http://localhost/summaries");
+    expect(res.status).toBe(200);
+
+    const html = await res.text();
+    const section2025 = yearSection(html, "2025");
+
+    expect(section2025).toContain('class="topic-multiples summary-year-cards"');
+    expect((section2025.match(/class="multiple-cell"/g) ?? []).length).toBe(3);
+    expect(section2025).toContain(">Chunk volume<");
+    expect(section2025).toContain(">New topics<");
+    expect(section2025).toContain(">Spikiest months<");
+    expect(section2025).toContain(">7<");
+    expect(section2025).toContain(">4<");
+    expect((section2025.match(/class="multiple-spark rail-sparkline"/g) ?? []).length).toBe(3);
   });
 });
 
@@ -185,6 +227,14 @@ describe("GET /summaries/:year/:month", () => {
     expect(newTopicsPanel).toContain('href="/topics/codex"');
     expect(newTopicsPanel).not.toContain('href="/topics/ongoing"');
     expect(newTopicsPanel).not.toContain('href="/topics/legacy"');
+  });
+
+  it("does not render the External Links panel on monthly summaries even when chunks contain links", async () => {
+    const res = await SELF.fetch("http://localhost/summaries/2025/4");
+    const html = await res.text();
+
+    expect(html).not.toContain(">External Links<");
+    expect(html).not.toContain("summary-accordion--rail");
   });
 
   it("uses uncapped totals in the summary panel even when display panels stay capped", async () => {
@@ -292,6 +342,30 @@ describe("GET /summaries/:year", () => {
     expect(html).toContain('aria-label="trending down"');
   });
 
+  it("renders month groups as closed accordions in chronological order", async () => {
+    const res = await SELF.fetch("http://localhost/summaries/2025");
+    expect(res.status).toBe(200);
+
+    const html = await res.text();
+    expect((html.match(/class="summary-accordion summary-accordion--body"/g) ?? []).length).toBe(3);
+    expect(html).not.toContain('class="summary-accordion summary-accordion--body" open');
+
+    const january = indexOfOrThrow(html, ">January<");
+    const march = indexOfOrThrow(html, ">March<");
+    const april = indexOfOrThrow(html, ">April<");
+    expect(january).toBeLessThan(march);
+    expect(march).toBeLessThan(april);
+  });
+
+  it("does not render the External Links panel on yearly summaries even when chunks contain links", async () => {
+    const res = await SELF.fetch("http://localhost/summaries/2025");
+    expect(res.status).toBe(200);
+
+    const html = await res.text();
+    expect(html).not.toContain(">External Links<");
+    expect(html).not.toContain("summary-accordion--rail");
+  });
+
   it("groups yearly timeline rows by the publication month, not the denormalized month column", async () => {
     await env.DB.batch([
       env.DB.prepare(
@@ -321,7 +395,7 @@ describe("GET /summaries/:year", () => {
     expect(html).not.toContain(">Movers<");
   });
 
-  it("omits each empty rail panel and the rail aside when all four rail sources are empty", async () => {
+  it("omits each empty rail panel and the rail aside when all three remaining rail sources are empty", async () => {
     const res = await SELF.fetch("http://localhost/summaries/2024/2");
     const html = await res.text();
 
