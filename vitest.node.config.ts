@@ -7,6 +7,7 @@ export default defineConfig({
     minWorkers: 1,
     maxWorkers: 1,
     include: [
+      "scripts/**/*.test.ts",
       "src/**/real-data.test.ts",
       "src/**/distinctiveness.test.ts",
       "src/**/html-parser.property.test.ts",

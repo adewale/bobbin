@@ -904,3 +904,63 @@ The lesson is: **when a product surface gets simpler, update the spec with the s
 82. Shared fallback/compatibility policies must be reused across every surface that claims the same semantics, or the product will disagree with itself.
 83. Summary counts should be derived from authoritative child rows unless denormalized parent counts are actively verified.
 84. Product subtraction is still a contract change; specs need to be updated when features or panels are removed, not only when they are added.
+
+## What we learned when planning the correct-by-construction redesign
+
+Once the current mutable pipeline had been stabilized, the next tempting move was obvious: redesign the whole thing as a correct-by-construction compiler with raw, staging, and published layers. The important discovery was that being able to describe a better architecture is not the same thing as being ready to adopt it safely.
+
+### A major pipeline redesign needs baseline instruments before it needs implementation
+
+At first glance, the redesign seemed like mostly a modeling exercise: define snapshot tables, move cleanup rules into construction, make publish atomic. But the practical blocker was not architecture. It was measurement. Without a baseline, we would not be able to answer the most important question afterward: *did the new design actually improve the product, or only change it?*
+
+That is why the first deliverables were not new tables. They were:
+
+- an invariant-audit script
+- a baseline-comparison harness
+- a rollback-bundle exporter
+
+The lesson is: **before replacing a working pipeline, build the instruments that let you prove the replacement is better**.
+
+### Correct-by-construction only works if rollback is designed as a data problem, not just a code problem
+
+Cloudflare Workers rollback is straightforward for code versions, but it does not roll back D1 contents or bindings. That means a mutable live-database pipeline cannot rely on code rollback as its safety story. If a redesign mutates live state and then needs to be reverted, the hard part is the data, not the Worker version.
+
+The practical conclusion was unavoidable: **a correct-by-construction design without a published-data rollback story is incomplete**.
+
+That pushed rollback from a vague operational note into a design requirement:
+
+- export a rollback bundle before major changes
+- record the active Worker version alongside it
+- design toward snapshot-pointer rollback instead of row-by-row repair
+
+Once we built the first rollback-bundle exporter, another practical lesson appeared immediately: Cloudflare's D1 export constraints are part of the rollback design. Full fidelity rollback bundles cannot casually assume support for virtual tables, internal tables, or arbitrary custom local-state directories. The tool and the spec both had to acknowledge that table-level data-only export plus migration-driven restore is the reliable path.
+
+### Cloudflare best practices change the architecture, not just the implementation details
+
+Researching the platform docs clarified that several Cloudflare constraints should shape the redesign from the start:
+
+- D1 export/import limitations mean rollback tooling has to account for virtual tables and staged restore flow.
+- Workers rollback and gradual deployments mean code rollout can be gradual, but data rollback must be explicit and separate.
+- Queue ack/retry semantics mean any queue-driven staging step must be idempotent and explicit about success boundaries.
+- Workflows are a better fit than a single request for long-running snapshot builds because they give durable multi-step orchestration, retries, and persisted state.
+
+The lesson is: **platform best practices are architecture inputs, not post-hoc operational polish**.
+
+### Comparison harnesses should compare published outputs, not just internal counters
+
+We already had `pipeline_runs` and characterization metrics, which are useful for cost and corpus shape. But for a redesign this large, counters are not enough. We also need to compare what a user actually sees:
+
+- visible topics
+- related topics
+- summary panels/cards
+- representative chunks
+- key page outputs
+
+The lesson is: **the comparison harness for a major pipeline rewrite must include product-surface diffs, not only throughput and row-count metrics**.
+
+### Updated lesson list
+
+85. Before replacing a working pipeline, build the instruments that let you prove the replacement is better.
+86. Worker rollback and data rollback are separate systems; a mutable D1-backed pipeline needs an explicit data rollback story.
+87. Cloudflare operational constraints should shape the pipeline architecture up front, especially around D1 export/import, versioned Worker deploys, queue retry semantics, and Workflow orchestration.
+88. A major pipeline comparison harness must compare published outputs and user-visible surfaces, not only internal counters.

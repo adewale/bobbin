@@ -288,3 +288,4 @@ Deterministic topic pipeline:
 - `docs/llm-ingest-plan.md`
 - `docs/yaket-bobbin-tuning.md`
 - `docs/architecture.md`
+- `docs/correct-by-construction-pipeline-spec.md`

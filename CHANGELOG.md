@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-04-30 — Correct-by-construction redesign spec, baselines, and rollback prep
+
+### Added
+- `docs/correct-by-construction-pipeline-spec.md` — forward-looking spec for a raw/staging/published snapshot pipeline, including success criteria, benchmark requirements, rollback model, and Cloudflare platform implications.
+- `scripts/audit-invariant-metrics.mjs` — captures current D1 invariant metrics and drift-sensitive counts for local or remote databases.
+- `scripts/compare-pipeline-baselines.mjs` — compares two characterization outputs or two invariant-audit outputs to make before/after pipeline changes measurable.
+- `scripts/export-rollback-bundle.mjs` — exports a manifest plus table-level data-only SQL bundle (excluding internal and FTS shadow tables) and emits a dependency-safe `restore.sh` to support data rollback planning around major pipeline changes.
+
+### Changed
+- `package.json` now exposes `audit:invariants`, `compare:pipeline`, and `snapshot:rollback` commands.
+- `README.md` and `docs/pipeline-architecture.md` now point to the forward-looking correct-by-construction spec and the new baseline/rollback tooling.
+
+### Notes
+- The new spec incorporates Cloudflare operational constraints for D1 export/import, Workers rollback/gradual deployments, Queues retry semantics, and Workflow-based orchestration.
+- Rollback-bundle export intentionally does not support custom local `--persist-to` directories because `wrangler d1 export` does not support that flag.
+
+---
+
 ## 2026-04-29 — Shipped summaries, drift hardening, and summary-surface cleanup
 
 ### Changed

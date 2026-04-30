@@ -90,14 +90,33 @@ See [docs/architecture.md](docs/architecture.md) for the full system design.
 Current design, architecture, and search docs:
 
 - [docs/architecture.md](docs/architecture.md)
+- [docs/pipeline-architecture.md](docs/pipeline-architecture.md)
 - [docs/design.md](docs/design.md)
 - [docs/search.md](docs/search.md)
+
+Forward-looking pipeline redesign/spec work:
+
+- [docs/correct-by-construction-pipeline-spec.md](docs/correct-by-construction-pipeline-spec.md)
 
 Historical research, audits, and specs in `docs/audit-*`, `docs/research-*`, and `specs/*` are retained as background material rather than current source-of-truth documentation.
 
 Extractor tuning and characterization notes:
 
 - [docs/yaket-bobbin-tuning.md](docs/yaket-bobbin-tuning.md)
+
+Pipeline measurement and rollback helpers:
+
+```bash
+npm run audit:invariants                       # current D1 invariant metrics (local by default)
+node scripts/compare-pipeline-baselines.mjs A.json B.json
+npm run snapshot:rollback -- --remote --label before-redesign
+```
+
+Notes:
+
+- `snapshot:rollback` exports table-level data only. Restore assumes you re-apply migrations first.
+- Each rollback bundle includes a dependency-safe `restore.sh` and a manifest `restoreOrder` list.
+- Because `wrangler d1 export` does not currently support `--persist-to`, rollback-bundle export supports the default local D1 state or `--remote`, not arbitrary custom persisted local-state directories.
 
 ## Testing
 
