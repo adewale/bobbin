@@ -88,11 +88,12 @@ async function seed() {
   ]);
 
   await env.DB.batch([
-    env.DB.prepare("INSERT INTO topics (name, slug, usage_count, episode_support, distinctiveness) VALUES ('agent', 'agent', 6, 1, 5.0)"),
-    env.DB.prepare("INSERT INTO topics (name, slug, usage_count, episode_support, distinctiveness) VALUES ('llms', 'llms', 4, 3, 8.0)"),
-    env.DB.prepare("INSERT INTO topics (name, slug, usage_count, episode_support, distinctiveness) VALUES ('codex', 'codex', 2, 2, 12.0)"),
-    env.DB.prepare("INSERT INTO topics (name, slug, usage_count, episode_support, distinctiveness) VALUES ('legacy', 'legacy', 4, 3, 3.0)"),
-    env.DB.prepare("INSERT INTO topics (name, slug, usage_count, episode_support, distinctiveness) VALUES ('ecosystem', 'ecosystem', 6, 1, 7.0)"),
+    env.DB.prepare("INSERT INTO topics (name, slug, usage_count, episode_support, distinctiveness) VALUES ('agent', 'agent', 6, 0, 5.0)"),
+    env.DB.prepare("INSERT INTO topics (name, slug, usage_count, episode_support, distinctiveness) VALUES ('llms', 'llms', 4, 0, 8.0)"),
+    env.DB.prepare("INSERT INTO topics (name, slug, usage_count, episode_support, distinctiveness) VALUES ('codex', 'codex', 3, 0, 12.0)"),
+    env.DB.prepare("INSERT INTO topics (name, slug, usage_count, episode_support, distinctiveness) VALUES ('legacy', 'legacy', 4, 0, 3.0)"),
+    env.DB.prepare("INSERT INTO topics (name, slug, usage_count, episode_support, distinctiveness) VALUES ('ecosystem', 'ecosystem', 6, 0, 7.0)"),
+    env.DB.prepare("INSERT INTO topics (name, slug, usage_count, episode_support, distinctiveness) VALUES ('too narrow', 'too-narrow', 12, 1, 9.0)"),
   ]);
 
   await env.DB.batch([
@@ -113,6 +114,8 @@ async function seed() {
     env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (9, 3)"), // apr-b-2 codex
     // May: codex (so it appeared first in April, not later)
     env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (10, 3)"),
+    env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (5, 6)"),
+    env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (6, 6)"),
   ]);
 }
 
@@ -174,6 +177,11 @@ describe("getPeriodTopicCounts", () => {
     const counts = await getPeriodTopicCounts(env.DB, APRIL);
     expect(counts[0].chunk_count).toBeGreaterThanOrEqual(counts[counts.length - 1].chunk_count);
   });
+
+  it("excludes topics that fail the shared support policy", async () => {
+    const counts = await getPeriodTopicCounts(env.DB, APRIL);
+    expect(counts.map((topic) => topic.slug)).not.toContain("too-narrow");
+  });
 });
 
 describe("getPeriodMovers", () => {
@@ -214,21 +222,26 @@ describe("getPeriodNewTopics", () => {
     expect(names).not.toContain("ecosystem"); // first seen in March
   });
 
+  it("filters out new topics that fail the shared support policy", async () => {
+    const newTopics = await getPeriodNewTopics(env.DB, APRIL);
+    expect(newTopics.map((topic) => topic.slug)).not.toContain("too-narrow");
+  });
+
   it("ranks and limits new topics by in-period mentions, not later corpus growth", async () => {
     await env.DB.batch([
-      env.DB.prepare("INSERT INTO topics (id, name, slug, usage_count, distinctiveness) VALUES (6, 'April Brief', 'april-brief', 3, 20.0)"),
-      env.DB.prepare("INSERT INTO topics (id, name, slug, usage_count, distinctiveness) VALUES (7, 'Future Popular', 'future-popular', 6, 5.0)"),
-      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (5, 6)"),
-      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (6, 6)"),
-      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (7, 6)"),
-      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (8, 7)"),
-      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (10, 7)"),
+      env.DB.prepare("INSERT INTO topics (id, name, slug, usage_count, distinctiveness) VALUES (7, 'April Brief', 'april-brief', 3, 20.0)"),
+      env.DB.prepare("INSERT INTO topics (id, name, slug, usage_count, distinctiveness) VALUES (8, 'Future Popular', 'future-popular', 6, 5.0)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (5, 7)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (6, 7)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (7, 7)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (8, 8)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (10, 8)"),
       env.DB.prepare("INSERT INTO chunks (episode_id, slug, title, content, content_plain, position, reach) VALUES (5, 'may-2', 'May 2', 'x', 'x', 1, 1)"),
       env.DB.prepare("INSERT INTO chunks (episode_id, slug, title, content, content_plain, position, reach) VALUES (5, 'may-3', 'May 3', 'x', 'x', 2, 1)"),
       env.DB.prepare("INSERT INTO chunks (episode_id, slug, title, content, content_plain, position, reach) VALUES (5, 'may-4', 'May 4', 'x', 'x', 3, 1)"),
-      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (11, 7)"),
-      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (12, 7)"),
-      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (13, 7)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (11, 8)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (12, 8)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (13, 8)"),
     ]);
 
     const newTopics = await getPeriodNewTopics(env.DB, APRIL, 1);
@@ -253,16 +266,16 @@ describe("getPeriodArchiveContrast", () => {
 
   it("orders equal spike ratios deterministically by topic name", async () => {
     await env.DB.batch([
-      env.DB.prepare("INSERT INTO topics (id, name, slug, usage_count, distinctiveness) VALUES (6, 'Alpha', 'alpha', 5, 5.0)"),
-      env.DB.prepare("INSERT INTO topics (id, name, slug, usage_count, distinctiveness) VALUES (7, 'Beta', 'beta', 5, 5.0)"),
-      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (5, 6)"),
-      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (6, 6)"),
-      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (7, 6)"),
-      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (8, 6)"),
+      env.DB.prepare("INSERT INTO topics (id, name, slug, usage_count, distinctiveness) VALUES (7, 'Alpha', 'alpha', 5, 5.0)"),
+      env.DB.prepare("INSERT INTO topics (id, name, slug, usage_count, distinctiveness) VALUES (8, 'Beta', 'beta', 5, 5.0)"),
       env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (5, 7)"),
       env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (6, 7)"),
       env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (7, 7)"),
       env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (8, 7)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (5, 8)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (6, 8)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (7, 8)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (8, 8)"),
     ]);
 
     const contrast = await getPeriodArchiveContrast(env.DB, APRIL, 2);
@@ -271,7 +284,7 @@ describe("getPeriodArchiveContrast", () => {
 
   it("falls back cleanly when the local topics schema predates episode_support", async () => {
     const contrast = await getPeriodArchiveContrast(legacyTopicsSchemaDb(env.DB), APRIL, 5);
-    expect(contrast.map((topic) => topic.slug)).toEqual(["llms"]);
+    expect(contrast.map((topic) => topic.slug)).toEqual(["llms", "codex"]);
     expect(contrast[0]?.spikeRatio).toBeGreaterThan(1.5);
   });
 
@@ -280,7 +293,7 @@ describe("getPeriodArchiveContrast", () => {
 
     const zeroFilled = await getPeriodArchiveContrast(env.DB, APRIL, 5);
 
-    expect(zeroFilled.map((topic) => topic.slug)).toEqual(["codex", "llms"]);
+    expect(zeroFilled.map((topic) => topic.slug)).toEqual(["llms", "codex"]);
   });
 });
 

@@ -149,21 +149,20 @@ Use the existing `main-wide` + optional rail layout.
 4. **Episode timeline**
    - existing browse-body pattern
    - monthly summary: flat episode rows in descending date order. No day grouping.
-   - yearly summary: grouped by month using `BrowseSection` / `BrowseSubsection` / `BrowseRowList` / `BrowseRow`
+   - yearly summary: grouped by month using closed-by-default accordions that wrap `BrowseSubsection` / `BrowseRowList` / `BrowseRow`
    - omit the panel when there are no episodes (the route 404s before reaching this case in practice)
 
 ### Right rail
 
-Only existing panel types/patterns. Four panels, each deterministic:
+Only existing panel types/patterns. Three panels, each deterministic:
 
 | Panel | Render iff | Source | Component |
 |---|---|---|---|
 | `New Topics` | helper returns ≥ 1 topic | `getPeriodNewTopics(db, bounds)` | `<TopicList layout="stack">` |
 | `Movers` | the previous period has ≥ 1 episode AND the helper returns ≥ 1 mover | `getPeriodMovers(db, current, previous)` | `<TopicList layout="stack">` with `trending` modifier (↑ for risers, ↓ for fallers, inheriting link color) and `count` carrying the absolute delta |
 | `Archive Contrast` | helper returns ≥ 1 topic | `getPeriodArchiveContrast(db, bounds)` | `<TopicList layout="stack">` with `count` modifier carrying the spike ratio (e.g. `2.4× typical`) |
-| `External Links` | helper returns ≥ 1 link | `collectExternalLinks(chunksInPeriod)` | bespoke ul (matches `episode-insight-panel rail-panel` shape) |
 
-If all four panels are empty the rail is omitted entirely and the body renders single-column. No other rail panels.
+If all three panels are empty the rail is omitted entirely and the body renders single-column. No other rail panels.
 
 ## Required Semantics
 
@@ -207,20 +206,22 @@ Yearly pages reuse exactly the same sections and panel names as monthly:
 - `New Topics`
 - `Movers`
 - `Archive Contrast`
-- `External Links`
 - episode timeline/browse body
 
-The only meaningful structural difference is the grouping inside the browse body:
+The main structural differences are:
+
+- the yearly page uses month accordions for the timeline body
+- the yearly page may show compact year cards on `/summaries` using the existing small-multiples card treatment
 
 - monthly: flat episode rows in descending date order
-- yearly: month-level grouping via `BrowseSection` / `BrowseSubsection`
+- yearly: month-level grouping via closed accordions around `BrowseSubsection`
 
 ## Reuse Mapping
 
 - Period `Movers / New / Archive Contrast`: use `src/db/periods.ts` helpers; render rows through `<TopicList layout="stack">`
-- Period `External Links`: reuse `collectExternalLinks()` across all chunks in the period
 - Period episode listing: reuse `BrowseIndex` components
 - Summary page rail: reuse `rail-stack` + `rail-panel` + `rail-panel-heading-row` + `HelpTip`
+- Summary index year cards: reuse the existing topic small-multiples card treatment rather than a summary-specific card primitive
 
 ## Visual Constraints
 
@@ -228,7 +229,7 @@ The only meaningful structural difference is the grouping inside the browse body
 - No new card styles
 - No chips. Topics render through the shared `<TopicList>` component (`run`, `stack`, or `multiples` layout)
 - Direction is conveyed by typographic glyphs (`→`, `↑`, `↓`), never by hue
-- No new summary-only widget
+- No new summary-only visual primitive; summary pages may compose existing `details/summary` accordion behavior and the existing multiples-card treatment
 - If a summary needs a chart, it must reuse an existing sparkline/small-chart treatment already present in the product
 
 ## Index Page
@@ -238,12 +239,17 @@ The only meaningful structural difference is the grouping inside the browse body
 Recommended structure:
 
 - group by year
-- list available yearly and monthly summaries using `BrowseRow`
+- each year heading links to `/summaries/{year}`
+- each year may show a three-card summary strip using the existing multiples-card pattern:
+  - `Chunk volume`
+  - `New topics`
+  - `Spikiest months`
+- list available monthly summaries using `BrowseRow`
 - title format:
   - yearly: `2026` (via `periodLabel`)
   - monthly: `April 2026` (via `periodLabel`)
 - metadata: episode count, chunk count
-- a year row links to `/summaries/{year}`; month rows under it link to `/summaries/{year}/{month}`
+- month rows link to `/summaries/{year}/{month}`
 
 Inclusion rules (deterministic):
 
@@ -263,7 +269,7 @@ Inclusion rules (deterministic):
    - monthly `Movers` compares to previous month; yearly `Movers` compares to previous year
    - `Movers` is omitted when the previous period has zero episodes
    - each rail panel is omitted when its source helper returns zero rows
-   - the rail aside is omitted entirely when all four panels are empty
+   - the rail aside is omitted entirely when all three panels are empty
    - the `Summary` panel renders exactly the strings produced by `buildPeriodSummary` for the period's facts (no extra sentences, no rewording)
    - the `Summary` panel is omitted when `buildPeriodSummary` returns `[]`
    - no new panel classes or summary-only UI primitives are introduced
@@ -277,5 +283,4 @@ These pieces have already landed and are available to the summaries PR with no a
 - `src/lib/period-summary.ts` — `buildPeriodSummary(input)`, the deterministic template-driven analogue of `buildTopicSummary`
 - `src/lib/topic-scoring.ts` — `weightedTopicScore`, `weightedDeltaScore` (shared with episode rail)
 - `src/db/periods.ts` — every period-scoped query the spec calls for
-- `src/lib/episode-rail.ts: collectExternalLinks` — already scope-agnostic, takes any chunk array
 - `BrowseSection / Subsection / RowList / Row`, `rail-stack / rail-panel / rail-panel-heading-row`, `HelpTip`, `Layout` — existing

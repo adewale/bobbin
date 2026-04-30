@@ -876,3 +876,31 @@ The lesson is: **the cleanest fix for an inconsistent surface is often subtracti
 79. Load-time CLS and interaction-time layout instability are different failure modes and both need explicit verification.
 80. Long-list UI components need worst-case fixtures, not only representative fixtures.
 81. If one panel needs special containment rules that the rest of a surface does not, question the panel before you normalize the complexity.
+
+### Shared fallback policy should stay shared all the way to the product surface
+
+One subtle follow-up bug remained even after the first stale-schema fixes landed: summaries had been hardened in one helper (`getPeriodArchiveContrast`) but not in the adjacent helpers that drove `New Topics`, `Movers`, and summary prose. The result was a partially-hardened surface: some summary panels respected the new support fallback rules and others still used a looser policy.
+
+The fix was not another route patch. It was extracting the support logic into a shared helper module and making both `db/topics.ts` and `db/periods.ts` consume it.
+
+The lesson is: **if a fallback policy exists to preserve consistency under drift, every sibling surface that claims the same semantics must share that exact policy or the product will disagree with itself**.
+
+### Derived counts should come from live child rows, not denormalized parent fields
+
+Summary headers had already moved to real chunk rows, but yearly timeline rows still trusted `episodes.chunk_count`. That meant one page could simultaneously show a correct total and an incorrect per-episode count if the denormalized field drifted.
+
+The right fix was to compute summary episode counts from `chunks` directly in the query layer, then add a route-level regression that mutates `episodes.chunk_count` and proves the rendered timeline stays correct.
+
+The lesson is: **for summary/reporting surfaces, display counts should come from the authoritative child rows unless the denormalized field is itself continuously verified**.
+
+### Documentation drift often follows product subtraction
+
+After removing the `External Links` panel from summaries, the implementation, tests, and lessons-learned note all agreed, but the summaries spec still described a four-panel rail with External Links as required. That happened because subtraction often feels smaller than addition, so it is easier to skip the doc update.
+
+The lesson is: **when a product surface gets simpler, update the spec with the same urgency as when it gets more complex; subtraction is still a contract change**.
+
+### Updated lesson list
+
+82. Shared fallback/compatibility policies must be reused across every surface that claims the same semantics, or the product will disagree with itself.
+83. Summary counts should be derived from authoritative child rows unless denormalized parent counts are actively verified.
+84. Product subtraction is still a contract change; specs need to be updated when features or panels are removed, not only when they are added.

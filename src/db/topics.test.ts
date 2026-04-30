@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import fc from "fast-check";
 import { env } from "cloudflare:test";
 import { applyTestMigrations } from "../../test/helpers/migrations";
-import { getRelatedTopics, getTopTopicsWithSparklines, getTrendingTopicsForEpisode } from "./topics";
+import { getRelatedTopics, getTopTopics, getTopTopicsWithSparklines, getTrendingTopicsForEpisode } from "./topics";
 import { chunkForSqlBindings } from "../lib/db";
 
 function legacyTopicSchemaDb(db: D1Database): D1Database {
@@ -65,6 +65,7 @@ async function seedTopicData() {
     env.DB.prepare("INSERT INTO topics (name, slug, usage_count, distinctiveness) VALUES ('llms', 'llms', 4, 9)"),
     env.DB.prepare("INSERT INTO topics (name, slug, usage_count, distinctiveness) VALUES ('agents', 'agents', 3, 7)"),
     env.DB.prepare("INSERT INTO topics (name, slug, usage_count, distinctiveness) VALUES ('security', 'security', 3, 6)"),
+    env.DB.prepare("INSERT INTO topics (name, slug, usage_count, episode_support, distinctiveness) VALUES ('too narrow', 'too-narrow', 12, 1, 9)"),
     env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 1)"),
     env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (2, 1)"),
     env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 2)"),
@@ -113,6 +114,13 @@ describe("topics legacy schema fallback", () => {
     const topics = await getTopTopicsWithSparklines(legacyTopicSchemaDb(env.DB), 5);
 
     expect(topics.map((topic) => topic.slug)).toEqual(expect.arrayContaining(["llms", "agents", "security"]));
+  });
+
+  it("uses the same support-aware visibility policy for plain top topics", async () => {
+    const topics = await getTopTopics(env.DB, 10);
+
+    expect(topics.map((topic) => topic.slug)).toEqual(expect.arrayContaining(["llms", "agents", "security"]));
+    expect(topics.map((topic) => topic.slug)).not.toContain("too-narrow");
   });
 
   it("falls back to co-occurrence when similarity cache tables are missing", async () => {

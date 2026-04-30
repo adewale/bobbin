@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-04-29 — Shipped summaries, drift hardening, and summary-surface cleanup
+
+### Changed
+- `/summaries` is now a shipped browse surface with linked year headings, chronological month ordering, and three year-level summary cards that reuse the topic small-multiples pattern: `Chunk volume`, `New topics`, and `Spikiest months`.
+- `/summaries/:year` and `/summaries/:year/:month_number` are now shipped routes built from existing body/rail primitives, with deterministic `buildPeriodSummary(...)` output and closed-by-default month accordions on yearly pages.
+- Summary pages no longer render an `External Links` rail panel; the rail is now intentionally limited to `New Topics`, `Movers`, and `Archive Contrast`.
+- Topic- and summary-support fallback logic is now shared so persisted local D1 schema drift degrades more cleanly.
+
+### Added
+- `src/db/topic-support.ts` — shared helpers for topic-support compatibility (`episode_support` presence, support bindings/clauses, similarity-table detection).
+
+### Fixed
+- `/summaries/*`, `/topics`, and episode-detail rail paths no longer break when a persisted local D1 database lags the latest migrations.
+- Summary timelines now compute per-episode chunk counts from real `chunks` rows instead of trusting drift-prone `episodes.chunk_count` metadata.
+- Summary regressions now pin row-level counts, yearly timeline drift behavior, and legacy-schema fallbacks more directly.
+
+---
+
 ## 2026-04-26 — Topic representation consolidated; period-summary foundation
 
 ### Changed

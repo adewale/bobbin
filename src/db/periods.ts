@@ -83,17 +83,19 @@ export async function getPeriodTopicCounts(
   db: D1Database,
   bounds: PeriodBounds,
 ): Promise<PeriodTopicCount[]> {
+  const supportContext = await loadTopicSupportContext(db);
   const result = await db.prepare(
     `SELECT t.id, t.name, t.slug, t.distinctiveness, COUNT(*) as chunk_count
      FROM chunk_topics ct
      JOIN chunks c ON ct.chunk_id = c.id
      JOIN episodes e ON e.id = c.episode_id
      JOIN topics t ON ct.topic_id = t.id
-     WHERE e.published_date BETWEEN ? AND ?
-       AND t.hidden = 0 AND t.display_suppressed = 0
-     GROUP BY t.id
-     ORDER BY chunk_count DESC, t.name ASC`
-  ).bind(bounds.start, bounds.end).all();
+      WHERE e.published_date BETWEEN ? AND ?
+        AND ${topicSupportClause("t.", supportContext.hasEpisodeSupport)}
+        AND t.hidden = 0 AND t.display_suppressed = 0
+      GROUP BY t.id
+      ORDER BY chunk_count DESC, t.name ASC`
+  ).bind(bounds.start, bounds.end, ...topicSupportBindings(supportContext)).all();
 
   return (result.results as any[]).map((row) => ({
     id: Number(row.id),
@@ -112,19 +114,21 @@ export async function getPeriodNewTopics(
   bounds: PeriodBounds,
   limit?: number,
 ): Promise<PeriodNewTopic[]> {
+  const supportContext = await loadTopicSupportContext(db);
   const result = await db.prepare(
     `SELECT t.id, t.name, t.slug, t.distinctiveness,
             SUM(CASE WHEN e.published_date BETWEEN ? AND ? THEN 1 ELSE 0 END) AS period_chunk_count,
             MIN(e.published_date) AS first_seen
      FROM chunk_topics ct
-     JOIN chunks c ON ct.chunk_id = c.id
-     JOIN episodes e ON e.id = c.episode_id
-     JOIN topics t ON ct.topic_id = t.id
-      WHERE t.hidden = 0 AND t.display_suppressed = 0
-      GROUP BY t.id
-      HAVING first_seen BETWEEN ? AND ?
-      ORDER BY period_chunk_count DESC, t.name ASC`
-  ).bind(bounds.start, bounds.end, bounds.start, bounds.end).all();
+      JOIN chunks c ON ct.chunk_id = c.id
+      JOIN episodes e ON e.id = c.episode_id
+      JOIN topics t ON ct.topic_id = t.id
+       WHERE t.hidden = 0 AND t.display_suppressed = 0
+         AND ${topicSupportClause("t.", supportContext.hasEpisodeSupport)}
+       GROUP BY t.id
+       HAVING first_seen BETWEEN ? AND ?
+       ORDER BY period_chunk_count DESC, t.name ASC`
+  ).bind(bounds.start, bounds.end, ...topicSupportBindings(supportContext), bounds.start, bounds.end).all();
 
   const scored = (result.results as any[])
     .map((row) => ({

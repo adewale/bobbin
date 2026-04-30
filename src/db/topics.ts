@@ -28,6 +28,40 @@ export interface TrendingTopic {
 
 export { chunkForSqlBindings } from "../lib/db";
 
+function prepareTopTopicCandidateQuery(
+  db: D1Database,
+  supportContext: Awaited<ReturnType<typeof loadTopicSupportContext>>,
+  limit?: number,
+  limitMultiplier = 1,
+) {
+  const minimumEpisodeSupportFloor = Math.max(supportContext.minEpisodeSupport, 1);
+  const minimumFallbackUsage = Math.max(supportContext.minEpisodeSupport, 3);
+  const supportBindings = supportContext.hasEpisodeSupport
+    ? [minimumEpisodeSupportFloor, minimumFallbackUsage]
+    : [minimumFallbackUsage];
+
+  return limit
+    ? db.prepare(
+        `SELECT id, name, slug, usage_count, distinctiveness FROM topics
+         WHERE ${topicSupportClause("", supportContext.hasEpisodeSupport)} AND hidden = 0 AND display_suppressed = 0
+         ORDER BY usage_count * CASE
+               WHEN distinctiveness > 0 THEN distinctiveness
+               WHEN name LIKE '% %' THEN 20
+              ELSE 1
+            END DESC
+         LIMIT ?`
+      ).bind(...supportBindings, limit * limitMultiplier)
+    : db.prepare(
+        `SELECT id, name, slug, usage_count, distinctiveness FROM topics
+         WHERE ${topicSupportClause("", supportContext.hasEpisodeSupport)} AND hidden = 0 AND display_suppressed = 0
+         ORDER BY usage_count * CASE
+               WHEN distinctiveness > 0 THEN distinctiveness
+               WHEN name LIKE '% %' THEN 20
+              ELSE 1
+            END DESC`
+      ).bind(...supportBindings);
+}
+
 export async function getTrendingTopicsForEpisode(db: D1Database, episodeId: number, limit = 3): Promise<TrendingTopic[]> {
   const supportContext = await loadTopicSupportContext(db);
   // Get topic counts for this episode (only topics with sufficient corpus usage)
@@ -61,14 +95,8 @@ export async function getTrendingTopicsForEpisode(db: D1Database, episodeId: num
 }
 
 export async function getTopTopics(db: D1Database, limit: number): Promise<TopicRow[]> {
-  const result = await db.prepare(
-    `SELECT * FROM topics WHERE usage_count >= 3 AND hidden = 0 AND display_suppressed = 0
-     ORDER BY usage_count * CASE
-        WHEN distinctiveness > 0 THEN distinctiveness
-        WHEN name LIKE '% %' THEN 20
-        ELSE 1
-      END DESC LIMIT ?`
-  ).bind(limit * 3).all<TopicRow>();
+  const supportContext = await loadTopicSupportContext(db);
+  const result = await prepareTopTopicCandidateQuery(db, supportContext, limit, 3).all<TopicRow>();
   return result.results.slice(0, limit);
 }
 
@@ -314,29 +342,8 @@ export async function getAdjacentTopics(db: D1Database, topicId: number) {
 
 export async function getTopTopicsWithSparklines(db: D1Database, limit?: number) {
   const supportContext = await loadTopicSupportContext(db);
-  const minimumEpisodeSupportFloor = Math.max(supportContext.minEpisodeSupport, 1);
-  const minimumFallbackUsage = Math.max(supportContext.minEpisodeSupport, 3);
   // Fetch a wide pool of candidates — we'll rank by temporal interest after computing sparklines.
-  const candidateQuery = limit
-    ? db.prepare(
-        `SELECT id, name, slug, usage_count, distinctiveness FROM topics
-         WHERE ${topicSupportClause("", supportContext.hasEpisodeSupport)} AND hidden = 0 AND display_suppressed = 0
-         ORDER BY usage_count * CASE
-                WHEN distinctiveness > 0 THEN distinctiveness
-                WHEN name LIKE '% %' THEN 20
-               ELSE 1
-             END DESC
-         LIMIT ?`
-      ).bind(...(supportContext.hasEpisodeSupport ? [minimumEpisodeSupportFloor, minimumFallbackUsage] : [minimumFallbackUsage]), limit * 4)
-    : db.prepare(
-        `SELECT id, name, slug, usage_count, distinctiveness FROM topics
-         WHERE ${topicSupportClause("", supportContext.hasEpisodeSupport)} AND hidden = 0 AND display_suppressed = 0
-         ORDER BY usage_count * CASE
-                WHEN distinctiveness > 0 THEN distinctiveness
-                WHEN name LIKE '% %' THEN 20
-               ELSE 1
-             END DESC`
-      ).bind(...(supportContext.hasEpisodeSupport ? [minimumEpisodeSupportFloor, minimumFallbackUsage] : [minimumFallbackUsage]));
+  const candidateQuery = prepareTopTopicCandidateQuery(db, supportContext, limit, 4);
 
   const candidates = await candidateQuery.all<TopicRow>();
 

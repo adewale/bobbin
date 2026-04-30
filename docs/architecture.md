@@ -49,6 +49,9 @@ Google Docs (mobilebasic HTML)
 ### Browse
 | Route | Purpose |
 |-------|---------|
+| `GET /summaries` | Year/month archive browse with yearly summary cards and links into monthly/yearly summaries |
+| `GET /summaries/:year` | Year summary with deterministic summary panel, representative chunks, closed month accordions, and summary rail panels |
+| `GET /summaries/:year/:month_number` | Month summary with deterministic summary panel, representative chunks, timeline, and summary rail panels |
 | `GET /topics` | Topic small-multiples index with rail-style sparklines |
 | `GET /topics/:slug` | Topic detail with summary, over-time chart, observations, terminology drift, rank-over-time rail panel, and adjacent topics |
 
