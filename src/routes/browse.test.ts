@@ -109,6 +109,28 @@ describe("Notes episode: chunk list rendering", () => {
     expect(html).toContain('href="/chunks/multi-2024-04-08-t-0"');
     expect(html).toContain('href="/chunks/single-2024-04-08-t-1"');
   });
+
+  it("rich-content notes chunks do not repeat the title in the body", async () => {
+    await env.DB.prepare(
+      `INSERT INTO chunks (episode_id, slug, title, content, content_plain, rich_content_json, position)
+       VALUES (
+         1,
+         'rich-2024-04-08-t-2',
+         'Rich duplicate title.',
+         'Rich duplicate title.\nBody text survives.',
+         'Rich duplicate title. Body text survives.',
+         '[{"type":"paragraph","depth":0,"plainText":"Rich duplicate title.","nodes":[{"type":"text","text":"Rich duplicate title."}]},{"type":"paragraph","depth":0,"plainText":"Body text survives.","nodes":[{"type":"text","text":"Body text survives."}]}]',
+         2
+       )`
+    ).run();
+
+    const res = await SELF.fetch("http://localhost/episodes/2024-04-08-t");
+    const html = await res.text();
+    const titleText = "Rich duplicate title.";
+    const occurrences = html.split(titleText).length - 1;
+    expect(occurrences).toBe(1);
+    expect(html).toContain("Body text survives.");
+  });
 });
 
 // Essay episode: title dedup
@@ -128,6 +150,28 @@ describe("Essay episode: title not repeated in body", () => {
     const titleText = "Consumer AI is converging";
     const occurrences = html.split(titleText).length - 1;
     expect(occurrences).toBe(1);
+  });
+
+  it("rich-content essays do not repeat the title in the body", async () => {
+    await env.DB.prepare(
+      `INSERT INTO chunks (episode_id, slug, title, content, content_plain, rich_content_json, position)
+       VALUES (
+         2,
+         'rich-essay-2024-03-25-t-1',
+         'Rich essay duplicate',
+         'Rich essay duplicate\nBody survives in rich content.',
+         'Rich essay duplicate Body survives in rich content.',
+         '[{"type":"paragraph","depth":0,"plainText":"Rich essay duplicate","nodes":[{"type":"text","text":"Rich essay duplicate"}]},{"type":"paragraph","depth":0,"plainText":"Body survives in rich content.","nodes":[{"type":"text","text":"Body survives in rich content."}]}]',
+         1
+       )`
+    ).run();
+
+    const res = await SELF.fetch("http://localhost/episodes/2024-03-25-t");
+    const html = await res.text();
+    const titleText = "Rich essay duplicate";
+    const occurrences = html.split(titleText).length - 1;
+    expect(occurrences).toBe(1);
+    expect(html).toContain("Body survives in rich content.");
   });
 });
 

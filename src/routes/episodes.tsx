@@ -13,6 +13,31 @@ import { getAdjacentEpisodes, getAllEpisodesGrouped, getChunksByEpisode, getEpis
 
 const episodes = new Hono<AppEnv>();
 
+function normalizeLeadingContent(text: string): string {
+  return text
+    .replace(/\[(?:[a-z]{1,4}|\d+)\]/gi, "")
+    .replace(/[\u00A0\u1680\u2000-\u200D\u202F\u205F\u3000]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function trimLeadingTitleLine(lines: string[], title: string): string[] {
+  if (lines.length === 0) return lines;
+  return normalizeLeadingContent(lines[0] || "") === normalizeLeadingContent(title)
+    ? lines.slice(1)
+    : lines;
+}
+
+function trimLeadingTitleBlock(blocks: ReturnType<typeof parseRichContentJson>, title: string) {
+  if (blocks.length === 0) return blocks;
+  const [first, ...rest] = blocks;
+  if (!first) return blocks;
+  return normalizeLeadingContent(first.plainText || "") === normalizeLeadingContent(title)
+    ? rest
+    : blocks;
+}
+
 // Unified browse: timeline + episode list in one page
 episodes.get("/", async (c) => {
   const allEpisodesList = await getAllEpisodesGrouped(c.env.DB);
@@ -144,35 +169,34 @@ episodes.get("/:slug", async (c) => {
 
           {episode.format === "essays" ? (
             <section class="episode-essays">
-              {chunksList.map((chunk) => (
-                <article key={chunk.id} class="essay" id={chunk.slug}>
-                  <h2><a href={`/chunks/${chunk.slug}`}>{chunk.title}</a></h2>
-                  <div class="essay-content">
-                    {parseRichContentJson(chunk.rich_content_json).length > 0 ? (
-                      <>
-                        <RichContent blocks={parseRichContentJson(chunk.rich_content_json)} />
-                        <RichFootnotes footnotes={parseFootnotesJson((chunk as any).footnotes_json ?? null)} />
-                      </>
-                    ) : (
-                      chunk.content.split("\n").filter((line, i) => {
-                        if (i === 0 && line.trim() === chunk.title.trim()) return false;
-                        return true;
-                      }).map((line, i) => (
-                        line.trim() ? <p key={i}>{line}</p> : null
-                      ))
-                    )}
-                  </div>
-                </article>
-              ))}
+              {chunksList.map((chunk) => {
+                const richBlocks = trimLeadingTitleBlock(parseRichContentJson(chunk.rich_content_json), chunk.title);
+                const bodyLines = trimLeadingTitleLine(chunk.content.split("\n").filter((line) => line.trim()), chunk.title);
+
+                return (
+                  <article key={chunk.id} class="essay" id={chunk.slug}>
+                    <h2><a href={`/chunks/${chunk.slug}`}>{chunk.title}</a></h2>
+                    <div class="essay-content">
+                      {richBlocks.length > 0 ? (
+                        <>
+                          <RichContent blocks={richBlocks} />
+                          <RichFootnotes footnotes={parseFootnotesJson((chunk as any).footnotes_json ?? null)} />
+                        </>
+                      ) : (
+                        bodyLines.map((line, i) => (
+                          line.trim() ? <p key={i}>{line}</p> : null
+                        ))
+                      )}
+                    </div>
+                  </article>
+                );
+              })}
             </section>
           ) : (
             <div class="episode-chunks">
               {chunksList.map((chunk, idx) => {
-                const richBlocks = parseRichContentJson(chunk.rich_content_json);
-                const bodyLines = chunk.content.split("\n").filter((line, i) => {
-                  if (i === 0 && line.trim() === chunk.title.trim()) return false;
-                  return line.trim();
-                });
+                const richBlocks = trimLeadingTitleBlock(parseRichContentJson(chunk.rich_content_json), chunk.title);
+                const bodyLines = trimLeadingTitleLine(chunk.content.split("\n").filter((line) => line.trim()), chunk.title);
                 const hasBody = richBlocks.length > 0 || bodyLines.length > 0;
 
                 return hasBody ? (
