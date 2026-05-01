@@ -21,6 +21,7 @@ import { combinePipelineReports, summarizeEnrichBatches, summarizeFinalizeResult
 import { persistChunkEmbeddingCache } from "../services/topic-similarity";
 import { normalizeTopicExtractorMode } from "../services/yake-runtime";
 import { runRefresh } from "../jobs/refresh";
+import { auditCorpusInvariants, repairDerivedCorpusState } from "../db/corpus-maintenance";
 
 const api = new Hono<AppEnv>();
 
@@ -296,7 +297,12 @@ api.get("/purge-source", async (c) => {
   try {
     const result = await purgeSourceByDocId(c.env.DB, docId);
     if (!result) return c.json({ error: "No source found" }, 404);
-    return c.json({ status: "ok", ...result });
+    const repair = await repairDerivedCorpusState(c.env.DB);
+    const audit = await auditCorpusInvariants(c.env.DB);
+    if (!audit.healthy) {
+      return c.json({ error: "Purge completed but invariant audit failed", ...result, repair, audit }, 500);
+    }
+    return c.json({ status: "ok", ...result, repair, audit });
   } catch (e) {
     console.error("Purge source error:", e);
     return c.json({ error: "Purge failed", detail: e instanceof Error ? e.message : String(e) }, 500);
@@ -637,12 +643,14 @@ api.get("/health", async (c) => {
     })(),
     c.env.DB.prepare("SELECT * FROM ingestion_log ORDER BY started_at DESC LIMIT 1").first(),
   ]);
+  const invariants = await auditCorpusInvariants(c.env.DB);
 
   return c.json({
     chunks: chunks?.c || 0,
     active_topics: topics?.c || 0,
     unenriched_chunks: unenriched?.c || 0,
     last_run: lastRun || null,
+    invariants,
   });
 });
 

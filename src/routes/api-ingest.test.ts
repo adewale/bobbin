@@ -67,10 +67,18 @@ describe("/api/ingest source registration", () => {
 
   it("purges an already-ingested untrusted source by doc id", async () => {
     await env.DB.batch([
+      env.DB.prepare("INSERT INTO topics (id, name, slug, usage_count, episode_support, distinctiveness, hidden, display_suppressed) VALUES (201, 'contaminated topic', 'contaminated-topic', 2, 1, 7.5, 0, 0)"),
       env.DB.prepare("INSERT INTO sources (id, google_doc_id, title, is_archive, active) VALUES (9, '1IPwKwmEgrL6R2lVe9IaPIu0sPB4O_ZNy8ZA0N0W3yw0', 'Archive (Essays)', 1, 1)"),
       env.DB.prepare("INSERT INTO episodes (id, source_id, slug, title, published_date, year, month, day, chunk_count, format) VALUES (5, 9, '2026-02-23-1IPwKw', 'Bits and Bobs 2/23/26', '2026-02-23', 2026, 2, 23, 2, 'essays')"),
       env.DB.prepare("INSERT INTO chunks (id, episode_id, slug, title, content, content_plain, position) VALUES (11, 5, 'model-scaffolding-context-2026-02-23-1IPwKw-0', 'Model × Scaffolding × Context', 'Model × Scaffolding × Context', 'Model × Scaffolding × Context', 0)"),
       env.DB.prepare("INSERT INTO chunks (id, episode_id, slug, title, content, content_plain, position) VALUES (12, 5, 'cognitive-debt-is-the-rate-limiting-step-2026-02-23-1IPwKw-1', 'Cognitive debt is the rate-limiting step', 'Cognitive debt is the rate-limiting step', 'Cognitive debt is the rate-limiting step', 1)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (11, 201)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (12, 201)"),
+      env.DB.prepare("INSERT INTO episode_topics (episode_id, topic_id) VALUES (5, 201)"),
+      env.DB.prepare("INSERT INTO chunk_words (chunk_id, word, count) VALUES (11, 'model', 3)"),
+      env.DB.prepare("INSERT INTO chunk_words (chunk_id, word, count) VALUES (12, 'cognitive', 2)"),
+      env.DB.prepare("INSERT INTO word_stats (word, total_count, doc_count, distinctiveness, in_baseline, updated_at) VALUES ('model', 3, 1, 4.2, 1, datetime('now'))"),
+      env.DB.prepare("INSERT INTO word_stats (word, total_count, doc_count, distinctiveness, in_baseline, updated_at) VALUES ('cognitive', 2, 1, 4.4, 1, datetime('now'))"),
       env.DB.prepare("INSERT INTO source_html_chunks (source_id, chunk_index, fetched_at, html_chunk) VALUES (9, 0, '2026-05-01T00:00:00.000Z', '<html></html>')"),
       env.DB.prepare("INSERT INTO ingestion_log (id, source_id, status, run_type) VALUES (21, 9, 'completed', 'refresh')"),
       env.DB.prepare("INSERT INTO pipeline_runs (id, ingestion_log_id, source_id, run_type, extractor_mode, status) VALUES (31, 21, 9, 'refresh', 'naive', 'completed')"),
@@ -85,15 +93,39 @@ describe("/api/ingest source registration", () => {
       episodesDeleted: number;
       chunksDeleted: number;
       sourceDeleted: boolean;
+      repair: {
+        topicsRecounted: number;
+        episodeTopicsRebuilt: number;
+        wordStatsRebuilt: boolean;
+      };
+      audit: {
+        healthy: boolean;
+        usageMismatches: number;
+        orphanChunkTopics: number;
+        orphanEpisodeTopics: number;
+        orphanChunkWords: number;
+        wordStatsTotalDelta: number;
+      };
     };
 
     expect(res.status).toBe(200);
-    expect(data).toEqual({
-      status: "ok",
-      docId: "1IPwKwmEgrL6R2lVe9IaPIu0sPB4O_ZNy8ZA0N0W3yw0",
-      episodesDeleted: 1,
-      chunksDeleted: 2,
-      sourceDeleted: true,
+    expect(data.status).toBe("ok");
+    expect(data.docId).toBe("1IPwKwmEgrL6R2lVe9IaPIu0sPB4O_ZNy8ZA0N0W3yw0");
+    expect(data.episodesDeleted).toBe(1);
+    expect(data.chunksDeleted).toBe(2);
+    expect(data.sourceDeleted).toBe(true);
+    expect(data.repair.topicsRecounted).toBeGreaterThan(0);
+    expect(data.repair.episodeTopicsRebuilt).toBe(0);
+    expect(data.repair.wordStatsRebuilt).toBe(true);
+    expect(data.audit).toEqual({
+      healthy: true,
+      usageMismatches: 0,
+      supportMismatches: 0,
+      orphanChunkTopics: 0,
+      orphanEpisodeTopics: 0,
+      orphanChunkWords: 0,
+      driftedEpisodeChunkCounts: 0,
+      wordStatsTotalDelta: 0,
     });
 
     const counts = await env.DB.batch([
@@ -103,8 +135,12 @@ describe("/api/ingest source registration", () => {
       env.DB.prepare("SELECT COUNT(*) as c FROM source_html_chunks WHERE source_id = 9"),
       env.DB.prepare("SELECT COUNT(*) as c FROM ingestion_log WHERE source_id = 9"),
       env.DB.prepare("SELECT COUNT(*) as c FROM pipeline_runs WHERE source_id = 9"),
+      env.DB.prepare("SELECT usage_count FROM topics WHERE id = 201"),
+      env.DB.prepare("SELECT COUNT(*) as c FROM word_stats WHERE word IN ('model', 'cognitive')"),
     ]);
 
-    expect(counts.map((result: any) => result.results[0].c)).toEqual([0, 0, 0, 0, 0, 0]);
+    expect(counts.slice(0, 6).map((result: any) => result.results[0].c)).toEqual([0, 0, 0, 0, 0, 0]);
+    expect((counts[6] as any).results[0].usage_count).toBe(0);
+    expect((counts[7] as any).results[0].c).toBe(0);
   }, 20_000);
 });
