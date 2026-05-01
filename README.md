@@ -79,6 +79,18 @@ Trusted-source policy:
 - unknown doc IDs are rejected instead of being auto-registered
 - `purge-source` removes an already-ingested source by doc ID when provenance audit finds contamination
 
+Repeatable health check:
+
+```bash
+npm run health:production
+```
+
+This combines:
+
+- provenance audit of trusted sources
+- invariant audit of derived corpus state
+- Playwright smoke checks across key production pages
+
 Local browser runs, local pipeline runs, and Workers Vitest database bootstrap now all apply the same checked-in D1 migration chain. That keeps the test/local schema aligned with the real app schema, including FTS triggers, secondary indexes, and D1 hardening migrations.
 
 ## Architecture

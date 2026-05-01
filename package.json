@@ -14,6 +14,7 @@
     "test:real": "vitest run --config vitest.node.config.ts",
     "test:visual": "RUN_VISUAL_TESTS=1 playwright test e2e/visual.spec.ts --project=desktop --workers=1",
     "test:all": "vitest run && vitest run --config vitest.node.config.ts",
+    "health:production": "npx tsx scripts/check-production-health.ts --base-url https://bobbin.adewale-883.workers.dev --remote --db bobbin-db --config wrangler.jsonc",
     "audit:invariants": "node scripts/audit-invariant-metrics.mjs",
     "compare:pipeline": "node scripts/compare-pipeline-baselines.mjs",
     "snapshot:rollback": "node scripts/export-rollback-bundle.mjs",

@@ -222,6 +222,7 @@ Admin routes:
 Operational helper:
 
 - `npm run maintenance:remote -- <command>` with `BASE_URL` and `ADMIN_SECRET`
+- `npm run health:production`
 
 Use `backfill-source` when you need to repair:
 
@@ -233,6 +234,8 @@ Use `backfill-source` when you need to repair:
 Use `backfill-llm` when you need to populate missing episode-level LLM proposal caches without reparsing source fidelity.
 
 Use `purge-source` when provenance audit shows a doc should never have been admitted to the corpus and you need to delete the source row plus its dependent episodes, chunks, logs, and source artifacts.
+
+Use `health:production` when you want one repeatable report covering trusted-source provenance, derived-state invariants, and browser-level smoke checks for the deployed app.
 
 ## Queue And Async Work
 

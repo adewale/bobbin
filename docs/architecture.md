@@ -143,6 +143,8 @@ Triggered by:
 
 Operational maintenance can also be driven through `scripts/remote-maintenance.ts` / `npm run maintenance:remote`, which wraps the deployed admin routes with explicit `BASE_URL` and `ADMIN_SECRET` inputs.
 
+Production health checks can be run with `npm run health:production`, which combines provenance audit, invariant audit, and browser smoke checks against the deployed app.
+
 ## Search pipeline
 
 ```

@@ -7,7 +7,7 @@ This file tracks only the current backlog. Historical migration work and complet
 ### Product
 - [ ] Deploy the current shared-surface UI to live so `/design`, hero/tagline treatments, and updated `/topics` sparklines match local.
 - [ ] Decide whether the search page should gain a richer empty state or remain intentionally sparse.
-- [ ] Surface archive essay episodes more deliberately in browsing and topic exploration.
+- [ ] Decide whether trusted essay-format episodes need a more deliberate browsing treatment.
 
 ### Data and pipeline
 - [ ] Preserve and render original outbound links from the ingestion source more completely.
