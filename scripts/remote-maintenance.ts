@@ -5,6 +5,7 @@ type Command =
   | "enrich"
   | "finalize"
   | "ingest-doc"
+  | "purge-source"
   | "backfill-source"
   | "backfill-llm";
 
@@ -83,6 +84,13 @@ async function main() {
     const limit = args[2] || "0";
     const llm = args[3] || "1";
     console.log(JSON.stringify(await callAdmin("/api/backfill-source", new URLSearchParams({ doc, offset, limit, llm })), null, 2));
+    return;
+  }
+
+  if (command === "purge-source") {
+    const doc = args[0];
+    if (!doc) throw new Error("doc id is required");
+    console.log(JSON.stringify(await callAdmin("/api/purge-source", new URLSearchParams({ doc })), null, 2));
     return;
   }
 

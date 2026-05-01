@@ -215,6 +215,7 @@ Operational characteristic:
 
 Admin routes:
 
+- `GET /api/purge-source?doc=...`
 - `GET /api/backfill-source?doc=...&offset=...&limit=...&llm=0|1`
 - `GET /api/backfill-llm?doc=...&limit=...`
 
@@ -230,6 +231,8 @@ Use `backfill-source` when you need to repair:
 - episode/chunk artifact storage derived from parser changes
 
 Use `backfill-llm` when you need to populate missing episode-level LLM proposal caches without reparsing source fidelity.
+
+Use `purge-source` when provenance audit shows a doc should never have been admitted to the corpus and you need to delete the source row plus its dependent episodes, chunks, logs, and source artifacts.
 
 ## Queue And Async Work
 

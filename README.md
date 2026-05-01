@@ -71,7 +71,13 @@ ADMIN_SECRET="..." \
 npm run maintenance:remote -- ingest-doc <doc-id> 100
 ```
 
-The same script supports `refresh`, `enrich`, `finalize`, `backfill-source`, and `backfill-llm`.
+The same script supports `refresh`, `enrich`, `finalize`, `purge-source`, `backfill-source`, and `backfill-llm`.
+
+Trusted-source policy:
+
+- refresh and admin ingest only operate on doc IDs in the checked-in trusted source registry
+- unknown doc IDs are rejected instead of being auto-registered
+- `purge-source` removes an already-ingested source by doc ID when provenance audit finds contamination
 
 Local browser runs, local pipeline runs, and Workers Vitest database bootstrap now all apply the same checked-in D1 migration chain. That keeps the test/local schema aligned with the real app schema, including FTS triggers, secondary indexes, and D1 hardening migrations.
 

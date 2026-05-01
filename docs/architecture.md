@@ -64,9 +64,10 @@ Google Docs (mobilebasic HTML)
 ### Admin (requires `Authorization: Bearer ADMIN_SECRET`)
 | Route | Purpose |
 |-------|---------|
-| `GET /api/ingest?limit=N&doc=ID` | Fetch doc, parse, ingest N new episodes |
-| `GET /api/refresh` | Canonical refresh pipeline: ensure source, fetch, parse, ingest, enrich, finalize |
-| `GET /api/backfill-source?doc=ID&offset=N&limit=N&llm=0|1` | Reparse existing source and repair episode/chunk fidelity artifacts |
+| `GET /api/ingest?limit=N&doc=ID` | Fetch, parse, and ingest N new episodes from a trusted source doc |
+| `GET /api/refresh` | Canonical refresh pipeline over the trusted source registry: ensure source, fetch, parse, ingest, enrich, finalize |
+| `GET /api/purge-source?doc=ID` | Remove an already-ingested source and all dependent rows by doc ID |
+| `GET /api/backfill-source?doc=ID&offset=N&limit=N&llm=0|1` | Reparse an existing trusted source and repair episode/chunk fidelity artifacts |
 | `GET /api/backfill-llm?doc=ID&limit=N` | Backfill missing episode-level LLM proposal caches |
 | `GET /api/embed?limit=N` | Batch-embed N chunks to Vectorize |
 | `GET /api/enrich?batch=N` | Enrich unenriched chunks (topics, word stats) |
@@ -137,7 +138,7 @@ ingestion_log (audit trail)
 ```
 
 Triggered by:
-- **Cron**: `0 18 * * 1` (Monday 6pm UTC / 7pm BST) — runs the full pipeline via `runRefresh` across all configured non-empty sources in `sources`
+- **Cron**: `0 18 * * 1` (Monday 6pm UTC / 7pm BST) — runs the full pipeline via `runRefresh` across the trusted non-empty sources in the checked-in registry
 - **Manual**: Admin API endpoints with Bearer auth
 
 Operational maintenance can also be driven through `scripts/remote-maintenance.ts` / `npm run maintenance:remote`, which wraps the deployed admin routes with explicit `BASE_URL` and `ADMIN_SECRET` inputs.

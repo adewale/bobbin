@@ -7,16 +7,13 @@ import { readFileSync } from "node:fs";
 import { computeDistinctiveness, loadEnglishBaseline } from "../src/services/distinctiveness";
 import { tokenize } from "../src/lib/text";
 import { parseHtmlDocument } from "../src/services/html-parser";
+import { KNOWN_SOURCES } from "../src/data/source-registry";
 
 const baseline = loadEnglishBaseline();
 
 // Load all chunk texts from local cache
 const allTexts: string[] = [];
-for (const file of [
-  "1xRiCqpy3LMAgEsHdX-IA23j6nUISdT5nAJmtKbk9wNA.html",
-  "1WC16fr5iEwzpK8u11yvYd6cCHPvq6Ce4WnrkpJ49vYw.html",
-  "1IPwKwmEgrL6R2lVe9IaPIu0sPB4O_ZNy8ZA0N0W3yw0.html",
-]) {
+for (const file of KNOWN_SOURCES.map((source) => `${source.docId}.html`)) {
   try {
     const html = readFileSync(`data/raw/${file}`, "utf-8");
     const eps = parseHtmlDocument(html);

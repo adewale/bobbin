@@ -70,6 +70,38 @@ describe("Real data: format detection", () => {
   });
 });
 
+describe("Real data: archive essays characterization", () => {
+  it("the 1IPw archive episodes all use the same list-first chunk shape", () => {
+    const episodes = loadDoc(DOCS[0].file);
+
+    expect(episodes).toHaveLength(11);
+    for (const ep of episodes) {
+      expect(ep.chunks.length).toBeGreaterThan(0);
+      expect(ep.chunks.every((chunk) => chunk.richContent[0]?.type === "list_item")).toBe(true);
+      expect(ep.chunks.every((chunk) => chunk.richContent[0]?.depth === 0)).toBe(true);
+    }
+  });
+
+  it("the 1IPw archive parser sees episode-level source anchors", () => {
+    const episodes = loadDoc(DOCS[0].file);
+
+    expect(episodes).toHaveLength(11);
+    for (const ep of episodes) {
+      expect(ep.headingId).toMatch(/^h\./);
+    }
+  });
+
+  it("parsed chunks do not currently carry original chunk heading ids", () => {
+    const episodes = loadDoc(DOCS[0].file);
+
+    for (const ep of episodes) {
+      for (const chunk of ep.chunks) {
+        expect(chunk.headingId).toBe("");
+      }
+    }
+  });
+});
+
 describe("Real data: chunk structure completeness", () => {
   it("every episode has at least 1 chunk", () => {
     for (const doc of DOCS) {

@@ -16,21 +16,12 @@ export const KNOWN_SOURCES: KnownSource[] = [
     isArchive: 1,
   },
   {
-    docId: "1IPwKwmEgrL6R2lVe9IaPIu0sPB4O_ZNy8ZA0N0W3yw0",
-    title: "Archive (Essays)",
-    isArchive: 1,
-  },
-  {
     docId: "1BZCiakRHDd2I337FmJv8RGcrcycapXPXN_wHPO5-DaA",
     title: "Archive (2023-2024)",
     isArchive: 1,
   },
 ];
 
-export function describeSource(docId: string): KnownSource {
-  return KNOWN_SOURCES.find((source) => source.docId === docId) || {
-    docId,
-    title: `Source: ${docId.substring(0, 20)}`,
-    isArchive: 0,
-  };
+export function describeSource(docId: string): KnownSource | null {
+  return KNOWN_SOURCES.find((source) => source.docId === docId) || null;
 }

@@ -5,6 +5,7 @@ import { parseHtmlDocument } from "../services/html-parser";
 import { ingestEpisodesOnly, enrichChunks, finalizeEnrichment, isEnrichmentComplete } from "./ingest";
 import sampleEssays from "../../test/fixtures/sample-mobilebasic.html?raw";
 import sampleNotes from "../../test/fixtures/sample-notes-format.html?raw";
+import archiveEssaysHtml from "../../data/raw/1IPwKwmEgrL6R2lVe9IaPIu0sPB4O_ZNy8ZA0N0W3yw0.html?raw";
 
 beforeEach(async () => {
   await applyTestMigrations(env.DB);
@@ -71,6 +72,26 @@ describe("Phase 1: ingestEpisodesOnly", () => {
     );
     expect(byFormat.essays).toBe(3);
     expect(byFormat.notes).toBe(1);
+  });
+
+  it("groups the 1IPw archive under one source-tagged slug family", async () => {
+    await env.DB.prepare("DELETE FROM sources").run();
+    const insert = await env.DB.prepare(
+      "INSERT INTO sources (google_doc_id, title) VALUES (?, ?)"
+    ).bind("1IPwKwmEgrL6R2lVe9IaPIu0sPB4O_ZNy8ZA0N0W3yw0", "Archive (Essays)").run();
+    const sourceId = Number(insert.meta.last_row_id);
+
+    const episodes = parseHtmlDocument(archiveEssaysHtml);
+    const result = await ingestEpisodesOnly(env.DB, sourceId, episodes);
+
+    expect(result.episodesAdded).toBe(11);
+    const rows = await env.DB.prepare(
+      "SELECT source_id, slug FROM episodes ORDER BY published_date DESC"
+    ).all<{ source_id: number; slug: string }>();
+
+    expect(rows.results).toHaveLength(11);
+    expect(new Set(rows.results.map((row) => row.source_id))).toEqual(new Set([sourceId]));
+    expect(rows.results.every((row) => row.slug.endsWith("-1IPwKw"))).toBe(true);
   });
 
   it("resolves internal fragment links to target chunk URLs during ingest", async () => {

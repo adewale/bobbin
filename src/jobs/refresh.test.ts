@@ -4,14 +4,14 @@ import { applyTestMigrations } from "../../test/helpers/migrations";
 import { runRefresh } from "./refresh";
 import sampleNotesHtml from "../../test/fixtures/sample-notes-format.html?raw";
 
-function makeRefreshTestEnv() {
+function makeRefreshTestEnv(fetchImpl?: (docId: string) => Promise<{ html: string; fetchedAt: string }>) {
   return {
     ...env,
     ADMIN_SECRET: "",
-    __TEST_FETCH_GOOGLE_DOC: async () => ({
+    __TEST_FETCH_GOOGLE_DOC: fetchImpl || (async () => ({
       html: sampleNotesHtml,
       fetchedAt: new Date().toISOString(),
-    }),
+    })),
     __TEST_ENRICH_EPISODES_WITH_LLM: async () => undefined,
   } as any;
 }
@@ -28,7 +28,7 @@ describe("runRefresh", () => {
     await runRefresh(makeRefreshTestEnv()).catch(() => {});
 
     const after = await env.DB.prepare("SELECT * FROM sources ORDER BY id").all();
-    expect(after.results.length).toBeGreaterThanOrEqual(4);
+    expect(after.results.length).toBe(3);
     expect((after.results as any[]).some((row) => row.title.includes("Current"))).toBe(true);
     expect((after.results as any[]).some((row) => row.google_doc_id === "1xRiCqpy3LMAgEsHdX-IA23j6nUISdT5nAJmtKbk9wNA")).toBe(true);
   }, 20000);
@@ -44,8 +44,27 @@ describe("runRefresh", () => {
       run_type: string;
       pipeline_report: string | null;
     }>();
-    expect(logs.results.length).toBeGreaterThanOrEqual(4);
+    expect(logs.results.length).toBe(3);
     expect(logs.results.every((log) => log.run_type === "refresh")).toBe(true);
     expect(logs.results.every((log) => log.pipeline_report !== null)).toBe(true);
+  }, 20000);
+
+  it("does not refresh the non-Komoroske field-notes doc", async () => {
+    const fetchedDocIds: string[] = [];
+
+    await runRefresh(makeRefreshTestEnv(async (docId: string) => {
+      fetchedDocIds.push(docId);
+      return {
+        html: sampleNotesHtml,
+        fetchedAt: new Date().toISOString(),
+      };
+    }));
+
+    expect(fetchedDocIds).not.toContain("1IPwKwmEgrL6R2lVe9IaPIu0sPB4O_ZNy8ZA0N0W3yw0");
+    expect(new Set(fetchedDocIds)).toEqual(new Set([
+      "1xRiCqpy3LMAgEsHdX-IA23j6nUISdT5nAJmtKbk9wNA",
+      "1WC16fr5iEwzpK8u11yvYd6cCHPvq6Ce4WnrkpJ49vYw",
+      "1BZCiakRHDd2I337FmJv8RGcrcycapXPXN_wHPO5-DaA",
+    ]));
   }, 20000);
 });

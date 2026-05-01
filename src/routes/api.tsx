@@ -13,9 +13,9 @@ import { keywordSearch } from "../db/search";
 import { collectInBatches, MAX_SQL_BINDINGS, sqlPlaceholders } from "../lib/db";
 import { safeParseInt, escapeLike } from "../lib/html";
 import { applyTopicBoost } from "../services/search-topics";
-import { describeSource } from "../data/source-registry";
+import { describeSource, KNOWN_SOURCES } from "../data/source-registry";
 import { expandEntityAliases } from "../lib/entity-aliases";
-import { ensureKnownSources, ensureSource } from "../db/sources";
+import { ensureKnownSources, ensureSource, purgeSourceByDocId } from "../db/sources";
 import { KNOWN_ENTITIES } from "../data/known-entities";
 import { combinePipelineReports, summarizeEnrichBatches, summarizeFinalizeResult } from "../services/pipeline-report";
 import { persistChunkEmbeddingCache } from "../services/topic-similarity";
@@ -23,6 +23,18 @@ import { normalizeTopicExtractorMode } from "../services/yake-runtime";
 import { runRefresh } from "../jobs/refresh";
 
 const api = new Hono<AppEnv>();
+
+function getFetchDoc(c: { env: AppEnv["Bindings"] }): typeof fetchGoogleDoc {
+  return typeof (c.env as any).__TEST_FETCH_GOOGLE_DOC === "function"
+    ? (c.env as any).__TEST_FETCH_GOOGLE_DOC
+    : fetchGoogleDoc;
+}
+
+function getEpisodeLlmEnricher(c: { env: AppEnv["Bindings"] }): typeof enrichEpisodesWithLlm {
+  return typeof (c.env as any).__TEST_ENRICH_EPISODES_WITH_LLM === "function"
+    ? (c.env as any).__TEST_ENRICH_EPISODES_WITH_LLM
+    : enrichEpisodesWithLlm;
+}
 
 async function tryCreatePipelineLog(db: D1Database, sourceId: number | null, runType: "refresh" | "manual_ingest" | "enrich" | "finalize") {
   try {
@@ -124,6 +136,7 @@ api.get("/ingest", async (c) => {
   let logId: number | null = null;
   let sourceForLog: { id: number; title: string; google_doc_id: string } | null = null;
   const extractorMode = normalizeTopicExtractorMode(c.env.TOPIC_EXTRACTOR_MODE);
+  const fetchDoc = getFetchDoc(c);
 
   try {
     await ensureKnownSources(c.env.DB);
@@ -133,22 +146,22 @@ api.get("/ingest", async (c) => {
       source = await c.env.DB.prepare("SELECT * FROM sources WHERE google_doc_id = ?").bind(docId).first();
       if (!source) {
         const described = describeSource(docId);
+        if (!described) return c.json({ error: "Unknown or untrusted source" }, 404);
         await ensureSource(c.env.DB, described.docId, described.title, described.isArchive);
         source = await c.env.DB.prepare("SELECT * FROM sources WHERE google_doc_id = ?").bind(docId).first();
       }
     } else {
-      // Default: pick the most recently created source (the "current" doc),
-      // not the oldest last_fetched_at (which may be an archive)
-      source = await c.env.DB.prepare(
-        "SELECT * FROM sources ORDER BY created_at DESC LIMIT 1"
-      ).first();
+      const currentSource = KNOWN_SOURCES.find((entry) => entry.isArchive === 0);
+      source = currentSource
+        ? await c.env.DB.prepare("SELECT * FROM sources WHERE google_doc_id = ?").bind(currentSource.docId).first()
+        : null;
     }
 
     if (!source) return c.json({ error: "No source found" }, 404);
 
     sourceForLog = source as { id: number; title: string; google_doc_id: string };
     logId = await tryCreatePipelineLog(c.env.DB, source.id, "manual_ingest");
-    const fetched = await fetchGoogleDoc(source.google_doc_id);
+    const fetched = await fetchDoc(source.google_doc_id);
     await c.env.DB.prepare(
       "UPDATE sources SET latest_html = NULL WHERE id = ?"
     ).bind(source.id).run();
@@ -234,12 +247,15 @@ api.get("/backfill-source", async (c) => {
   const offset = safeParseInt(c.req.query("offset"), 0);
   const runLlm = c.req.query("llm") !== "0";
   if (!docId) return c.json({ error: "doc is required" }, 400);
+  const fetchDoc = getFetchDoc(c);
+  const llmEnricher = getEpisodeLlmEnricher(c);
 
   try {
+    if (!describeSource(docId)) return c.json({ error: "Unknown or untrusted source" }, 404);
     const source = await c.env.DB.prepare("SELECT * FROM sources WHERE google_doc_id = ?").bind(docId).first<any>();
     if (!source) return c.json({ error: "No source found" }, 404);
 
-    const fetched = await fetchGoogleDoc(source.google_doc_id);
+    const fetched = await fetchDoc(source.google_doc_id);
     await c.env.DB.prepare(
       "UPDATE sources SET latest_html = NULL, last_fetched_at = datetime('now') WHERE id = ?"
     ).bind(source.id).run();
@@ -249,7 +265,7 @@ api.get("/backfill-source", async (c) => {
     const windowedEpisodes = limit > 0 ? episodes.slice(offset, offset + limit) : episodes;
     const backfilled = await backfillExistingEpisodes(c.env.DB, source.id, windowedEpisodes);
     if (runLlm && backfilled.backfilledEpisodes.length > 0) {
-      await enrichEpisodesWithLlm(c.env, source.id, backfilled.backfilledEpisodes);
+      await llmEnricher(c.env, source.id, backfilled.backfilledEpisodes);
     }
 
     return c.json({
@@ -267,6 +283,23 @@ api.get("/backfill-source", async (c) => {
   } catch (e) {
     console.error("Backfill source error:", e);
     return c.json({ error: "Backfill failed", detail: e instanceof Error ? e.message : String(e) }, 500);
+  }
+});
+
+api.get("/purge-source", async (c) => {
+  const denied = requireAuth(c);
+  if (denied) return denied;
+
+  const docId = c.req.query("doc") || "";
+  if (!docId) return c.json({ error: "doc is required" }, 400);
+
+  try {
+    const result = await purgeSourceByDocId(c.env.DB, docId);
+    if (!result) return c.json({ error: "No source found" }, 404);
+    return c.json({ status: "ok", ...result });
+  } catch (e) {
+    console.error("Purge source error:", e);
+    return c.json({ error: "Purge failed", detail: e instanceof Error ? e.message : String(e) }, 500);
   }
 });
 
