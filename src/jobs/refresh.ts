@@ -1,6 +1,6 @@
 import { fetchGoogleDoc } from "../crawler/fetch";
 import { persistSourceHtmlChunks } from "../db/artifacts";
-import { createIngestionLog, completeIngestionLog, failIngestionLog } from "../db/ingestion";
+import { createIngestionLog, completeIngestionLog, failIngestionLog, failRunningIngestionLogs } from "../db/ingestion";
 import { recordPipelineRun } from "../db/pipeline-metrics";
 import {
   ensureKnownSources,
@@ -26,8 +26,9 @@ interface RefreshEvent {
   source: string;
   sources_processed?: number;
   sources_failed?: number;
+  sources_skipped?: number;
   started_at: string;
-  status: "completed" | "failed";
+  status: "completed" | "failed" | "partial";
   duration_ms: number;
   // Per-step timing
   fetch_ms?: number;
@@ -54,24 +55,41 @@ interface RefreshPipelineReport {
 
 type RefreshFetcher = typeof fetchGoogleDoc;
 type RefreshLlmEnricher = typeof enrichEpisodesWithLlm;
+const DEFAULT_REFRESH_SOFT_BUDGET_MS = 12 * 60 * 1000;
 
 function elapsed(start: number): number {
   return Math.round(Date.now() - start);
 }
 
-async function tryCreatePipelineLog(db: D1Database, sourceId: number | null) {
+async function tryCreatePipelineLog(db: D1Database, sourceId: number | null, runType: "refresh" | "refresh_cycle" = "refresh") {
   try {
-    return await createIngestionLog(db, sourceId);
+    return await createIngestionLog(db, sourceId, runType);
   } catch (error) {
     console.error("Refresh log create failed:", error);
     return null;
   }
 }
 
-async function tryCompletePipelineLog(db: D1Database, logId: number | null, episodesAdded: number, chunksAdded: number, pipelineReport?: unknown) {
+async function recoverInterruptedRefreshLogs(db: D1Database, sourceId: number | null, runType: "refresh" | "refresh_cycle") {
+  return failRunningIngestionLogs(
+    db,
+    runType,
+    sourceId,
+    "Marked failed by a newer refresh after the previous run stopped before cleanup",
+  );
+}
+
+async function tryCompletePipelineLog(
+  db: D1Database,
+  logId: number | null,
+  episodesAdded: number,
+  chunksAdded: number,
+  pipelineReport?: unknown,
+  status: "completed" | "partial" = "completed",
+) {
   if (!logId) return;
   try {
-    await completeIngestionLog(db, logId, episodesAdded, chunksAdded, pipelineReport);
+    await completeIngestionLog(db, logId, episodesAdded, chunksAdded, pipelineReport, status);
   } catch (error) {
     console.error("Refresh log complete failed:", error);
   }
@@ -115,7 +133,8 @@ async function runRefreshForSource(
   let currentStep = "init";
 
   try {
-    logId = await tryCreatePipelineLog(env.DB, source.id);
+    await recoverInterruptedRefreshLogs(env.DB, source.id, "refresh");
+    logId = await tryCreatePipelineLog(env.DB, source.id, "refresh");
     await markSourceRefreshStarted(env.DB, source.id);
 
     currentStep = "fetch";
@@ -205,6 +224,9 @@ export async function runRefresh(env: Bindings): Promise<RefreshEvent> {
   const llmEnricher: RefreshLlmEnricher = typeof (env as any).__TEST_ENRICH_EPISODES_WITH_LLM === "function"
     ? (env as any).__TEST_ENRICH_EPISODES_WITH_LLM
     : enrichEpisodesWithLlm;
+  const softBudgetMs = typeof (env as any).__TEST_REFRESH_SOFT_BUDGET_MS === "number"
+    ? Math.max(0, Number((env as any).__TEST_REFRESH_SOFT_BUDGET_MS))
+    : DEFAULT_REFRESH_SOFT_BUDGET_MS;
   const aggregate: RefreshEvent = {
     event: "refresh",
     source: "all",
@@ -213,14 +235,19 @@ export async function runRefresh(env: Bindings): Promise<RefreshEvent> {
     duration_ms: 0,
     sources_processed: 0,
     sources_failed: 0,
+    sources_skipped: 0,
     parse_episodes: 0,
     parse_chunks: 0,
     new_episodes: 0,
     new_chunks: 0,
     enriched_chunks: 0,
   };
+  let aggregateLogId: number | null = null;
+  const sourceEvents: RefreshEvent[] = [];
 
   try {
+    await recoverInterruptedRefreshLogs(env.DB, null, "refresh_cycle");
+    aggregateLogId = await tryCreatePipelineLog(env.DB, null, "refresh_cycle");
     await ensureKnownSources(env.DB);
     const sources = await getRefreshSources(env.DB);
     if (sources.length === 0) {
@@ -228,6 +255,7 @@ export async function runRefresh(env: Bindings): Promise<RefreshEvent> {
       aggregate.failed_step = "load_sources";
       aggregate.error = "No refresh sources configured";
       aggregate.duration_ms = elapsed(runStart);
+      await tryFailPipelineLog(env.DB, aggregateLogId, aggregate.error, { event: aggregate, sources: sourceEvents });
       console.log(JSON.stringify(aggregate));
       return aggregate;
     }
@@ -239,8 +267,16 @@ export async function runRefresh(env: Bindings): Promise<RefreshEvent> {
     let totalFinalizeMs = 0;
     let failedSourceEvent: RefreshEvent | null = null;
 
-    for (const source of sources) {
+    for (const [index, source] of sources.entries()) {
+      if (index > 0 && elapsed(runStart) >= softBudgetMs) {
+        aggregate.status = "partial";
+        aggregate.sources_skipped = Math.max(0, sources.length - index);
+        aggregate.failed_step = "budget_guard";
+        aggregate.error = `Refresh soft budget of ${softBudgetMs}ms reached before starting ${source.title}`;
+        break;
+      }
       const sourceEvent = await runRefreshForSource(env, source, extractorMode, fetchDoc, llmEnricher);
+      sourceEvents.push(sourceEvent);
       aggregate.sources_processed = (aggregate.sources_processed || 0) + 1;
       aggregate.parse_episodes = (aggregate.parse_episodes || 0) + (sourceEvent.parse_episodes || 0);
       aggregate.parse_chunks = (aggregate.parse_chunks || 0) + (sourceEvent.parse_chunks || 0);
@@ -263,12 +299,22 @@ export async function runRefresh(env: Bindings): Promise<RefreshEvent> {
     aggregate.ingest_ms = totalIngestMs;
     aggregate.enrich_ms = totalEnrichMs;
     aggregate.finalize_ms = totalFinalizeMs;
-    aggregate.status = (aggregate.sources_failed || 0) > 0 ? "failed" : "completed";
-    if (failedSourceEvent) {
+    if (aggregate.status !== "partial") {
+      aggregate.status = (aggregate.sources_failed || 0) > 0 ? "failed" : "completed";
+    }
+    if (failedSourceEvent && aggregate.status !== "partial") {
       aggregate.failed_step = failedSourceEvent.failed_step;
       aggregate.error = failedSourceEvent.error;
     }
     aggregate.duration_ms = elapsed(runStart);
+    await tryCompletePipelineLog(
+      env.DB,
+      aggregateLogId,
+      aggregate.new_episodes || 0,
+      aggregate.new_chunks || 0,
+      { event: aggregate, sources: sourceEvents },
+      aggregate.status === "partial" ? "partial" : "completed",
+    );
     console.log(JSON.stringify(aggregate));
     return aggregate;
   } catch (error) {
@@ -277,6 +323,7 @@ export async function runRefresh(env: Bindings): Promise<RefreshEvent> {
     aggregate.failed_step = "load_sources";
     aggregate.error = msg.substring(0, 500);
     aggregate.duration_ms = elapsed(runStart);
+    await tryFailPipelineLog(env.DB, aggregateLogId, msg, { event: aggregate, sources: sourceEvents });
     console.error(JSON.stringify(aggregate));
     return aggregate;
   }

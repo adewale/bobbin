@@ -1,4 +1,4 @@
-export type IngestionRunType = "refresh" | "manual_ingest" | "enrich" | "finalize";
+export type IngestionRunType = "refresh" | "refresh_cycle" | "manual_ingest" | "enrich" | "finalize";
 
 function serializePipelineReport(report?: unknown): string | null {
   if (report === undefined) return null;
@@ -40,6 +40,24 @@ export async function failIngestionLog(
     `UPDATE ingestion_log SET status = 'failed', completed_at = datetime('now'),
      error_message = ?, pipeline_report = ? WHERE id = ?`
   ).bind(error.substring(0, 500), serializePipelineReport(pipelineReport), logId).run();
+}
+
+export async function failRunningIngestionLogs(
+  db: D1Database,
+  runType: IngestionRunType,
+  sourceId: number | null,
+  error: string,
+): Promise<number> {
+  const result = await db.prepare(
+    `UPDATE ingestion_log
+     SET status = 'failed',
+         completed_at = datetime('now'),
+         error_message = ?
+     WHERE run_type = ?
+       AND status = 'running'
+       AND source_id IS ?`
+  ).bind(error.substring(0, 500), runType, sourceId).run();
+  return result.meta.changes || 0;
 }
 
 export async function getUnenrichedChunks(db: D1Database, limit: number) {

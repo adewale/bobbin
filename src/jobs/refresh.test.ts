@@ -44,9 +44,24 @@ describe("runRefresh", () => {
       run_type: string;
       pipeline_report: string | null;
     }>();
-    expect(logs.results.length).toBe(3);
-    expect(logs.results.every((log) => log.run_type === "refresh")).toBe(true);
+    expect(logs.results.length).toBe(4);
+    expect(logs.results.filter((log) => log.run_type === "refresh")).toHaveLength(3);
+    expect(logs.results.filter((log) => log.run_type === "refresh_cycle")).toHaveLength(1);
     expect(logs.results.every((log) => log.pipeline_report !== null)).toBe(true);
+  }, 20000);
+
+  it("creates a top-level refresh_cycle log that summarizes source runs", async () => {
+    const event = await runRefresh(makeRefreshTestEnv());
+    expect(event.status).toBe("completed");
+
+    const cycleLog = await env.DB.prepare(
+      "SELECT source_id, run_type, status, episodes_added, chunks_added, pipeline_report FROM ingestion_log WHERE run_type = 'refresh_cycle' ORDER BY id DESC LIMIT 1"
+    ).first<{ source_id: number | null; run_type: string; status: string; episodes_added: number; chunks_added: number; pipeline_report: string | null }>();
+
+    expect(cycleLog?.source_id).toBeNull();
+    expect(cycleLog?.run_type).toBe("refresh_cycle");
+    expect(cycleLog?.status).toBe("completed");
+    expect(cycleLog?.pipeline_report).toContain('"sources_processed":3');
   }, 20000);
 
   it("does not refresh the non-Komoroske field-notes doc", async () => {
@@ -66,5 +81,51 @@ describe("runRefresh", () => {
       "1WC16fr5iEwzpK8u11yvYd6cCHPvq6Ce4WnrkpJ49vYw",
       "1BZCiakRHDd2I337FmJv8RGcrcycapXPXN_wHPO5-DaA",
     ]));
+  }, 20000);
+
+  it("marks stale running refresh logs as failed before retrying the same source", async () => {
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO sources (id, google_doc_id, title, is_archive, active) VALUES (10, '1WC16fr5iEwzpK8u11yvYd6cCHPvq6Ce4WnrkpJ49vYw', 'Archive (Notes)', 1, 1)"),
+      env.DB.prepare("INSERT INTO ingestion_log (id, source_id, status, run_type) VALUES (55, 10, 'running', 'refresh')"),
+      env.DB.prepare("INSERT INTO ingestion_log (id, source_id, status, run_type) VALUES (56, NULL, 'running', 'refresh_cycle')"),
+    ]);
+
+    await runRefresh(makeRefreshTestEnv());
+
+    const recovered = await env.DB.prepare(
+      "SELECT id, status, error_message FROM ingestion_log WHERE id IN (55, 56) ORDER BY id ASC"
+    ).all<{ id: number; status: string; error_message: string | null }>();
+
+    expect(recovered.results).toEqual([
+      {
+        id: 55,
+        status: "failed",
+        error_message: "Marked failed by a newer refresh after the previous run stopped before cleanup",
+      },
+      {
+        id: 56,
+        status: "failed",
+        error_message: "Marked failed by a newer refresh after the previous run stopped before cleanup",
+      },
+    ]);
+  }, 20000);
+
+  it("stops before starting another source when the refresh soft budget is exhausted", async () => {
+    const event = await runRefresh({
+      ...makeRefreshTestEnv(),
+      __TEST_REFRESH_SOFT_BUDGET_MS: 1,
+    } as any);
+
+    expect(event.status).toBe("partial");
+    expect(event.sources_processed).toBe(1);
+    expect(event.sources_skipped).toBe(2);
+    expect(event.failed_step).toBe("budget_guard");
+
+    const logs = await env.DB.prepare(
+      "SELECT run_type, status FROM ingestion_log ORDER BY id ASC"
+    ).all<{ run_type: string; status: string }>();
+
+    expect(logs.results.filter((log) => log.run_type === "refresh")).toHaveLength(1);
+    expect(logs.results.filter((log) => log.run_type === "refresh_cycle" && log.status === "partial")).toHaveLength(1);
   }, 20000);
 });
