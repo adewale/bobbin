@@ -11,6 +11,7 @@ import { designRoutes } from "./routes/design";
 import { summaryRoutes } from "./routes/summaries";
 import { runRefresh } from "./jobs/refresh";
 import { handleEnrichmentBatch, type EnrichmentMessage } from "./jobs/queue-handler";
+import { isTuesdayNineAmLondon } from "./lib/london-cron";
 
 const app = new Hono<AppEnv>();
 
@@ -59,10 +60,18 @@ app.notFound((c) => {
 export default {
   fetch: app.fetch,
   async scheduled(
-    _event: ScheduledEvent,
+    event: ScheduledEvent,
     env: Bindings,
     ctx: ExecutionContext
   ) {
+    if (!isTuesdayNineAmLondon(event.scheduledTime)) {
+      console.log(JSON.stringify({
+        event: "refresh_skip",
+        reason: "not_target_london_time",
+        scheduled_time: new Date(event.scheduledTime).toISOString(),
+      }));
+      return;
+    }
     // ctx.waitUntil ensures async work (queue sends) completes before Worker terminates
     ctx.waitUntil(runRefresh(env));
   },
