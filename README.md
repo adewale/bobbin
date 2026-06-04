@@ -171,4 +171,4 @@ src/
 
 ## Licence
 
-MIT
+Released under the [MIT License](LICENSE).
