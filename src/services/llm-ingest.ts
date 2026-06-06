@@ -1,6 +1,8 @@
 import { slugify } from "../lib/slug";
 import { normalizeChunkText } from "./analysis-text";
 import type { Bindings } from "../types";
+import { aiGatewayOptions } from "./embeddings";
+import { recordCostEvent } from "./cost-events";
 
 export const LLM_EXTRACTOR_MODEL = "@cf/google/gemma-4-26b-a4b-it";
 export const LLM_PROMPT_VERSION = "episode-candidates-v1";
@@ -170,11 +172,11 @@ export function parseEpisodeLlmResponse(raw: string, chunks: EpisodeLlmChunkInpu
   return validated;
 }
 
-export async function generateEpisodeLlmCandidates(ai: Ai, input: EpisodeLlmInput): Promise<{ rawResponse: string; candidates: EpisodeLlmCandidate[] }> {
+export async function generateEpisodeLlmCandidates(ai: Ai, input: EpisodeLlmInput, gatewayId?: string): Promise<{ rawResponse: string; candidates: EpisodeLlmCandidate[] }> {
   const result = await ai.run(LLM_EXTRACTOR_MODEL as any, {
     messages: buildEpisodeLlmMessages(input),
     temperature: 0,
-  } as any);
+  } as any, aiGatewayOptions(gatewayId, `llm-episode:${input.episodeId}`));
   const rawResponse = extractResponseText(result);
   return {
     rawResponse,
@@ -242,7 +244,8 @@ export async function enrichEpisodesWithLlm(env: Bindings, sourceId: number, epi
       title: episode.title,
       normalizedText,
       chunks: episode.chunks,
-    });
+    }, env.AI_GATEWAY_ID);
+    await recordCostEvent(env.DB, { product: "workers_ai", operation: "llm", route: "llm-ingest", units: 1, detail: { episodeId: episode.id } });
     await persistEpisodeLlmCandidates(
       env.DB,
       sourceId,

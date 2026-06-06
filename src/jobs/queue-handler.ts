@@ -42,9 +42,61 @@ const RETRYABLE_QUEUE_ERROR_PATTERNS = [
   "504",
 ];
 
+export function queueRetryDelaySeconds(
+  attempts: number | undefined,
+  random: () => number = Math.random,
+): number {
+  const safeAttempts = Math.max(1, attempts ?? 1);
+  const maxDelay = Math.min(300, 30 * 2 ** (safeAttempts - 1));
+  const jittered = Math.floor(maxDelay / 2 + random() * (maxDelay / 2));
+  return Math.max(1, jittered);
+}
+
 export function shouldRetryQueueMessage(error: unknown): boolean {
   const message = String(error);
   return RETRYABLE_QUEUE_ERROR_PATTERNS.some((pattern) => message.includes(pattern));
+}
+
+export function queueJobKey(body: EnrichmentMessage): string {
+  if (body.type === "compute-related") return `compute-related:${body.topicId ?? ""}`;
+  if (body.type === "assign-ngram") return `assign-ngram:${(body.phrase ?? "").trim().toLowerCase()}`;
+  if (body.type === "extract-ngrams") return "extract-ngrams";
+  if (body.type === "enrich-batch") return `enrich-batch:${[...(body.chunkIds ?? [])].sort((a, b) => a - b).join(",")}`;
+  if (body.type === "llm-episode-enrich") return `llm-episode-enrich:${body.episodeId ?? ""}`;
+  return JSON.stringify(body);
+}
+
+async function beginQueueJob(db: D1Database, messageId: string | undefined, body: EnrichmentMessage, attempts: number | undefined): Promise<"run" | "completed"> {
+  const jobKey = queueJobKey(body);
+  const existing = await db.prepare("SELECT status FROM queue_message_state WHERE job_key = ?").bind(jobKey).first<{ status: string }>();
+  if (existing?.status === "completed") return "completed";
+
+  await db.prepare(
+    `INSERT INTO queue_message_state (job_key, message_id, message_type, status, attempts, updated_at)
+     VALUES (?, ?, ?, 'running', ?, datetime('now'))
+     ON CONFLICT(job_key) DO UPDATE SET
+       message_id = excluded.message_id,
+       status = CASE WHEN queue_message_state.status = 'completed' THEN 'completed' ELSE 'running' END,
+       attempts = excluded.attempts,
+       updated_at = datetime('now')`
+  ).bind(jobKey, messageId ?? null, body.type, Math.max(1, attempts ?? 1)).run();
+  return "run";
+}
+
+async function completeQueueJob(db: D1Database, body: EnrichmentMessage): Promise<void> {
+  await db.prepare(
+    `UPDATE queue_message_state
+     SET status = 'completed', last_error = NULL, updated_at = datetime('now'), completed_at = datetime('now')
+     WHERE job_key = ?`
+  ).bind(queueJobKey(body)).run();
+}
+
+async function failQueueJob(db: D1Database, body: EnrichmentMessage, status: "retrying" | "failed", error: unknown): Promise<void> {
+  await db.prepare(
+    `UPDATE queue_message_state
+     SET status = ?, last_error = ?, updated_at = datetime('now')
+     WHERE job_key = ?`
+  ).bind(status, (error instanceof Error ? error.message : String(error)).substring(0, 500), queueJobKey(body)).run();
 }
 
 async function handleComputeRelated(db: D1Database, topicId: number) {
@@ -202,6 +254,19 @@ export async function handleEnrichmentBatch(
     const startedAt = Date.now();
     const context = queueMessageContext(msg.body);
     try {
+      const jobState = await beginQueueJob(env.DB, (msg as { id?: string }).id, msg.body, (msg as { attempts?: number }).attempts);
+      if (jobState === "completed") {
+        msg.ack();
+        console.log(JSON.stringify({
+          event: "queue_message",
+          message_type: msg.body.type,
+          status: "skipped_completed",
+          elapsed_ms: Date.now() - startedAt,
+          ...context,
+        }));
+        return;
+      }
+
       let counts: Record<string, number> = {};
       if (msg.body.type === "compute-related" && msg.body.topicId) {
         counts = await handleComputeRelated(env.DB, msg.body.topicId);
@@ -215,6 +280,7 @@ export async function handleEnrichmentBatch(
         await enrichEpisodeIdsWithLlm(env, [msg.body.episodeId]);
         counts = { episodes_processed: 1 };
       }
+      await completeQueueJob(env.DB, msg.body);
       msg.ack();
       console.log(JSON.stringify({
         event: "queue_message",
@@ -235,8 +301,13 @@ export async function handleEnrichmentBatch(
         error: e instanceof Error ? e.message : String(e),
         ...context,
       }));
+      try {
+        await failQueueJob(env.DB, msg.body, retryable ? "retrying" : "failed", e);
+      } catch (stateError) {
+        console.error("Queue job state update failed:", stateError);
+      }
       if (retryable) {
-        msg.retry();
+        msg.retry({ delaySeconds: queueRetryDelaySeconds((msg as { attempts?: number }).attempts) });
       } else {
         msg.ack();
       }

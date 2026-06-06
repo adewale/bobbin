@@ -47,7 +47,7 @@ export async function getRefreshSources(db: D1Database): Promise<SourceRow[]> {
      WHERE title NOT LIKE '%(Empty)%'
        AND active = 1
        AND google_doc_id IN (${TRUSTED_DOC_IDS.map(() => "?").join(",")})
-     ORDER BY is_archive DESC, created_at ASC, id ASC`
+     ORDER BY is_archive ASC, created_at ASC, id ASC`
   ).bind(...TRUSTED_DOC_IDS).all<SourceRow>();
   return result.results;
 }

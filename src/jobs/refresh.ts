@@ -55,7 +55,7 @@ interface RefreshPipelineReport {
 
 type RefreshFetcher = typeof fetchGoogleDoc;
 type RefreshLlmEnricher = typeof enrichEpisodesWithLlm;
-const DEFAULT_REFRESH_SOFT_BUDGET_MS = 12 * 60 * 1000;
+const DEFAULT_REFRESH_SOFT_BUDGET_MS = 9 * 60 * 1000;
 
 function elapsed(start: number): number {
   return Math.round(Date.now() - start);

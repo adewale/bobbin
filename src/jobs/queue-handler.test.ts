@@ -7,7 +7,7 @@ import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import { env } from "cloudflare:test";
 import { applyTestMigrations } from "../../test/helpers/migrations";
 import { slugify } from "../lib/slug";
-import { handleEnrichBatch, handleEnrichmentBatch, shouldRetryQueueMessage } from "./queue-handler";
+import { handleEnrichBatch, handleEnrichmentBatch, queueRetryDelaySeconds, shouldRetryQueueMessage } from "./queue-handler";
 
 beforeEach(async () => {
   await applyTestMigrations(env.DB);
@@ -412,6 +412,67 @@ describe("queue message event logs", () => {
     expect(payload.topic_id).toBe(1);
   });
 
+  it("acks and skips a queue job that already completed", async () => {
+    await env.DB.prepare(
+      "INSERT INTO queue_message_state (job_key, message_id, message_type, status) VALUES ('compute-related:1', 'old-msg', 'compute-related', 'completed')"
+    ).run();
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const ack = vi.fn();
+    const retry = vi.fn();
+
+    await handleEnrichmentBatch(
+      {
+        messages: [
+          {
+            id: "new-msg",
+            attempts: 1,
+            body: { type: "compute-related", topicId: 1 },
+            ack,
+            retry,
+          },
+        ],
+      } as any,
+      { DB: env.DB, ENRICHMENT_QUEUE: {} } as any,
+    );
+
+    expect(ack).toHaveBeenCalledTimes(1);
+    expect(retry).not.toHaveBeenCalled();
+    const payload = JSON.parse(String(logSpy.mock.calls[0][0]));
+    expect(payload.status).toBe("skipped_completed");
+  });
+
+  it("records queue job state for successful messages", async () => {
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('ecosystem', 'ecosystem', 2)"),
+      env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('platform', 'platform', 2)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 1)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (2, 1)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 2)"),
+    ]);
+
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    await handleEnrichmentBatch(
+      {
+        messages: [
+          {
+            id: "msg-state-ok",
+            attempts: 1,
+            body: { type: "compute-related", topicId: 1 },
+            ack: vi.fn(),
+            retry: vi.fn(),
+          },
+        ],
+      } as any,
+      { DB: env.DB, ENRICHMENT_QUEUE: {} } as any,
+    );
+
+    const state = await env.DB.prepare(
+      "SELECT message_id, message_type, status, attempts FROM queue_message_state WHERE job_key = 'compute-related:1'"
+    ).first<{ message_id: string; message_type: string; status: string; attempts: number }>();
+    expect(state).toEqual({ message_id: "msg-state-ok", message_type: "compute-related", status: "completed", attempts: 1 });
+  });
+
   it("emits one wide JSON error line and retries retryable failures", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const ack = vi.fn();
@@ -422,6 +483,7 @@ describe("queue message event logs", () => {
         messages: [
           {
             body: { type: "compute-related", topicId: 1 },
+            attempts: 2,
             ack,
             retry,
           },
@@ -438,10 +500,13 @@ describe("queue message event logs", () => {
     );
 
     expect(retry).toHaveBeenCalledTimes(1);
+    const retryOptions = retry.mock.calls[0][0];
+    expect(retryOptions.delaySeconds).toBeGreaterThanOrEqual(30);
+    expect(retryOptions.delaySeconds).toBeLessThan(60);
     expect(ack).not.toHaveBeenCalled();
-    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(errorSpy.mock.calls.length).toBeGreaterThanOrEqual(1);
 
-    const payload = JSON.parse(String(errorSpy.mock.calls[0][0]));
+    const payload = JSON.parse(String(errorSpy.mock.calls.find((call) => String(call[0]).startsWith("{"))?.[0]));
     expect(payload.event).toBe("queue_message");
     expect(payload.message_type).toBe("compute-related");
     expect(payload.status).toBe("error");
@@ -452,6 +517,15 @@ describe("queue message event logs", () => {
 });
 
 describe("queue retry policy", () => {
+  it("computes bounded exponential retry delays with equal jitter", () => {
+    expect(queueRetryDelaySeconds(undefined, () => 0)).toBe(15);
+    expect(queueRetryDelaySeconds(1, () => 0.999)).toBe(29);
+    expect(queueRetryDelaySeconds(2, () => 0)).toBe(30);
+    expect(queueRetryDelaySeconds(2, () => 0.999)).toBe(59);
+    expect(queueRetryDelaySeconds(5, () => 0)).toBe(150);
+    expect(queueRetryDelaySeconds(5, () => 0.999)).toBe(299);
+  });
+
   it("retries transient D1 and infrastructure errors", () => {
     expect(shouldRetryQueueMessage(new Error("D1_ERROR: Network connection lost"))).toBe(true);
     expect(shouldRetryQueueMessage(new Error("SQLITE_BUSY: database is locked"))).toBe(true);

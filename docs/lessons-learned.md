@@ -964,3 +964,115 @@ The lesson is: **the comparison harness for a major pipeline rewrite must includ
 86. Worker rollback and data rollback are separate systems; a mutable D1-backed pipeline needs an explicit data rollback story.
 87. Cloudflare operational constraints should shape the pipeline architecture up front, especially around D1 export/import, versioned Worker deploys, queue retry semantics, and Workflow orchestration.
 88. A major pipeline comparison harness must compare published outputs and user-visible surfaces, not only internal counters.
+
+## What we learned in the Cloudflare Doctor audit and cost-control pass
+
+The Cloudflare Doctor audit did not find a new product feature to build. It found places where the system's Cloudflare access patterns were more important than the application logic around them: public search calling paid AI/vector primitives, queue retries without a durable dead-letter story, public analytical endpoints whose D1 cost scaled with row scans, and scanner output that looked scary until it was checked against source context.
+
+### Every search branch must enforce the same contract
+
+The HTML search route had two retrieval branches: FTS and Vectorize. FTS applied `before:`, `after:`, `year:`, and `topic:` filters in SQL. Vector search embedded the query, asked Vectorize for the top matches, hydrated those chunks from D1, and merged them back in. The problem was not that Vectorize existed; the problem was that the vector branch skipped the same parsed filters the FTS branch enforced.
+
+That is how a route can be "mostly correct" and still violate its own user contract. If an operator is part of the query language, every retrieval path must honor it before merge/rerank. Shared filter builders are safer than duplicated route logic because they make it harder for one branch to drift.
+
+Longer-term, Vectorize metadata filters can move some of this work before `topK`, but the first correctness fix is simpler: post-hydration vector rows must pass the same filters as FTS rows.
+
+### Paid primitives in public routes need explicit abuse and cost boundaries
+
+Search is not just an HTTP route. In Bobbin it can mean:
+
+- a Workers AI embedding request
+- a Vectorize query
+- a D1 FTS query
+- a D1 hydration query
+- SSR rendering
+
+That means public search is also a public cost surface. Caching HTML for a few minutes helps repeated responses, but it is not a substitute for an explicit rate limit, query length cap, and usage telemetry. The important lesson is: **if a public route calls Workers AI, Vectorize, Browser Run, Images, or any other metered primitive, abuse and cost controls are part of the feature contract, not operational garnish**.
+
+### Analytical endpoints need bounded windows, not just bounded `LIMIT`s
+
+`/api/word-stats?limit=3` looked harmless because the response was tiny. The work behind it was not necessarily tiny: date-filtered word stats joined chunk words, chunks, and episodes, grouped by word, and then returned only the top rows. A small response limit caps payload size; it does not cap rows scanned, grouped, or billed.
+
+The useful fix shape was to bound both dimensions:
+
+- clamp the public `limit`
+- validate date strings by shape before using them
+- require date-filtered windows to stay within a maximum range
+- cache public responses where the data can tolerate short staleness
+
+The lesson is: **for public analytics APIs, constrain the work, not just the output**.
+
+### Queue retries need a destination after failure, not only another attempt
+
+The enrichment queue already distinguished retryable errors from deterministic ones, which was good. The missing part was the afterlife of repeatedly failing retryable messages. Without a dead-letter queue and replay notes, exhausted messages are either invisible or require operator folklore to recover.
+
+Adding delayed retries, a DLQ, and replay documentation changed the operational contract. Now a transient failure gets bounded exponential backoff, and an exhausted message lands somewhere inspectable instead of disappearing into a vague failure state.
+
+The lesson is: **`msg.retry()` is not a reliability strategy by itself; queues need bounded retries, dead-letter visibility, and a reviewed replay path**.
+
+### Read-only audits still need triage discipline
+
+The static Cloudflare Doctor scan produced many credential-looking and platform-risk-looking leads. Several were false positives: placeholder strings, environment reads, and test fixtures. That was expected. The scanner is useful because it makes suspicious patterns cheap to find, not because every match is a confirmed incident.
+
+The practical workflow is:
+
+1. run the scanner as a read-only lead generator
+2. classify each high-risk-looking hit against source context
+3. promote only confirmed issues into findings
+4. keep dashboard/account state as "not inspected" unless there is explicit evidence
+
+The lesson is: **heuristic scanner output is evidence to investigate, not evidence to convict**.
+
+### Cloudflare config is product behavior
+
+The audit findings that mattered were not all in TypeScript. `wrangler.jsonc` and `wrangler.remote.jsonc` defined whether search had a rate-limit binding and whether the enrichment queue had retry delay and DLQ behavior. Those settings materially changed user-facing reliability and cost exposure.
+
+That makes Cloudflare config part of the application, not deployment trivia. Tests can prove the code calls `SEARCH_RATE_LIMIT` or calculates retry delays, but repo review also has to inspect the bindings and queue consumer config that make those code paths real.
+
+The lesson is: **for Workers apps, bindings and queue consumer settings are part of the product contract and deserve the same review attention as route code**.
+
+### Updated lesson list
+
+89. Every search branch must enforce the same parsed-query contract; vector, FTS, keyword, and hydrated rows cannot drift.
+90. Public routes that call metered Cloudflare primitives need explicit abuse and cost boundaries.
+91. Public analytics endpoints should bound rows scanned and time windows, not only response size.
+92. Queue retry policy needs delayed backoff, dead-letter visibility, and replay documentation.
+93. Static scanner output is a lead generator; confirmed findings require source-context triage and explicit evidence.
+94. Cloudflare bindings and queue consumer config are product behavior, not deployment trivia.
+
+### Production state is a first-class audit surface
+
+The follow-up production check found something more urgent than a code smell: stale `running` ingestion logs from a refresh that had stopped before cleanup. The database still had complete-looking content in many places, but the operational state said a job was in progress days later. That is dangerous because it hides whether cron is healthy, whether a source is stale, and whether operators should trust the latest pipeline metrics.
+
+The fix was not only to mark stale rows as failed. The pipeline had to make that state harder to create again: refresh now prioritizes the current source before archives, uses a tighter soft budget, records queue job state, and treats stale production logs as an incident signal rather than harmless historical noise.
+
+The lesson is: **production health is not just whether pages return 200; pipeline state tables, source freshness, and stale “running” rows are part of the product’s truth**.
+
+### Backoff without jitter can become a coordinated retry spike
+
+Delayed retries were an improvement over hot retries, but deterministic exponential delays still synchronize messages that fail together. If a D1, AI, Vectorize, or deployment incident affects many messages at once, fixed 30/60/120 second retries can cause a thundering herd right when the dependency is trying to recover.
+
+The retry policy now uses bounded exponential backoff with equal jitter. That is a small implementation detail with a large operational effect: retry pressure spreads out while still giving operators predictable upper bounds.
+
+The lesson is: **retry delay needs jitter; deterministic backoff is only half a retry strategy**.
+
+### Idempotency needs a durable record, not just careful handler code
+
+Queue handlers can be written to be careful, but retries and duplicate deliveries are platform realities. The safer shape is to record a durable job key, message id, status, attempts, and last error. That gives the handler a way to skip completed work and gives operators a way to inspect what happened.
+
+This does not replace domain-specific idempotency for every mutation, but it changes the default from “hope this message is only handled once” to “there is a durable state row for this job.”
+
+The lesson is: **queue idempotency should be visible in data, not implicit in control flow**.
+
+### Precompute public analytics paths that users naturally repeat
+
+Bounded date windows prevent unlimited row scans, but popular analytical windows are still predictable: years and months. Those should not repeatedly scan `chunk_words` if the corpus only changes during ingestion/finalization. Precomputing period word stats during finalization shifts work from public reads to controlled pipeline writes.
+
+The lesson is: **if a public analytics query maps to a stable period, precompute it during the pipeline instead of re-deriving it on every request**.
+
+### Updated lesson list addendum
+
+95. Production pipeline state tables are part of health; stale `running` rows are incidents, not bookkeeping noise.
+96. Retry backoff should include jitter to avoid synchronized recovery spikes.
+97. Queue idempotency needs durable job state that operators can inspect.
+98. Stable public analytics periods should be precomputed during pipeline finalization, not repeatedly scanned on demand.

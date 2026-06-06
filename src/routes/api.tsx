@@ -22,8 +22,55 @@ import { persistChunkEmbeddingCache } from "../services/topic-similarity";
 import { normalizeTopicExtractorMode } from "../services/yake-runtime";
 import { runRefresh } from "../jobs/refresh";
 import { auditCorpusInvariants, repairDerivedCorpusState } from "../db/corpus-maintenance";
+import { detectWordStatsPeriod } from "../services/word-stats-periods";
+import { chunkVectorMetadata } from "../services/vector-metadata";
+import { generateEmbeddings } from "../services/embeddings";
+import { recordCostEvent } from "../services/cost-events";
 
 const api = new Hono<AppEnv>();
+
+const WORD_STATS_DEFAULT_LIMIT = 200;
+const WORD_STATS_MAX_LIMIT = 200;
+const WORD_STATS_MAX_WINDOW_DAYS = 366;
+
+function clampPublicLimit(value: string | undefined, defaultValue: number, max: number): number {
+  return Math.min(Math.max(safeParseInt(value, defaultValue), 1), max);
+}
+
+function parseIsoDate(value: string | undefined): Date | null | undefined {
+  if (!value) return undefined;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value ? null : parsed;
+}
+
+function formatIsoDate(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function addDays(date: Date, days: number): Date {
+  const next = new Date(date.getTime());
+  next.setUTCDate(next.getUTCDate() + days);
+  return next;
+}
+
+function normalizeWordStatsWindow(fromRaw: string | undefined, toRaw: string | undefined) {
+  const fromDate = parseIsoDate(fromRaw);
+  const toDate = parseIsoDate(toRaw);
+  if (fromDate === null || toDate === null) return { error: "Dates must use YYYY-MM-DD" };
+  if (!fromDate && !toDate) return { from: undefined, to: undefined };
+
+  const from = fromDate ?? addDays(toDate!, -WORD_STATS_MAX_WINDOW_DAYS);
+  const to = toDate ?? addDays(fromDate!, WORD_STATS_MAX_WINDOW_DAYS);
+  if (from > to) return { error: "from must be before or equal to to" };
+
+  const days = Math.floor((to.getTime() - from.getTime()) / 86_400_000);
+  if (days > WORD_STATS_MAX_WINDOW_DAYS) {
+    return { error: `Date window must be ${WORD_STATS_MAX_WINDOW_DAYS} days or less` };
+  }
+
+  return { from: formatIsoDate(from), to: formatIsoDate(to) };
+}
 
 function getFetchDoc(c: { env: AppEnv["Bindings"] }): typeof fetchGoogleDoc {
   return typeof (c.env as any).__TEST_FETCH_GOOGLE_DOC === "function"
@@ -360,28 +407,40 @@ api.get("/embed", async (c) => {
   const denied = requireAuth(c);
   if (denied) return denied;
 
-  const limit = safeParseInt(c.req.query("limit"), 10);
+  const limit = Math.min(Math.max(safeParseInt(c.req.query("limit"), 10), 1), 100);
+  const offset = Math.max(safeParseInt(c.req.query("offset"), 0), 0);
 
   try {
     const chunks = await c.env.DB.prepare(
-      "SELECT id, content_plain, vector_id FROM chunks LIMIT ?"
-    ).bind(limit).all();
+      `SELECT c.id, c.content_plain, c.vector_id, e.published_date, e.year,
+              COALESCE(json_group_array(t.slug) FILTER (WHERE t.slug IS NOT NULL), '[]') AS topic_slugs
+       FROM chunks c
+       JOIN episodes e ON c.episode_id = e.id
+       LEFT JOIN chunk_topics ct ON ct.chunk_id = c.id
+       LEFT JOIN topics t ON t.id = ct.topic_id AND t.hidden = 0 AND t.display_suppressed = 0
+       WHERE c.vector_id IS NOT NULL
+       GROUP BY c.id
+       ORDER BY c.id ASC
+       LIMIT ? OFFSET ?`
+    ).bind(limit, offset).all();
 
     if (!chunks.results.length) return c.json({ status: "no chunks to embed" });
 
     // P1: batch embedding instead of per-chunk calls
     const texts = (chunks.results as any[]).map((c) => c.content_plain);
-    const result = await c.env.AI.run("@cf/baai/bge-base-en-v1.5", { text: texts });
-    await persistChunkEmbeddingCache(c.env.DB, chunks.results as Array<{ id: number }>, (result as any).data);
+    const embeddings = await generateEmbeddings(c.env.AI, texts, c.env.AI_GATEWAY_ID, `embed:${offset}:${limit}`);
+    await recordCostEvent(c.env.DB, { product: "workers_ai", operation: "embedding", route: "/api/embed", units: texts.length });
+    await persistChunkEmbeddingCache(c.env.DB, chunks.results as Array<{ id: number }>, embeddings);
 
     const vectors = (chunks.results as any[]).map((chunk, i) => ({
       id: chunk.vector_id,
-      values: (result as any).data[i],
-      metadata: { chunkId: chunk.id },
+      values: embeddings[i],
+      metadata: chunkVectorMetadata(chunk),
     }));
 
     await c.env.VECTORIZE.upsert(vectors);
-    return c.json({ status: "ok", embedded: vectors.length });
+    await recordCostEvent(c.env.DB, { product: "vectorize", operation: "upsert", route: "/api/embed", units: vectors.length * ((vectors[0]?.values as number[] | undefined)?.length ?? 768) });
+    return c.json({ status: "ok", embedded: vectors.length, offset, nextOffset: offset + vectors.length });
   } catch (e: any) {
     console.error("Embed error:", e);
     return c.json({ error: "Embedding failed" }, 500);
@@ -675,32 +734,42 @@ api.get("/topics", async (c) => {
 
 // Reactive API: word stats with date filtering
 api.get("/word-stats", async (c) => {
-  const from = c.req.query("from");
-  const to = c.req.query("to");
-  const limit = safeParseInt(c.req.query("limit"), 200);
+  const window = normalizeWordStatsWindow(c.req.query("from"), c.req.query("to"));
+  if ("error" in window) return c.json({ error: window.error }, 400);
+
+  const limit = clampPublicLimit(c.req.query("limit"), WORD_STATS_DEFAULT_LIMIT, WORD_STATS_MAX_LIMIT);
 
   let query: string;
   let binds: any[];
 
-  if (from || to) {
+  const precomputedPeriod = detectWordStatsPeriod(window.from, window.to);
+  if (precomputedPeriod) {
+    query = `SELECT word, total_count, doc_count
+       FROM word_stats_period
+       WHERE period_type = ? AND period_key = ?
+       ORDER BY total_count DESC
+       LIMIT ?`;
+    binds = [precomputedPeriod.periodType, precomputedPeriod.periodKey, limit];
+  } else if (window.from || window.to) {
     query = `SELECT cw.word, SUM(cw.count) as total_count, COUNT(DISTINCT cw.chunk_id) as doc_count
        FROM chunk_words cw
        JOIN chunks c ON cw.chunk_id = c.id
        JOIN episodes e ON c.episode_id = e.id
-       WHERE 1=1
-       ${from ? "AND e.published_date >= ?" : ""}
-       ${to ? "AND e.published_date <= ?" : ""}
+       WHERE e.published_date >= ?
+         AND e.published_date <= ?
        GROUP BY cw.word
        ORDER BY total_count DESC
        LIMIT ?`;
-    binds = [...(from ? [from] : []), ...(to ? [to] : []), limit];
+    binds = [window.from, window.to, limit];
   } else {
     query = "SELECT word, total_count, doc_count FROM word_stats ORDER BY total_count DESC LIMIT ?";
     binds = [limit];
   }
 
   const results = await c.env.DB.prepare(query).bind(...binds).all();
-  return c.json({ words: results.results });
+  const res = c.json({ words: results.results });
+  res.headers.set("Cache-Control", "public, max-age=300, s-maxage=3600");
+  return res;
 });
 
 export { api as apiRoutes };

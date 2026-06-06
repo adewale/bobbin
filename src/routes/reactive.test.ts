@@ -41,5 +41,37 @@ describe("GET /api/word-stats", () => {
     const words = data.words.map((w: any) => w.word);
     expect(words).toContain("platform");
   });
+
+  it("clamps public result limits", async () => {
+    const res = await SELF.fetch("http://localhost/api/word-stats?limit=1");
+    const data = (await res.json()) as any;
+    expect(data.words).toHaveLength(1);
+  });
+
+  it("uses precomputed period stats for exact year windows", async () => {
+    await env.DB.prepare(
+      "INSERT INTO word_stats_period (period_type, period_key, word, total_count, doc_count) VALUES ('year', '2024', 'precomputed', 99, 9)"
+    ).run();
+
+    const res = await SELF.fetch(
+      "http://localhost/api/word-stats?from=2024-01-01&to=2024-12-31&limit=1"
+    );
+    const data = (await res.json()) as any;
+    expect(data.words).toEqual([{ word: "precomputed", total_count: 99, doc_count: 9 }]);
+  });
+
+  it("rejects broad date windows that would scan too many D1 rows", async () => {
+    const res = await SELF.fetch(
+      "http://localhost/api/word-stats?from=2020-01-01&to=2024-04-01"
+    );
+    const data = (await res.json()) as any;
+    expect(res.status).toBe(400);
+    expect(data.error).toContain("Date window");
+  });
+
+  it("adds cache headers for public word stats", async () => {
+    const res = await SELF.fetch("http://localhost/api/word-stats");
+    expect(res.headers.get("Cache-Control")).toContain("s-maxage=3600");
+  });
 });
 

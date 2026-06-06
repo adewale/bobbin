@@ -64,7 +64,7 @@ describe("runRefresh", () => {
     expect(cycleLog?.pipeline_report).toContain('"sources_processed":3');
   }, 20000);
 
-  it("does not refresh the non-Komoroske field-notes doc", async () => {
+  it("refreshes the current doc before archives and skips the non-Komoroske field-notes doc", async () => {
     const fetchedDocIds: string[] = [];
 
     await runRefresh(makeRefreshTestEnv(async (docId: string) => {
@@ -76,6 +76,7 @@ describe("runRefresh", () => {
     }));
 
     expect(fetchedDocIds).not.toContain("1IPwKwmEgrL6R2lVe9IaPIu0sPB4O_ZNy8ZA0N0W3yw0");
+    expect(fetchedDocIds[0]).toBe("1xRiCqpy3LMAgEsHdX-IA23j6nUISdT5nAJmtKbk9wNA");
     expect(new Set(fetchedDocIds)).toEqual(new Set([
       "1xRiCqpy3LMAgEsHdX-IA23j6nUISdT5nAJmtKbk9wNA",
       "1WC16fr5iEwzpK8u11yvYd6cCHPvq6Ce4WnrkpJ49vYw",

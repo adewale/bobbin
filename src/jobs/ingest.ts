@@ -21,6 +21,9 @@ import {
   tokenizeNormalizedText,
 } from "../services/analysis-text";
 import { rebuildWordStatsAggregates } from "../services/word-stats";
+import { rebuildWordStatsPeriods } from "../services/word-stats-periods";
+import { chunkVectorMetadata } from "../services/vector-metadata";
+import { recordCostEvent } from "../services/cost-events";
 import { extractCorpusNgrams } from "../services/ngram-extractor";
 import { extractPMIPhrases } from "../services/pmi-phrases";
 import { computeTopicDisplayDecisions, isNoiseTopic } from "../services/topic-quality";
@@ -1838,9 +1841,13 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
 
   await runStep("word_stats_rebuild", steps, async () => {
     await rebuildWordStatsAggregates(db);
+    const periodRows = await rebuildWordStatsPeriods(db);
     result.word_stats_rebuilt = true;
     const words = await db.prepare("SELECT COUNT(*) as c FROM word_stats").first<{ c: number }>();
-    return { detail: `${words?.c || 0} word stats rows`, counts: { word_stats_rows: words?.c || 0 } };
+    return {
+      detail: `${words?.c || 0} word stats rows, ${periodRows} period rows`,
+      counts: { word_stats_rows: words?.c || 0, word_stats_period_rows: periodRows },
+    };
   });
 
   await runStep("topic_distinctiveness", steps, async () => {
@@ -1889,7 +1896,7 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
   await runStep("alias_merge", steps, async () => {
     const dirtyTopicIds = await loadDirtyOrBootstrapTopicIds(db);
     if (dirtyTopicIds.length === 0) {
-      return { detail: "0 dirty topics", counts: { topics_considered: 0, topics_merged: 0 } };
+      return { detail: "0 dirty topics", counts: { topics_considered: 0, topics_merged: 0, canonical_topics_created: 0 } };
     }
 
     const aliasMap = buildKnownEntityAliasMap();
@@ -1914,10 +1921,11 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
         await db.prepare(
           "INSERT OR IGNORE INTO topics (name, slug, kind) VALUES (?, ?, 'entity')"
         ).bind(canonical.name, canonical.slug).run();
-        keep = await db.prepare(
+        const inserted = await db.prepare(
           "SELECT id, name, slug, kind, usage_count FROM topics WHERE slug = ?"
         ).bind(canonical.slug).first<{ id: number; name: string; slug: string; kind: string; usage_count: number }>();
-        if (keep) {
+        if (inserted) {
+          keep = inserted;
           created += 1;
           bySlug.set(canonical.slug, keep);
         }
@@ -2219,7 +2227,7 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
     const dirtyTopicIds = await loadDirtyOrBootstrapTopicIds(db);
     const affectedTopicIds = await loadAffectedTopicIds(db, dirtyTopicIds);
     if (affectedTopicIds.length === 0) {
-      return { detail: "0 dirty topics", counts: { topics_updated: 0 } };
+      return { detail: "0 dirty topics", counts: { topics_updated: 0, embeddings_cached: 0 } };
     }
     const updated = await recomputeTopicEmbeddingCache(db, affectedTopicIds);
     return {
@@ -2411,22 +2419,29 @@ export async function ingestParsedEpisodes(
         const unembed = await collectInBatches(insertedChunkIds, async (batch) => {
           const placeholders = sqlPlaceholders(batch.length);
           const rows = await env.DB.prepare(
-            `SELECT id, content_plain, vector_id
-             FROM chunks
-             WHERE id IN (${placeholders}) AND vector_id IS NOT NULL`
-          ).bind(...batch).all<{ id: number; content_plain: string; vector_id: string | null }>();
+            `SELECT c.id, c.content_plain, c.vector_id, e.published_date, e.year,
+                    COALESCE(json_group_array(t.slug) FILTER (WHERE t.slug IS NOT NULL), '[]') AS topic_slugs
+             FROM chunks c
+             JOIN episodes e ON c.episode_id = e.id
+             LEFT JOIN chunk_topics ct ON ct.chunk_id = c.id
+             LEFT JOIN topics t ON t.id = ct.topic_id AND t.hidden = 0 AND t.display_suppressed = 0
+             WHERE c.id IN (${placeholders}) AND c.vector_id IS NOT NULL
+             GROUP BY c.id`
+          ).bind(...batch).all<{ id: number; content_plain: string; vector_id: string; published_date: string; year: number; topic_slugs: string }>();
           return rows.results;
         });
         if (unembed.length > 0) {
           const texts = unembed.map((c) => c.content_plain);
-          const embeddings = await generateEmbeddings(env.AI, texts);
+          const embeddings = await generateEmbeddings(env.AI, texts, env.AI_GATEWAY_ID, `ingest:${insertedChunkIds[0] ?? "none"}:${insertedChunkIds.length}`);
+          await recordCostEvent(env.DB, { product: "workers_ai", operation: "embedding", route: "ingest", units: texts.length });
           await persistChunkEmbeddingCache(env.DB, unembed as Array<{ id: number }>, embeddings);
           const vectors = unembed.map((c, i) => ({
             id: c.vector_id,
             values: embeddings[i],
-            metadata: { chunkId: c.id },
+            metadata: chunkVectorMetadata(c),
           }));
           await env.VECTORIZE.upsert(vectors);
+          await recordCostEvent(env.DB, { product: "vectorize", operation: "upsert", route: "ingest", units: vectors.length * ((vectors[0]?.values as number[] | undefined)?.length ?? 768) });
         }
       }
     } catch (e) {

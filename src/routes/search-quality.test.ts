@@ -7,6 +7,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { SELF, env } from "cloudflare:test";
 import { applyTestMigrations } from "../../test/helpers/migrations";
+import worker from "../index";
 
 async function seedSearchCorpus() {
   await env.DB.batch([
@@ -161,6 +162,70 @@ describe("Search with date filters", () => {
     // Tyler Cowen chunk is in Ep 1 (2025-01-06) — excluded
     expect(html).not.toContain("Tyler Cowen");
   });
+
+  it("applies date and topic filters to hydrated vector hits before merging", async () => {
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO episodes (source_id, slug, title, published_date, year, month, day, chunk_count) VALUES (1, '2024-12-30', 'Old Ep', '2024-12-30', 2024, 12, 30, 1)"
+      ),
+      env.DB.prepare(
+        "INSERT INTO episodes (source_id, slug, title, published_date, year, month, day, chunk_count) VALUES (1, '2025-03-03', 'Filtered Ep', '2025-03-03', 2025, 3, 3, 2)"
+      ),
+      env.DB.prepare(
+        `INSERT INTO chunks (episode_id, slug, title, content, content_plain, vector_id, position)
+         VALUES (3, 'old-vector-hit', 'Out-of-year vector hit', 'No literal match here.', 'No literal match here.', 'vec-old', 0)`
+      ),
+      env.DB.prepare(
+        `INSERT INTO chunks (episode_id, slug, title, content, content_plain, vector_id, position)
+         VALUES (4, 'kept-vector-hit', 'Allowed vector hit', 'No literal match here.', 'No literal match here.', 'vec-kept', 0)`
+      ),
+      env.DB.prepare(
+        `INSERT INTO chunks (episode_id, slug, title, content, content_plain, vector_id, position)
+         VALUES (4, 'wrong-topic-vector-hit', 'Wrong topic vector hit', 'No literal match here.', 'No literal match here.', 'vec-wrong-topic', 1)`
+      ),
+      env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('Kept', 'kept', 1)"),
+      env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('Other', 'other', 1)"),
+    ]);
+
+    const keptChunk = await env.DB.prepare("SELECT id FROM chunks WHERE slug = 'kept-vector-hit'").first<{ id: number }>();
+    const wrongTopicChunk = await env.DB.prepare("SELECT id FROM chunks WHERE slug = 'wrong-topic-vector-hit'").first<{ id: number }>();
+    const keptTopic = await env.DB.prepare("SELECT id FROM topics WHERE slug = 'kept'").first<{ id: number }>();
+    const otherTopic = await env.DB.prepare("SELECT id FROM topics WHERE slug = 'other'").first<{ id: number }>();
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (?, ?)").bind(keptChunk!.id, keptTopic!.id),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (?, ?)").bind(wrongTopicChunk!.id, otherTopic!.id),
+    ]);
+
+    let vectorOptions: any;
+    const mockEnv = {
+      ...env,
+      AI: { run: async () => ({ data: [[0.1, 0.2, 0.3]] }) },
+      VECTORIZE: {
+        query: async (_values: number[], options: any) => {
+          vectorOptions = options;
+          return {
+            matches: [
+              { id: "vec-old", score: 0.91 },
+              { id: "vec-kept", score: 0.9 },
+              { id: "vec-wrong-topic", score: 0.89 },
+            ],
+          };
+        },
+      },
+    };
+
+    const res = await worker.fetch(
+      new Request("http://localhost/search?q=raresemantic+year%3A2025+topic%3Akept"),
+      mockEnv as any,
+    );
+    const html = await res.text();
+
+    expect(vectorOptions.filter).toEqual({ year: 2025, topics: { $in: ["kept"] } });
+    expect(html).toContain("Allowed vector hit");
+    expect(html).not.toContain("Out-of-year vector hit");
+    expect(html).not.toContain("Wrong topic vector hit");
+    expect(html).toContain("1 result");
+  });
 });
 
 describe("Vector score threshold value", () => {
@@ -237,6 +302,32 @@ describe("Vector score threshold value", () => {
     // vec-only: 0.75 * 0.6 = 0.45
     expect(bothMatch.score).toBeGreaterThan(vecOnly.score);
     expect(merged[0].slug).toBe("both-match"); // highest ranked
+  });
+});
+
+describe("Public search cost guards", () => {
+  it("rejects overlong queries before running search", async () => {
+    const longQuery = "a".repeat(201);
+    const res = await SELF.fetch(`http://localhost/search?q=${longQuery}`);
+    expect(res.status).toBe(414);
+    expect(await res.text()).toContain("Search query too long");
+  });
+
+  it("returns 429 when the configured rate limit binding rejects a search", async () => {
+    const mockEnv = {
+      ...env,
+      SEARCH_RATE_LIMIT: { limit: async () => ({ success: false }) },
+    };
+
+    const res = await worker.fetch(
+      new Request("http://localhost/search?q=ecosystem", {
+        headers: { "CF-Connecting-IP": "203.0.113.10" },
+      }),
+      mockEnv as any,
+    );
+
+    expect(res.status).toBe(429);
+    expect(await res.text()).toContain("Too many search requests");
   });
 });
 

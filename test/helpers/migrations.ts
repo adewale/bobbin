@@ -20,12 +20,19 @@ import migration0019 from "../../migrations/0019_chunk_footnotes.sql?raw";
 import migration0020 from "../../migrations/0020_d1_best_practice_hardening.sql?raw";
 import migration0021 from "../../migrations/0021_sources_activity_and_health.sql?raw";
 import migration0022 from "../../migrations/0022_topic_similarity_and_incremental_finalize.sql?raw";
+import migration0023 from "../../migrations/0023_cost_controls_and_queue_state.sql?raw";
+import migration0024 from "../../migrations/0024_search_rate_limit_state.sql?raw";
+import migration0025 from "../../migrations/0025_cost_event_alerting.sql?raw";
 
 const DROPS = [
   "DROP TRIGGER IF EXISTS chunks_ai",
   "DROP TRIGGER IF EXISTS chunks_ad",
   "DROP TRIGGER IF EXISTS chunks_au",
   "DROP TABLE IF EXISTS chunks_fts",
+  "DROP TABLE IF EXISTS cloudflare_cost_events",
+  "DROP TABLE IF EXISTS search_rate_limit_state",
+  "DROP TABLE IF EXISTS word_stats_period",
+  "DROP TABLE IF EXISTS queue_message_state",
   "DROP TABLE IF EXISTS episode_artifact_chunks",
   "DROP TABLE IF EXISTS source_html_chunks",
   "DROP TABLE IF EXISTS llm_episode_candidate_evidence",
@@ -120,6 +127,9 @@ const MIGRATIONS = [
   migration0020,
   migration0021,
   migration0022,
+  migration0023,
+  migration0024,
+  migration0025,
 ].flatMap(splitSqlStatements);
 
 export async function applyTestMigrations(db: D1Database): Promise<void> {

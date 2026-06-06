@@ -9,7 +9,8 @@
     "directory": "./public"
   },
   "vars": {
-    "TOPIC_EXTRACTOR_MODE": "naive"
+    "TOPIC_EXTRACTOR_MODE": "naive",
+    "AI_GATEWAY_ID": "bobbin"
   },
   "d1_databases": [
     {
@@ -35,7 +36,14 @@
       { "binding": "ENRICHMENT_QUEUE", "queue": "bobbin-enrichment" }
     ],
     "consumers": [
-      { "queue": "bobbin-enrichment", "max_batch_size": 50, "max_concurrency": 20, "max_retries": 3 }
+      {
+        "queue": "bobbin-enrichment",
+        "max_batch_size": 50,
+        "max_concurrency": 20,
+        "max_retries": 3,
+        "retry_delay": 30,
+        "dead_letter_queue": "bobbin-enrichment-dlq"
+      }
     ]
   }
 }

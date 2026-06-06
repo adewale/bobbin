@@ -3,17 +3,69 @@ import type { AppEnv, ChunkRow } from "../types";
 import { Layout } from "../components/Layout";
 import { SearchForm } from "../components/SearchForm";
 import { ChunkCard } from "../components/ChunkCard";
-import { ftsSearch, mergeAndRerank, type ScoredResult } from "../services/search";
+import { buildParsedSearchFilterClause, ftsSearch, mergeAndRerank, type ScoredResult } from "../services/search";
 import { parseSearchQuery } from "../lib/query-parser";
 import { keywordSearch } from "../db/search";
 import { applyTopicBoost } from "../services/search-topics";
 import { expandEntityAliases } from "../lib/entity-aliases";
 import { KNOWN_ENTITIES } from "../data/known-entities";
+import { vectorizeMetadataFilter } from "../services/vector-metadata";
+import { generateEmbeddings } from "../services/embeddings";
+import { recordCostEvent, safeBackground } from "../services/cost-events";
 
 const search = new Hono<AppEnv>();
+const MAX_PUBLIC_SEARCH_QUERY_LENGTH = 200;
+const PUBLIC_SEARCH_RATE_LIMIT = 60;
+const PUBLIC_SEARCH_RATE_WINDOW_SECONDS = 60;
+
+function searchRateLimitKey(c: any): string {
+  return c.req.header("CF-Connecting-IP")
+    ?? c.req.header("x-forwarded-for")?.split(",")[0]?.trim()
+    ?? "anonymous";
+}
+
+async function allowPublicSearch(c: any): Promise<boolean> {
+  const url = new URL(c.req.url);
+  if (!c.env.SEARCH_RATE_LIMIT && (url.hostname === "localhost" || url.hostname === "127.0.0.1")) return true;
+
+  const key = searchRateLimitKey(c);
+  if (c.env.SEARCH_RATE_LIMIT) {
+    const outcome = await c.env.SEARCH_RATE_LIMIT.limit({ key });
+    return outcome.success;
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const windowStart = now - (now % PUBLIC_SEARCH_RATE_WINDOW_SECONDS);
+  await c.env.DB.prepare(
+    `INSERT INTO search_rate_limit_state (key, window_start, count, updated_at)
+     VALUES (?, ?, 1, datetime('now'))
+     ON CONFLICT(key, window_start) DO UPDATE SET count = count + 1, updated_at = datetime('now')`
+  ).bind(key, windowStart).run();
+  const row = await c.env.DB.prepare(
+    "SELECT count FROM search_rate_limit_state WHERE key = ? AND window_start = ?"
+  ).bind(key, windowStart).first() as { count: number } | null;
+  if (Math.random() < 0.01) {
+    await c.env.DB.prepare("DELETE FROM search_rate_limit_state WHERE window_start < ?").bind(windowStart - 3600).run();
+  }
+  return (row?.count ?? 0) <= PUBLIC_SEARCH_RATE_LIMIT;
+}
 
 search.get("/", async (c) => {
   const query = c.req.query("q")?.trim() || "";
+
+  if (query.length > MAX_PUBLIC_SEARCH_QUERY_LENGTH) {
+    return c.text("Search query too long", 414);
+  }
+
+  const cacheKey = query ? new Request(c.req.url, c.req.raw) : null;
+  if (cacheKey && typeof caches !== "undefined") {
+    const cached = await (caches as unknown as { default: Cache }).default.match(cacheKey);
+    if (cached) return cached;
+  }
+
+  if (query && !(await allowPublicSearch(c))) {
+    return c.text("Too many search requests", 429);
+  }
 
   let results: ScoredResult[] = [];
 
@@ -62,22 +114,35 @@ search.get("/", async (c) => {
     let vectorResults: ScoredResult[] = [];
     try {
       if (c.env.AI && c.env.VECTORIZE && !hasExactPhrase) {
-        const embedding = await c.env.AI.run("@cf/baai/bge-base-en-v1.5", {
-          text: [query],
-        });
+        const embedding = await generateEmbeddings(c.env.AI, [query], c.env.AI_GATEWAY_ID, `search:${query.toLowerCase()}`);
+        safeBackground(recordCostEvent(c.env.DB, {
+          product: "workers_ai",
+          operation: "embedding",
+          route: "/search",
+          units: 1,
+        }), c);
+        const vectorTopK = 15;
         const vecResults = await c.env.VECTORIZE.query(
-          (embedding as any).data[0],
-          { topK: 15, returnMetadata: "all" }
+          embedding[0],
+          { topK: vectorTopK, returnMetadata: "indexed", filter: vectorizeMetadataFilter(parsed) }
         );
+        safeBackground(recordCostEvent(c.env.DB, {
+          product: "vectorize",
+          operation: "query",
+          route: "/search",
+          units: vectorTopK * embedding[0].length,
+        }), c);
         if (vecResults.matches.length) {
           const vectorIds = vecResults.matches.map((m) => m.id);
           const placeholders = vectorIds.map(() => "?").join(",");
+          const filterClause = buildParsedSearchFilterClause(parsed);
           const hydrated = await c.env.DB.prepare(
             `SELECT c.*, e.slug as episode_slug, e.title as episode_title, e.published_date
              FROM chunks c JOIN episodes e ON c.episode_id = e.id
-             WHERE c.vector_id IN (${placeholders})`
+             WHERE c.vector_id IN (${placeholders})
+             ${filterClause.sql}`
           )
-            .bind(...vectorIds)
+            .bind(...vectorIds, ...filterClause.binds)
             .all();
 
           const scoreMap = new Map(vecResults.matches.map((m) => [m.id, m.score]));
@@ -112,7 +177,7 @@ search.get("/", async (c) => {
     }
   }
 
-  return c.html(
+  const response = await c.html(
     <Layout
       title={query ? `Search: ${query}` : "Search"}
       description="Search the Bits and Bobs archive"
@@ -146,6 +211,19 @@ search.get("/", async (c) => {
       </div>
     </Layout>
   );
+
+  if (cacheKey && response.status === 200 && typeof caches !== "undefined") {
+    if (!response.headers.has("Cache-Control")) {
+      response.headers.set("Cache-Control", "public, max-age=300, s-maxage=3600");
+    }
+    const cachePut = (caches as unknown as { default: Cache }).default.put(cacheKey, response.clone());
+    try {
+      c.executionCtx.waitUntil(cachePut);
+    } catch {
+      await cachePut;
+    }
+  }
+  return response;
 });
 
 export { search as searchRoutes };

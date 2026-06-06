@@ -4,6 +4,8 @@ export type Bindings = {
   AI: Ai;
   ADMIN_SECRET: string;
   ENRICHMENT_QUEUE: Queue;
+  SEARCH_RATE_LIMIT?: RateLimit;
+  AI_GATEWAY_ID?: string;
   TOPIC_EXTRACTOR_MODE?: "naive" | "yaket" | "yaket_bobbin" | "episode_hybrid";
 };
 

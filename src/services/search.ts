@@ -24,6 +24,36 @@ export interface ScoredResult {
   contentPlain?: string;
 }
 
+export function buildParsedSearchFilterClause(
+  parsed: Pick<ParsedQuery, "before" | "after" | "year" | "topics">,
+  aliases: { episode: string; chunk: string } = { episode: "e", chunk: "c" }
+): { sql: string; binds: unknown[] } {
+  const filters: string[] = [];
+  const binds: unknown[] = [];
+
+  if (parsed.before) {
+    filters.push(`${aliases.episode}.published_date <= ?`);
+    binds.push(parsed.before);
+  }
+  if (parsed.after) {
+    filters.push(`${aliases.episode}.published_date >= ?`);
+    binds.push(parsed.after);
+  }
+  if (parsed.year) {
+    filters.push(`${aliases.episode}.year = ?`);
+    binds.push(parsed.year);
+  }
+
+  let sql = filters.length > 0 ? `AND ${filters.join(" AND ")}` : "";
+  if (parsed.topics && parsed.topics.length > 0) {
+    const topicFilter = buildTopicChunkFilterClause(`${aliases.chunk}.id`, parsed.topics);
+    sql = [sql, topicFilter.sql].filter(Boolean).join("\n       ");
+    binds.push(...topicFilter.binds);
+  }
+
+  return { sql, binds };
+}
+
 /**
  * Full-text search with date filters and exact phrase support.
  */
@@ -52,34 +82,7 @@ export async function ftsSearch(
   const ftsQuery = parts.join(" ");
   if (!ftsQuery) return [];
 
-  // Build date filter clauses
-  const dateFilters: string[] = [];
-  const dateBinds: any[] = [];
-  if (parsed.before) {
-    dateFilters.push("e.published_date <= ?");
-    dateBinds.push(parsed.before);
-  }
-  if (parsed.after) {
-    dateFilters.push("e.published_date >= ?");
-    dateBinds.push(parsed.after);
-  }
-  if (parsed.year) {
-    dateFilters.push("e.year = ?");
-    dateBinds.push(parsed.year);
-  }
-
-  const dateWhere = dateFilters.length > 0
-    ? "AND " + dateFilters.join(" AND ")
-    : "";
-
-  // Topic filter: resolve topic slugs to chunk IDs
-  let topicWhere = "";
-  let topicBinds: any[] = [];
-  if (parsed.topics && parsed.topics.length > 0) {
-    const topicFilter = buildTopicChunkFilterClause("c.id", parsed.topics);
-    topicWhere = topicFilter.sql;
-    topicBinds = topicFilter.binds;
-  }
+  const filterClause = buildParsedSearchFilterClause(parsed);
 
   const results = await db
     .prepare(
@@ -90,12 +93,11 @@ export async function ftsSearch(
        JOIN chunks c ON c.id = chunks_fts.rowid
        JOIN episodes e ON c.episode_id = e.id
        WHERE chunks_fts MATCH ?
-       ${dateWhere}
-       ${topicWhere}
+       ${filterClause.sql}
        ORDER BY rank, e.published_date DESC, c.position DESC, c.id DESC
        LIMIT ?`
     )
-    .bind(-boosts.title, -boosts.content, ftsQuery, ...dateBinds, ...topicBinds, limit)
+    .bind(-boosts.title, -boosts.content, ftsQuery, ...filterClause.binds, limit)
     .all();
 
   const rows = results.results as any[];
