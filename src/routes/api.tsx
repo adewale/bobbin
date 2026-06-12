@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { AppEnv } from "../types";
 import { fetchGoogleDoc } from "../crawler/fetch";
 import { parseHtmlDocument } from "../services/html-parser";
-import { backfillExistingEpisodes, ingestParsedEpisodes, enrichChunks, finalizeEnrichment, isEnrichmentComplete } from "../jobs/ingest";
+import { backfillExistingEpisodes, ingestParsedEpisodes, enrichChunks, finalizeEnrichment, isEnrichmentComplete, CURRENT_ENRICHMENT_VERSION } from "../jobs/ingest";
 import { createIngestionLog, completeIngestionLog, failIngestionLog } from "../db/ingestion";
 import { recordPipelineRun } from "../db/pipeline-metrics";
 import { ftsSearch } from "../services/search";
@@ -191,10 +191,13 @@ api.get("/ingest", async (c) => {
 
     let source: any;
     if (docId) {
+      // Registry check must run even when a sources row already exists:
+      // rows that predate the registry lock (or were de-listed later) must
+      // not stay ingestable through this endpoint.
+      const described = describeSource(docId);
+      if (!described) return c.json({ error: "Unknown or untrusted source" }, 404);
       source = await c.env.DB.prepare("SELECT * FROM sources WHERE google_doc_id = ?").bind(docId).first();
       if (!source) {
-        const described = describeSource(docId);
-        if (!described) return c.json({ error: "Unknown or untrusted source" }, 404);
         await ensureSource(c.env.DB, described.docId, described.title, described.isArchive);
         source = await c.env.DB.prepare("SELECT * FROM sources WHERE google_doc_id = ?").bind(docId).first();
       }
@@ -492,10 +495,11 @@ api.get("/enrich-parallel", async (c) => {
   const denied = requireAuth(c);
   if (denied) return denied;
 
+  if (!c.env.ENRICHMENT_QUEUE) return c.json({ error: "Enrichment queue unavailable" }, 503);
+
   const batchSize = Math.min(Math.max(safeParseInt(c.req.query("batch"), 200), 1), MAX_SQL_BINDINGS);
 
   try {
-    const { CURRENT_ENRICHMENT_VERSION } = await import("../jobs/ingest");
     const unenriched = await c.env.DB.prepare(
       `WITH pending_chunks AS (
          SELECT id FROM chunks WHERE enriched = 0
@@ -533,7 +537,6 @@ api.get("/cleanup-stale", async (c) => {
   if (denied) return denied;
 
   try {
-    const { CURRENT_ENRICHMENT_VERSION } = await import("../jobs/ingest");
     const db = c.env.DB;
 
     // Step 1: Delete chunk_topics for chunks with outdated enrichment_version
@@ -605,7 +608,7 @@ api.get("/finalize", async (c) => {
 
   try {
     logId = await tryCreatePipelineLog(c.env.DB, null, "finalize");
-    const result = await finalizeEnrichment(c.env.DB, c.env.ENRICHMENT_QUEUE);
+    const result = await finalizeEnrichment(c.env.DB);
     const failedSteps = result.steps.filter(s => s.status === "error");
     await tryCompletePipelineLog(
       c.env.DB,
@@ -691,8 +694,7 @@ api.get("/health", async (c) => {
     c.env.DB.prepare("SELECT COUNT(*) as c FROM chunks").first<{ c: number }>(),
     c.env.DB.prepare("SELECT COUNT(*) as c FROM topics WHERE usage_count > 0").first<{ c: number }>(),
     (async () => {
-      const { CURRENT_ENRICHMENT_VERSION } = await import("../jobs/ingest");
-      return c.env.DB.prepare(
+        return c.env.DB.prepare(
         `SELECT (
            SELECT COUNT(*) FROM chunks WHERE enriched = 0
          ) + (

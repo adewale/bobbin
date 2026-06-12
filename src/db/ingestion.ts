@@ -81,6 +81,18 @@ export async function getUnenrichedChunks(db: D1Database, limit: number) {
   return result.results as any[];
 }
 
+export async function countPendingEnrichmentChunks(db: D1Database): Promise<number> {
+  const { CURRENT_ENRICHMENT_VERSION } = await import("../jobs/ingest");
+  const result = await db.prepare(
+    `SELECT (
+       SELECT COUNT(*) FROM chunks WHERE enriched = 0
+     ) + (
+       SELECT COUNT(*) FROM chunks WHERE enriched != 0 AND enrichment_version < ?
+     ) as c`
+  ).bind(CURRENT_ENRICHMENT_VERSION).first<{ c: number }>();
+  return result?.c || 0;
+}
+
 export async function markChunksEnriched(db: D1Database, chunkIds: number[]) {
   if (!chunkIds.length) return;
   const { CURRENT_ENRICHMENT_VERSION } = await import("../jobs/ingest");

@@ -32,7 +32,8 @@
   },
   "queues": {
     "producers": [
-      { "binding": "ENRICHMENT_QUEUE", "queue": "bobbin-enrichment" }
+      { "binding": "ENRICHMENT_QUEUE", "queue": "bobbin-enrichment" },
+      { "binding": "ENRICHMENT_DLQ", "queue": "bobbin-enrichment-dlq" }
     ],
     "consumers": [
       {

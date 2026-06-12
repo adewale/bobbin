@@ -236,4 +236,20 @@ describe("Admin batching guards", () => {
     expect(sent.every((message) => message.chunkIds.length <= 90)).toBe(true);
     expect(sent[0]?.type).toBe("enrich-batch");
   });
+
+  it("GET /api/enrich-parallel returns 503 instead of crashing when the queue binding is missing", async () => {
+    (env as any).ADMIN_SECRET = "test-secret";
+    const savedQueue = (env as any).ENRICHMENT_QUEUE;
+    delete (env as any).ENRICHMENT_QUEUE;
+    try {
+      const res = await SELF.fetch("http://localhost/api/enrich-parallel", {
+        headers: { Authorization: "Bearer test-secret" },
+      });
+      expect(res.status).toBe(503);
+      const data = await res.json() as { error: string };
+      expect(data.error).toBe("Enrichment queue unavailable");
+    } finally {
+      if (savedQueue !== undefined) (env as any).ENRICHMENT_QUEUE = savedQueue;
+    }
+  });
 });

@@ -190,6 +190,93 @@ describe("enrichAllChunks (Issue 4)", () => {
     // The key property: it terminates within the time budget, doesn't loop forever
     expect(secondRun).toBeLessThanOrEqual(4); // at most the 4 chunks in seed data
   });
+
+  it("drains a backlog larger than two batches and reports every processed chunk", async () => {
+    // Seed 2 more chunks so 6 are pending — three full batches at batchSize 2.
+    // Guards against the no-progress check tripping on consecutive equal-sized
+    // full batches and exiting after batch 2 with batch 2 uncounted.
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (2, 'chunk-5', 'Chunk 5', 'Composability lets small tools combine into larger workflows.', 'Composability lets small tools combine into larger workflows.', 0)"),
+      env.DB.prepare("INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (2, 'chunk-6', 'Chunk 6', 'Schelling points coordinate behaviour without communication.', 'Schelling points coordinate behaviour without communication.', 1)"),
+    ]);
+
+    const total = await enrichAllChunks(env.DB, 2, 15000);
+
+    expect(total).toBe(6);
+    const pending = await env.DB.prepare(
+      "SELECT COUNT(*) as c FROM chunks WHERE enriched = 0"
+    ).first<{ c: number }>();
+    expect(pending!.c).toBe(0);
+  });
+});
+
+describe("similarity_cluster merging", () => {
+  it("never merges two near-duplicate topics into each other (no merge cycles)", async () => {
+    // Both topics are each other's best Dice match. The in-memory candidate
+    // list must drop merged-away topics, otherwise A merges into B and then
+    // B merges back into the now-hidden A, leaving links on invisible topics
+    // and a circular topic_merge_audit chain.
+    await env.DB.batch([
+      // Chunks 5 and 6 live in episode 2 so both topics span two episodes
+      // and survive the episode-spread and support gates that run first.
+      env.DB.prepare("INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (2, 'chunk-5', 'Chunk 5', 'Gilded things shine.', 'Gilded things shine.', 0)"),
+      env.DB.prepare("INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (2, 'chunk-6', 'Chunk 6', 'More gilded things.', 'More gilded things.', 1)"),
+      env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('gilded turd', 'gilded-turd', 3)"),
+      env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('gilded turf', 'gilded-turf', 2)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 1)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (2, 1)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (5, 1)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (3, 2)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (6, 2)"),
+    ]);
+
+    await finalizeEnrichment(env.DB);
+
+    // Positive control: the near-duplicate pair was merged (in one direction)
+    const merges = await env.DB.prepare(
+      "SELECT from_topic_id, to_topic_id FROM topic_merge_audit WHERE from_topic_id IN (1, 2) OR to_topic_id IN (1, 2)"
+    ).all<{ from_topic_id: number; to_topic_id: number }>();
+    expect(merges.results.length).toBeGreaterThanOrEqual(1);
+
+    // The invariant: no pair is ever merged in both directions
+    const reciprocal = await env.DB.prepare(
+      `SELECT COUNT(*) as c
+       FROM topic_merge_audit a
+       JOIN topic_merge_audit b
+         ON a.from_topic_id = b.to_topic_id AND a.to_topic_id = b.from_topic_id`
+    ).first<{ c: number }>();
+    expect(reciprocal!.c).toBe(0);
+  });
+});
+
+describe("queue_state_cleanup step", () => {
+  it("purges expired completed queue-state rows and keeps recent or failed ones", async () => {
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO queue_message_state (job_key, message_type, status, completed_at) VALUES ('enrich-batch:v1:old', 'enrich-batch', 'completed', datetime('now', '-40 days'))"
+      ),
+      env.DB.prepare(
+        "INSERT INTO queue_message_state (job_key, message_type, status, completed_at) VALUES ('enrich-batch:v6:recent', 'enrich-batch', 'completed', datetime('now', '-1 day'))"
+      ),
+      env.DB.prepare(
+        "INSERT INTO queue_message_state (job_key, message_type, status, last_error) VALUES ('enrich-batch:v6:failed', 'enrich-batch', 'failed', 'boom')"
+      ),
+    ]);
+
+    const result = await finalizeEnrichment(env.DB);
+
+    const cleanupStep = result.steps.find((s) => s.name === "queue_state_cleanup");
+    expect(cleanupStep?.status).toBe("ok");
+    expect(cleanupStep?.counts.queue_state_rows_purged).toBe(1);
+
+    const remaining = await env.DB.prepare(
+      "SELECT job_key FROM queue_message_state ORDER BY job_key"
+    ).all<{ job_key: string }>();
+    expect(remaining.results.map((r) => r.job_key)).toEqual([
+      "enrich-batch:v6:failed",
+      "enrich-batch:v6:recent",
+    ]);
+  });
 });
 
 describe("Noise cleanup (Issue 5)", () => {

@@ -1,45 +1,38 @@
 /**
- * Queue consumer for enrichment finalization.
+ * Queue consumer for enrichment work.
  *
- * Handles four message types:
- * - "compute-related": compute related_slugs for a single topic
- * - "assign-ngram": create a phrase topic and assign to matching chunks
- * - "extract-ngrams": load all chunk texts, extract corpus n-grams, and dispatch assign-ngram messages
+ * Handles two message types:
  * - "enrich-batch": enrich specific chunks by ID (parallel fan-out from /api/enrich-parallel)
+ * - "llm-episode-enrich": run LLM ingest enrichment for a single episode
  */
-import { slugify } from "../lib/slug";
-import { batchExec, collectInBatches, sqlPlaceholders } from "../lib/db";
-import { topicSupportThreshold } from "../lib/topic-metrics";
-import { extractCorpusNgrams } from "../services/ngram-extractor";
-import { extractPMIPhrases } from "../services/pmi-phrases";
+import { collectInBatches, sqlPlaceholders } from "../lib/db";
 import { rebuildWordStatsAggregates } from "../services/word-stats";
 import { enrichEpisodeIdsWithLlm } from "../services/llm-ingest";
-import { loadPhraseLexiconForEnrichment, processChunkBatch } from "./ingest";
+import { normalizeTopicExtractorMode, type TopicExtractorMode } from "../services/yake-runtime";
+import { CURRENT_ENRICHMENT_VERSION, loadPhraseLexiconForEnrichment, processChunkBatch } from "./ingest";
 import type { Bindings } from "../types";
 
 export interface EnrichmentMessage {
-  type: "compute-related" | "assign-ngram" | "extract-ngrams" | "enrich-batch" | "llm-episode-enrich";
-  // compute-related
-  topicId?: number;
-  // assign-ngram
-  phrase?: string;
+  type: "enrich-batch" | "llm-episode-enrich";
   // enrich-batch
   chunkIds?: number[];
   // llm-episode-enrich
   episodeId?: number;
 }
 
-const RETRYABLE_QUEUE_ERROR_PATTERNS = [
-  "Network connection lost",
-  "storage caused object to be reset",
-  "reset because its code was updated",
-  "SQLITE_BUSY",
-  "SQLITE_BUSY_RECOVERY",
-  "SQLITE_LOCKED",
-  "Too Many Requests",
-  "429",
-  "503",
-  "504",
+// Transient infrastructure failures worth retrying. HTTP status codes are
+// matched in an error/status context, not as bare substrings — a message like
+// "chunk 5036 failed" must not match 503.
+const RETRYABLE_QUEUE_ERROR_PATTERNS: RegExp[] = [
+  /Network connection lost/i,
+  /storage caused object to be reset/i,
+  /reset because its code was updated/i,
+  /SQLITE_BUSY/,
+  /SQLITE_LOCKED/,
+  /Too Many Requests/i,
+  /Service Unavailable/i,
+  /Gateway Time-?out/i,
+  /\b(?:status|code|error)\b[^0-9]{0,4}(?:429|503|504)\b/i,
 ];
 
 export function queueRetryDelaySeconds(
@@ -54,14 +47,18 @@ export function queueRetryDelaySeconds(
 
 export function shouldRetryQueueMessage(error: unknown): boolean {
   const message = String(error);
-  return RETRYABLE_QUEUE_ERROR_PATTERNS.some((pattern) => message.includes(pattern));
+  return RETRYABLE_QUEUE_ERROR_PATTERNS.some((pattern) => pattern.test(message));
 }
 
 export function queueJobKey(body: EnrichmentMessage): string {
-  if (body.type === "compute-related") return `compute-related:${body.topicId ?? ""}`;
-  if (body.type === "assign-ngram") return `assign-ngram:${(body.phrase ?? "").trim().toLowerCase()}`;
-  if (body.type === "extract-ngrams") return "extract-ngrams";
-  if (body.type === "enrich-batch") return `enrich-batch:${[...(body.chunkIds ?? [])].sort((a, b) => a - b).join(",")}`;
+  // enrich-batch keys include the enrichment version: bumping
+  // CURRENT_ENRICHMENT_VERSION re-derives the same deterministic chunk-id
+  // batches, and a version-less key would match the previous campaign's
+  // completed rows and silently skip the re-enrichment.
+  if (body.type === "enrich-batch") {
+    const ids = [...(body.chunkIds ?? [])].sort((a, b) => a - b).join(",");
+    return `enrich-batch:v${CURRENT_ENRICHMENT_VERSION}:${ids}`;
+  }
   if (body.type === "llm-episode-enrich") return `llm-episode-enrich:${body.episodeId ?? ""}`;
   return JSON.stringify(body);
 }
@@ -99,118 +96,11 @@ async function failQueueJob(db: D1Database, body: EnrichmentMessage, status: "re
   ).bind(status, (error instanceof Error ? error.message : String(error)).substring(0, 500), queueJobKey(body)).run();
 }
 
-async function handleComputeRelated(db: D1Database, topicId: number) {
-  const totalEpisodes = await db.prepare("SELECT COUNT(*) as c FROM episodes").first<{ c: number }>();
-  const minEpisodeSupport = topicSupportThreshold(totalEpisodes?.c ?? 0);
-  let related = await db.prepare(
-    `SELECT t.slug
-     FROM topic_similarity_scores s
-     JOIN topics t ON t.id = s.related_topic_id
-     WHERE s.topic_id = ?
-       AND s.overlap_count > 0
-       AND t.hidden = 0
-       AND t.display_suppressed = 0
-       AND t.episode_support >= ?
-     ORDER BY s.combined_score DESC, s.overlap_count DESC, t.name ASC
-     LIMIT 5`
-  ).bind(topicId, minEpisodeSupport).all<{ slug: string }>();
-
-  if (related.results.length === 0) {
-    related = await db.prepare(
-      `SELECT t.slug FROM chunk_topics ct1
-       JOIN chunk_topics ct2 ON ct1.chunk_id = ct2.chunk_id AND ct1.topic_id != ct2.topic_id
-       JOIN topics t ON ct2.topic_id = t.id
-       WHERE ct1.topic_id = ?
-         AND t.hidden = 0
-         AND t.display_suppressed = 0
-       GROUP BY ct2.topic_id
-       ORDER BY COUNT(*) DESC
-       LIMIT 5`
-    ).bind(topicId).all<{ slug: string }>();
-  }
-
-  const slugs = JSON.stringify(related.results.map(r => r.slug));
-  await db.prepare(
-    "UPDATE topics SET related_slugs = ? WHERE id = ?"
-  ).bind(slugs, topicId).run();
-
-  return { related_topics: related.results.length };
-}
-
-async function handleAssignNgram(db: D1Database, phrase: string) {
-  const slug = slugify(phrase);
-  if (!slug || slug.length < 3) return { topics_created: 0, chunk_links_inserted: 0 };
-
-  await db.prepare(
-    "INSERT OR IGNORE INTO topics (name, slug, kind) VALUES (?, ?, 'phrase')"
-  ).bind(phrase, slug).run();
-
-  const topic = await db.prepare(
-    "SELECT id FROM topics WHERE slug = ?"
-  ).bind(slug).first<{ id: number }>();
-  if (!topic) return { topics_created: 0, chunk_links_inserted: 0 };
-
-  const matchingChunks = await db.prepare(
-    "SELECT id FROM chunks WHERE LOWER(content_plain) LIKE ? ESCAPE '\\'"
-  ).bind(`%${phrase}%`).all<{ id: number }>();
-
-  const stmts = matchingChunks.results.map(c =>
-    db.prepare("INSERT OR IGNORE INTO chunk_topics (chunk_id, topic_id) VALUES (?, ?)")
-      .bind(c.id, topic.id)
-  );
-  await batchExec(db, stmts);
-
-  await db.prepare(
-    "UPDATE topics SET usage_count = (SELECT COUNT(*) FROM chunk_topics WHERE topic_id = ?) WHERE id = ?"
-  ).bind(topic.id, topic.id).run();
-
-  return { topics_created: 1, chunk_links_inserted: matchingChunks.results.length };
-}
-
-async function handleExtractNgrams(db: D1Database, queue: Queue) {
-  const count = await db.prepare("SELECT COUNT(*) as c FROM chunks").first<{ c: number }>();
-  if (!count || count.c < 10) return { phrases_dispatched: 0 };
-
-  // Try PMI-based extraction first (uses chunk_words, no text loading needed)
-  const chunkWordsCount = await db.prepare(
-    "SELECT COUNT(*) as c FROM chunk_words"
-  ).first<{ c: number }>();
-
-  let phrases: string[] = [];
-
-  if (chunkWordsCount && chunkWordsCount.c >= 20) {
-    const pmiPhrases = await extractPMIPhrases(db, 3.0, 5, 100);
-    phrases = pmiPhrases.map(p => p.phrase);
-  } else {
-    // Fall back to raw n-gram extraction from text
-    const BATCH = 500;
-    const allTexts: string[] = [];
-    for (let offset = 0; offset < count.c; offset += BATCH) {
-      const batch = await db.prepare(
-        "SELECT content_plain FROM chunks LIMIT ? OFFSET ?"
-      ).bind(BATCH, offset).all<{ content_plain: string }>();
-      allTexts.push(...batch.results.map(c => c.content_plain));
-    }
-    const ngrams = extractCorpusNgrams(allTexts, 5, 3).slice(0, 100);
-    phrases = ngrams.map(ng => ng.phrase);
-  }
-
-  // Dispatch each phrase assignment as a separate message
-  if (phrases.length > 0) {
-    const messages = phrases.map(phrase => ({
-      body: { type: "assign-ngram" as const, phrase }
-    }));
-    for (let i = 0; i < messages.length; i += 25) {
-      await queue.sendBatch(messages.slice(i, i + 25));
-    }
-  }
-
-  // Note: kind='phrase' is set by extractAndStoreNgrams/PMI for discovered phrases only.
-  // No auto-promote rule — only authoritative sources set kind.
-  return { phrases_dispatched: phrases.length };
-}
-
-export async function handleEnrichBatch(db: D1Database, chunkIds: number[]) {
+export async function handleEnrichBatch(
+  db: D1Database,
+  chunkIds: number[],
+  extractorMode: TopicExtractorMode = "naive",
+) {
   if (!chunkIds.length) return { chunks_processed: 0 };
 
   // Load chunks by ID and process using shared logic
@@ -226,7 +116,7 @@ export async function handleEnrichBatch(db: D1Database, chunkIds: number[]) {
 
   // Use the shared processChunkBatch — single source of truth
   const phraseLexicon = await loadPhraseLexiconForEnrichment(db);
-  await processChunkBatch(db, chunkRows, "naive", {
+  await processChunkBatch(db, chunkRows, extractorMode, {
     phraseLexiconOverride: phraseLexicon,
     rebuildWordStats: false,
   });
@@ -235,11 +125,28 @@ export async function handleEnrichBatch(db: D1Database, chunkIds: number[]) {
 }
 
 function queueMessageContext(body: EnrichmentMessage): Record<string, string | number> {
-  if (body.type === "compute-related" && body.topicId) return { topic_id: body.topicId };
-  if (body.type === "assign-ngram" && body.phrase) return { phrase: body.phrase };
   if (body.type === "enrich-batch" && body.chunkIds) return { chunk_count: body.chunkIds.length };
   if (body.type === "llm-episode-enrich" && body.episodeId) return { episode_id: body.episodeId };
   return {};
+}
+
+// Non-retryable failures are acked (retrying a deterministic failure wastes
+// the retry budget), so Cloudflare's retries-exhausted DLQ routing never sees
+// them. Forward them to the DLQ explicitly so the replay procedure in
+// docs/queue-dlq-replay.md still applies after the bug is fixed.
+async function forwardToDeadLetter(env: Bindings, body: EnrichmentMessage): Promise<boolean> {
+  if (!env.ENRICHMENT_DLQ) return false;
+  try {
+    await env.ENRICHMENT_DLQ.send(body);
+    return true;
+  } catch (e) {
+    console.error(JSON.stringify({
+      event: "queue_dlq_forward_failed",
+      message_type: body.type,
+      error: e instanceof Error ? e.message : String(e),
+    }));
+    return false;
+  }
 }
 
 export async function handleEnrichmentBatch(
@@ -248,6 +155,7 @@ export async function handleEnrichmentBatch(
 ): Promise<void> {
   const messages = [...batch.messages];
   const concurrency = Math.min(5, messages.length);
+  const extractorMode = normalizeTopicExtractorMode(env.TOPIC_EXTRACTOR_MODE);
   let index = 0;
 
   async function processOne(msg: Message<EnrichmentMessage>) {
@@ -268,14 +176,8 @@ export async function handleEnrichmentBatch(
       }
 
       let counts: Record<string, number> = {};
-      if (msg.body.type === "compute-related" && msg.body.topicId) {
-        counts = await handleComputeRelated(env.DB, msg.body.topicId);
-      } else if (msg.body.type === "assign-ngram" && msg.body.phrase) {
-        counts = await handleAssignNgram(env.DB, msg.body.phrase);
-      } else if (msg.body.type === "extract-ngrams") {
-        counts = await handleExtractNgrams(env.DB, env.ENRICHMENT_QUEUE);
-      } else if (msg.body.type === "enrich-batch" && msg.body.chunkIds) {
-        counts = await handleEnrichBatch(env.DB, msg.body.chunkIds);
+      if (msg.body.type === "enrich-batch" && msg.body.chunkIds) {
+        counts = await handleEnrichBatch(env.DB, msg.body.chunkIds, extractorMode);
       } else if (msg.body.type === "llm-episode-enrich" && msg.body.episodeId) {
         await enrichEpisodeIdsWithLlm(env, [msg.body.episodeId]);
         counts = { episodes_processed: 1 };
@@ -309,6 +211,7 @@ export async function handleEnrichmentBatch(
       if (retryable) {
         msg.retry({ delaySeconds: queueRetryDelaySeconds((msg as { attempts?: number }).attempts) });
       } else {
+        await forwardToDeadLetter(env, msg.body);
         msg.ack();
       }
     }

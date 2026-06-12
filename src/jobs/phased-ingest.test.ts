@@ -58,6 +58,50 @@ describe("Phase 1: ingestEpisodesOnly", () => {
     expect(second.episodesAdded).toBe(0);
   });
 
+  it("skips a duplicate-date heading in the same document instead of failing the ingest", async () => {
+    // Two h1 headings with the same date produce the same UNIQUE episode slug.
+    // The duplicate must be skipped — and episodes after it still ingested —
+    // otherwise the source fails permanently at the same heading on every run.
+    const makeEpisode = (isoDate: string, title: string) => ({
+      dateStr: isoDate,
+      parsedDate: new Date(`${isoDate}T00:00:00.000Z`),
+      title,
+      headingId: "",
+      format: "notes" as const,
+      contentMarkdown: `${title} body`,
+      richContent: [],
+      links: [],
+      images: [],
+      chunks: [
+        {
+          title: `${title} chunk`,
+          content: `${title} chunk\nBody text`,
+          contentPlain: `${title} chunk\nBody text`,
+          contentMarkdown: "Body text",
+          richContent: [],
+          links: [],
+          images: [],
+          footnotes: [],
+          headingId: "",
+          position: 0,
+        },
+      ],
+    });
+
+    const result = await ingestEpisodesOnly(env.DB, 1, [
+      makeEpisode("2026-04-20", "First heading"),
+      makeEpisode("2026-04-20", "Duplicate heading"),
+      makeEpisode("2026-04-27", "Following week"),
+    ]);
+
+    expect(result.episodesAdded).toBe(2);
+    const rows = await env.DB.prepare(
+      "SELECT title, published_date FROM episodes ORDER BY published_date"
+    ).all<{ title: string; published_date: string }>();
+    expect(rows.results.map((r) => r.published_date)).toEqual(["2026-04-20", "2026-04-27"]);
+    expect(rows.results[0].title).toBe("First heading");
+  });
+
   it("stores format correctly", async () => {
     const essays = parseHtmlDocument(sampleEssays);
     const notes = parseHtmlDocument(sampleNotes);

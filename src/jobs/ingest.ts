@@ -24,8 +24,6 @@ import { rebuildWordStatsAggregates } from "../services/word-stats";
 import { rebuildWordStatsPeriods } from "../services/word-stats-periods";
 import { chunkVectorMetadata } from "../services/vector-metadata";
 import { recordCostEvent } from "../services/cost-events";
-import { extractCorpusNgrams } from "../services/ngram-extractor";
-import { extractPMIPhrases } from "../services/pmi-phrases";
 import { computeTopicDisplayDecisions, isNoiseTopic } from "../services/topic-quality";
 import { getCandidatePromotionReason, getCorpusPriorRejectionReason, getPhrasePromotionReason } from "../services/pipeline-tuning";
 import { generateEmbeddings } from "../services/embeddings";
@@ -42,7 +40,7 @@ import {
 } from "../services/topic-similarity";
 import { normalizeTopicExtractorMode, type TopicExtractorMode } from "../services/yake-runtime";
 import { getExistingDatesForSource, getSourceTag } from "../db/sources";
-import { getUnenrichedChunks, markChunksEnriched, isEnrichmentDone } from "../db/ingestion";
+import { getUnenrichedChunks, markChunksEnriched, isEnrichmentDone, countPendingEnrichmentChunks } from "../db/ingestion";
 import type { Bindings, ParsedChunk, ParsedEpisode, RichBlock, RichLink, RichTextNode } from "../types";
 
 /** Current enrichment algorithm version. Bump to re-enrich all chunks.
@@ -537,9 +535,23 @@ export async function ingestEpisodesOnly(
     (_episode, episodeSlug, chunk) => `${slugify(chunk.title) || `chunk-${chunk.position}`}-${episodeSlug}-${chunk.position}`,
   );
 
+  const seenInDocument = new Set<string>();
   for (const episode of storedEpisodes) {
     const dateStr = formatDate(episode.parsedDate);
     if (existingDates.has(dateStr)) continue;
+    // Two headings with the same date in one document would both pass the DB
+    // check and collide on the UNIQUE episode slug, permanently failing this
+    // source's refresh at the same heading every run. Skip the later one.
+    if (seenInDocument.has(dateStr)) {
+      console.warn(JSON.stringify({
+        event: "ingest_skip_duplicate_date",
+        source_id: sourceId,
+        date: dateStr,
+        title: episode.title,
+      }));
+      continue;
+    }
+    seenInDocument.add(dateStr);
 
     const episodeSlug = episode.slug;
     const storedChunks = episode.storedChunks;
@@ -1296,8 +1308,7 @@ export interface FinalizeStep {
 export interface FinalizeResult {
   usage_recalculated: boolean;
   word_stats_rebuilt: boolean;
-  ngram_dispatched: boolean;
-  related_slugs_method: "similarity_cache" | "queue" | "inline" | "skipped";
+  related_slugs_method: "similarity_cache" | "inline" | "skipped";
   noise_removed: number;
   pruned: number;
   merged: number;
@@ -1672,14 +1683,13 @@ async function archiveZeroUsageLineageTopics(db: D1Database): Promise<number> {
   return ids.length;
 }
 
-export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise<FinalizeResult> {
+export async function finalizeEnrichment(db: D1Database): Promise<FinalizeResult> {
   const totalStart = Date.now();
   const steps: FinalizeStep[] = [];
   const minimumTopicSupport = await loadCorpusTopicSupportThreshold(db);
   const result: FinalizeResult = {
     usage_recalculated: false,
     word_stats_rebuilt: false,
-    ngram_dispatched: false,
     related_slugs_method: "skipped",
     noise_removed: 0,
     pruned: 0,
@@ -1991,13 +2001,20 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
       return { detail: "0 dirty topics", counts: { topics_considered: 0, topics_merged: 0 } };
     }
     const dirtySet = new Set(dirtyTopicIds);
+    // Topics merged away in this loop are hidden in the DB but stay in the
+    // in-memory list. Dice similarity is symmetric, so without this set the
+    // merge target of A→B can later pick the now-hidden A as its own best
+    // match and merge back into it (A→B→A), parking links on an invisible
+    // topic and writing circular topic_merge_audit chains.
+    const mergedAway = new Set<number>();
     let merged = 0;
     let considered = 0;
     for (const topic of activeTopics.results) {
       if (!dirtySet.has(topic.id)) continue;
+      if (mergedAway.has(topic.id)) continue;
       considered += 1;
       const bestMatch = activeTopics.results
-        .filter((candidate) => candidate.id !== topic.id)
+        .filter((candidate) => candidate.id !== topic.id && !mergedAway.has(candidate.id))
         .map((candidate) => ({ candidate, score: diceCoefficient(topic.name, candidate.name) }))
         .filter((candidate) => candidate.score >= 0.7)
         .sort((left, right) =>
@@ -2007,7 +2024,15 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
           || left.candidate.name.localeCompare(right.candidate.name)
         )[0];
       if (!bestMatch) continue;
-      await mergeTopicInto(db, topic, bestMatch.candidate, "similarity_cluster", "near_duplicate_string");
+      // Keep the more-used topic (tie: the longer, more specific name) so a
+      // dirty high-usage topic is never folded into a marginal near-duplicate.
+      const candidate = bestMatch.candidate;
+      const keepCandidate =
+        candidate.usage_count > topic.usage_count
+        || (candidate.usage_count === topic.usage_count && candidate.name.length >= topic.name.length);
+      const [from, to] = keepCandidate ? [topic, candidate] : [candidate, topic];
+      await mergeTopicInto(db, from, to, "similarity_cluster", "near_duplicate_string");
+      mergedAway.add(from.id);
       merged++;
     }
     result.merged += merged;
@@ -2331,6 +2356,21 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
     return { detail: `${cleared} dirty topics cleared`, counts: { dirty_topics_cleared: cleared } };
   });
 
+  await runStep("queue_state_cleanup", steps, async () => {
+    // Completed idempotency rows only need to outlive duplicate deliveries.
+    // Without expiry the table grows unboundedly across enrichment campaigns.
+    const purged = await db.prepare(
+      `DELETE FROM queue_message_state
+       WHERE status = 'completed'
+         AND completed_at IS NOT NULL
+         AND completed_at < datetime('now', '-30 days')`
+    ).run();
+    return {
+      detail: `${purged.meta.changes || 0} expired queue-state rows removed`,
+      counts: { queue_state_rows_purged: purged.meta.changes || 0 },
+    };
+  });
+
   result.audit_report = (await db.prepare(
     `SELECT chunk_id, source, raw_candidate, normalized_candidate, decision, decision_reason
      FROM topic_candidate_audit
@@ -2353,7 +2393,6 @@ export async function enrichAllChunks(
   extractorMode: TopicExtractorMode = "naive"
 ): Promise<number> {
   let total = 0;
-  let lastProcessed = -1;
   const start = Date.now();
   const normalizedCorpus = await db.prepare(
     `SELECT id, analysis_text
@@ -2365,19 +2404,23 @@ export async function enrichAllChunks(
     normalizedText: row.analysis_text,
     tokens: tokenizeNormalizedText(row.analysis_text),
   })));
+  let pendingBefore = await countPendingEnrichmentChunks(db);
   while (Date.now() - start < maxMs) {
     const result = await enrichChunks(db, batchSize, extractorMode, {
       phraseLexiconOverride: phraseLexicon,
       rebuildWordStats: false,
     });
     if (result.chunksProcessed === 0) break;
+    total += result.chunksProcessed;
     if (result.batch && onBatch) {
       onBatch(result.batch);
     }
-    // Prevent infinite loop: if we processed the same count twice, some chunks can't be enriched
-    if (result.chunksProcessed === lastProcessed) break;
-    lastProcessed = result.chunksProcessed;
-    total += result.chunksProcessed;
+    // Prevent infinite loop: a batch was processed but the pending set did not
+    // shrink, so the remaining chunks can't make progress. Equal-sized
+    // consecutive batches are normal throughput and must NOT stop the loop.
+    const pendingAfter = await countPendingEnrichmentChunks(db);
+    if (pendingAfter >= pendingBefore) break;
+    pendingBefore = pendingAfter;
   }
   if (total > 0) {
     await rebuildWordStatsAggregates(db);
@@ -2407,7 +2450,18 @@ export async function ingestParsedEpisodes(
   let finalize: FinalizeResult | undefined;
 
   if (result.chunksAdded > 0) {
-    await enrichEpisodesWithLlm(env, sourceId, result.insertedEpisodes);
+    // LLM candidates are an enhancement signal: a failure here must not fail
+    // the ingest after episodes are inserted. /api/backfill-llm recovers them.
+    try {
+      await enrichEpisodesWithLlm(env, sourceId, result.insertedEpisodes);
+    } catch (e) {
+      console.error(JSON.stringify({
+        event: "ingest_llm_enrich_failed",
+        source_id: sourceId,
+        error: (e instanceof Error ? e.message : String(e)).substring(0, 500),
+        recovery: "/api/backfill-llm",
+      }));
+    }
     const enrichResult = await enrichChunks(env.DB, 10000, extractorMode);
     enrichBatch = enrichResult.batch;
 
@@ -2430,12 +2484,17 @@ export async function ingestParsedEpisodes(
           ).bind(...batch).all<{ id: number; content_plain: string; vector_id: string; published_date: string; year: number; topic_slugs: string }>();
           return rows.results;
         });
-        if (unembed.length > 0) {
-          const texts = unembed.map((c) => c.content_plain);
-          const embeddings = await generateEmbeddings(env.AI, texts, env.AI_GATEWAY_ID, `ingest:${insertedChunkIds[0] ?? "none"}:${insertedChunkIds.length}`);
+        // Batch like /api/embed: Workers AI and Vectorize enforce per-request
+        // input limits, and a single oversized call would throw and silently
+        // skip embeddings for exactly the largest ingests.
+        const EMBED_BATCH_SIZE = 100;
+        for (let offset = 0; offset < unembed.length; offset += EMBED_BATCH_SIZE) {
+          const slice = unembed.slice(offset, offset + EMBED_BATCH_SIZE);
+          const texts = slice.map((c) => c.content_plain);
+          const embeddings = await generateEmbeddings(env.AI, texts, env.AI_GATEWAY_ID, `ingest:${slice[0]?.id ?? "none"}:${slice.length}`);
           await recordCostEvent(env.DB, { product: "workers_ai", operation: "embedding", route: "ingest", units: texts.length });
-          await persistChunkEmbeddingCache(env.DB, unembed as Array<{ id: number }>, embeddings);
-          const vectors = unembed.map((c, i) => ({
+          await persistChunkEmbeddingCache(env.DB, slice as Array<{ id: number }>, embeddings);
+          const vectors = slice.map((c, i) => ({
             id: c.vector_id,
             values: embeddings[i],
             metadata: chunkVectorMetadata(c),
@@ -2448,7 +2507,7 @@ export async function ingestParsedEpisodes(
       console.error("Embedding error:", e);
     }
 
-    finalize = await finalizeEnrichment(env.DB, env.ENRICHMENT_QUEUE);
+    finalize = await finalizeEnrichment(env.DB);
     const failedSteps = finalize.steps.filter((step) => step.status === "error");
     if (failedSteps.length > 0) {
       throw new Error(`Finalization failed in steps: ${failedSteps.map((step) => step.name).join(", ")}`);

@@ -65,6 +65,29 @@ describe("/api/ingest source registration", () => {
     expect(source).toBeNull();
   }, 20_000);
 
+  it("rejects an already-present source row whose doc id is not in the trusted registry", async () => {
+    // A sources row that predates the registry lock (or was de-listed later)
+    // must not remain fetchable: the registry check has to run even when the
+    // row already exists, not only on first registration.
+    const rogueDocId = "1roguerogue_rogue-doc-aaaaaaaaaaaaaaaaa";
+    await env.DB.prepare(
+      "INSERT INTO sources (google_doc_id, title) VALUES (?, 'Rogue Source')"
+    ).bind(rogueDocId).run();
+
+    const res = await SELF.fetch(`http://localhost/api/ingest?doc=${rogueDocId}&limit=1`, {
+      headers: { Authorization: "Bearer test-secret" },
+    });
+    const data = await res.json() as { error: string };
+
+    expect(res.status).toBe(404);
+    expect(data.error).toBe("Unknown or untrusted source");
+
+    const episodes = await env.DB.prepare(
+      "SELECT COUNT(*) as c FROM episodes"
+    ).first<{ c: number }>();
+    expect(episodes?.c).toBe(0);
+  }, 20_000);
+
   it("purges an already-ingested untrusted source by doc id", async () => {
     await env.DB.batch([
       env.DB.prepare("INSERT INTO topics (id, name, slug, usage_count, episode_support, distinctiveness, hidden, display_suppressed) VALUES (201, 'contaminated topic', 'contaminated-topic', 2, 1, 7.5, 0, 0)"),

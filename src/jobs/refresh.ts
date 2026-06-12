@@ -45,6 +45,9 @@ interface RefreshEvent {
   // Error info
   failed_step?: string;
   error?: string;
+  // Non-fatal: LLM candidate enrichment failed; episodes remain eligible
+  // for /api/backfill-llm recovery
+  llm_enrich_error?: string;
 }
 
 interface RefreshPipelineReport {
@@ -160,7 +163,20 @@ async function runRefreshForSource(
 
     currentStep = "llm_enrich";
     if (result.insertedEpisodes.length > 0) {
-      await llmEnricher(env, source.id, result.insertedEpisodes);
+      // LLM candidates are an enhancement signal: a transient Workers AI
+      // failure must not fail the source after episodes are inserted.
+      try {
+        await llmEnricher(env, source.id, result.insertedEpisodes);
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        event.llm_enrich_error = msg.substring(0, 500);
+        console.error(JSON.stringify({
+          event: "refresh_llm_enrich_failed",
+          source_id: source.id,
+          error: event.llm_enrich_error,
+          recovery: "/api/backfill-llm",
+        }));
+      }
     }
 
     currentStep = "enrich";
@@ -182,7 +198,7 @@ async function runRefreshForSource(
     const finalizeStart = Date.now();
     let finalizeResult: FinalizeResult | undefined;
     if ((event.enriched_chunks ?? 0) > 0 || result.chunksAdded > 0) {
-      finalizeResult = await finalizeEnrichment(env.DB, env.ENRICHMENT_QUEUE);
+      finalizeResult = await finalizeEnrichment(env.DB);
       const failedSteps = finalizeResult.steps.filter((step) => step.status === "error");
       if (failedSteps.length > 0) {
         throw new Error(`Finalization failed in steps: ${failedSteps.map((step) => step.name).join(", ")}`);
