@@ -206,7 +206,7 @@ a:hover {
 
 /* === Search === */
 .search-form { display: flex; gap: 0.5rem; max-width: 100%; margin-bottom: var(--space-md); }
-.search-form input { flex: 1; padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-radius: 4px; font-size: var(--text-body); font-family: var(--font-ui); background: var(--bg-card); }
+.search-form input { flex: 1; min-width: 0; padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-radius: 4px; font-size: var(--text-body); font-family: var(--font-ui); background: var(--bg-card); }
 .search-form input:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
 .search-form button {
   padding: 0.5rem 1rem;

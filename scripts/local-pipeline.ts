@@ -128,7 +128,7 @@ async function main() {
   const totalStart = Date.now();
 
   // Get local D1 binding via Miniflare
-  const { env, dispose } = await getPlatformProxy({ configPath });
+  const { env, dispose } = await getPlatformProxy({ configPath, remoteBindings: false });
   const db = env.DB as D1Database;
 
   try {

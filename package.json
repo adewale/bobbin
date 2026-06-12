@@ -4,7 +4,11 @@
   "private": true,
   "license": "MIT",
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
+    "typecheck": "tsc --noEmit",
     "dev": "wrangler dev --config wrangler.jsonc",
     "dev:9090": "wrangler dev --config wrangler.jsonc --port 9090",
     "deploy": "wrangler deploy",
@@ -13,6 +17,7 @@
     "maintenance:remote": "npx tsx scripts/remote-maintenance.ts",
     "test": "vitest run",
     "test:real": "vitest run --config vitest.node.config.ts",
+    "test:e2e:local": "npm run fixture:local && playwright test",
     "test:visual": "RUN_VISUAL_TESTS=1 playwright test e2e/visual.spec.ts --project=desktop --workers=1",
     "test:all": "vitest run && vitest run --config vitest.node.config.ts",
     "health:production": "npx tsx scripts/check-production-health.ts --base-url https://bobbin.adewale-883.workers.dev --remote --db bobbin-db --config wrangler.jsonc",
@@ -36,9 +41,10 @@
     "@cloudflare/vitest-pool-workers": "^0.14.1",
     "@cloudflare/workers-types": "^4.20260405.1",
     "@playwright/test": "^1.59.1",
-    "@types/node": "^25.6.0",
+    "@types/node": "^22.19.21",
     "agent-browser": "^0.25.3",
     "fast-check": "^4.6.0",
+    "tsx": "^4.22.4",
     "typescript": "^6.0.2",
     "vitest": "^4.1.2",
     "wrangler": "^4.80.0"

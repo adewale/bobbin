@@ -305,6 +305,73 @@ describe("Vector score threshold value", () => {
   });
 });
 
+describe("Hybrid search vector path", () => {
+  // The test wrangler config has no AI/VECTORIZE bindings, so the semantic
+  // half of hybrid search only runs here, with recording fakes standing in
+  // for the real services.
+  it("blends Vectorize matches into results when AI and VECTORIZE are bound", async () => {
+    await env.DB.prepare(
+      "UPDATE chunks SET vector_id = 'vec-economics' WHERE slug = 'economics-chunk'"
+    ).run();
+
+    const mockEnv = {
+      ...env,
+      AI: {
+        run: async (_model: string, input: { text: string[] }) => ({
+          data: input.text.map(() => [0.1, 0.2, 0.3]),
+        }),
+      },
+      VECTORIZE: {
+        query: async () => ({
+          matches: [{ id: "vec-economics", score: 0.91 }],
+        }),
+      },
+    };
+
+    const res = await worker.fetch(
+      new Request("http://localhost/search?q=talent+allocation"),
+      mockEnv as any,
+    );
+    const html = await res.text();
+
+    expect(res.status).toBe(200);
+    // FTS keyword hit still present
+    expect(html).toContain("Tyler Cowen on marginal revolution");
+    // Vector-only hit: shares no keywords with the query, so it can only
+    // appear through the Vectorize match
+    expect(html).toContain("Economic growth patterns");
+  });
+
+  it("drops vector matches below the cosine similarity threshold", async () => {
+    await env.DB.prepare(
+      "UPDATE chunks SET vector_id = 'vec-economics' WHERE slug = 'economics-chunk'"
+    ).run();
+
+    const mockEnv = {
+      ...env,
+      AI: {
+        run: async (_model: string, input: { text: string[] }) => ({
+          data: input.text.map(() => [0.1, 0.2, 0.3]),
+        }),
+      },
+      VECTORIZE: {
+        query: async () => ({
+          matches: [{ id: "vec-economics", score: 0.5 }],
+        }),
+      },
+    };
+
+    const res = await worker.fetch(
+      new Request("http://localhost/search?q=talent+allocation+noise"),
+      mockEnv as any,
+    );
+    const html = await res.text();
+
+    expect(res.status).toBe(200);
+    expect(html).not.toContain("Economic growth patterns");
+  });
+});
+
 describe("Public search cost guards", () => {
   it("rejects overlong queries before running search", async () => {
     const longQuery = "a".repeat(201);

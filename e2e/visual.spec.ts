@@ -24,8 +24,7 @@ const AGENT_BROWSER = resolve(
   "../node_modules/.bin/agent-browser"
 );
 
-const BASE_URL =
-  process.env.BASE_URL || "https://bobbin.adewale-883.workers.dev";
+const BASE_URL = process.env.BASE_URL || "http://localhost:9090";
 
 // Session name isolates these tests from other agent-browser usage
 const SESSION = "bobbin-visual-tests";
@@ -50,6 +49,16 @@ function ab(args: string[], { json = false } = {}): string {
  */
 function askAI(question: string): string {
   return ab(["chat", question]);
+}
+
+/**
+ * Parse the model's YES/NO verdict. The first standalone yes/no token wins,
+ * so "NO, but yes there is some overlap" correctly counts as a failure
+ * (a bare substring check would pass it).
+ */
+function verdictIsYes(answer: string): boolean {
+  const match = /\b(yes|no)\b/i.exec(answer);
+  return match?.[1]?.toLowerCase() === "yes";
 }
 
 // ── Setup & teardown ────────────────────────────────────────────────────
@@ -92,9 +101,8 @@ test.describe("Visual: Homepage", () => {
     console.log("AI assessment (homepage):", answer);
 
     // The AI should not report major visual problems
-    const lower = answer.toLowerCase();
     expect(
-      lower.includes("yes") || lower.includes("looks good"),
+      verdictIsYes(answer),
       `AI reported visual issues on homepage: ${answer}`
     ).toBeTruthy();
   });
@@ -124,32 +132,30 @@ test.describe("Visual: Chunk detail", () => {
 
     console.log("AI assessment (chunk detail):", answer);
 
-    const lower = answer.toLowerCase();
     expect(
-      lower.includes("yes") || lower.includes("readable"),
+      verdictIsYes(answer),
       `AI reported reading experience issues: ${answer}`
     ).toBeTruthy();
   });
 });
 
-test.describe("Visual: Word Stats", () => {
+test.describe("Visual: Topics index", () => {
   test("data visualization is clear and understandable", async () => {
-    ab(["open", `${BASE_URL}/word-stats`]);
+    ab(["open", `${BASE_URL}/topics`]);
     ab(["wait", "--load", "networkidle"]);
 
     const answer = askAI(
-      "Is the data visualization on this word stats page clear? " +
-        "Can I understand what the most distinctive words are? Is the " +
+      "Is the data visualization on this topics page clear? " +
+        "Can I understand which topics are most prominent? Is the " +
         "information well-organized and easy to scan? Answer YES if the " +
         "visualization is clear, NO if there are problems. Then briefly explain."
     );
 
-    console.log("AI assessment (word-stats):", answer);
+    console.log("AI assessment (topics):", answer);
 
-    const lower = answer.toLowerCase();
     expect(
-      lower.includes("yes") || lower.includes("clear"),
-      `AI reported visualization issues on word-stats: ${answer}`
+      verdictIsYes(answer),
+      `AI reported visualization issues on the topics page: ${answer}`
     ).toBeTruthy();
   });
 });
@@ -172,9 +178,8 @@ test.describe("Visual: Browse page on mobile", () => {
 
     console.log("AI assessment (browse mobile):", answer);
 
-    const lower = answer.toLowerCase();
     expect(
-      lower.includes("yes") || lower.includes("looks good"),
+      verdictIsYes(answer),
       `AI reported mobile layout issues: ${answer}`
     ).toBeTruthy();
   });

@@ -1,0 +1,41 @@
+{
+  // Serving config for browser tests (Playwright webServer) and any
+  // unauthenticated environment such as CI. Identical to wrangler.jsonc
+  // except that the remote-only AI and Vectorize bindings are omitted —
+  // wrangler refuses to start them without a Cloudflare login, and the
+  // app's hybrid-search/embedding paths are guarded on their presence.
+  // The d1 database_id matches wrangler.jsonc so this serves the state
+  // seeded by `npm run fixture:local`.
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "bobbin-e2e",
+  "main": "src/index.tsx",
+  "compatibility_date": "2026-04-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./public"
+  },
+  "vars": {
+    "TOPIC_EXTRACTOR_MODE": "naive",
+    "AI_GATEWAY_ID": "bobbin"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "bobbin-db",
+      "database_id": "b1e1d8be-b82b-4e10-a97a-37bd8d48c6f1"
+    }
+  ],
+  "ratelimits": [
+    {
+      "name": "SEARCH_RATE_LIMIT",
+      "namespace_id": "1001",
+      "simple": { "limit": 60, "period": 60 }
+    }
+  ],
+  "queues": {
+    "producers": [
+      { "binding": "ENRICHMENT_QUEUE", "queue": "bobbin-enrichment" },
+      { "binding": "ENRICHMENT_DLQ", "queue": "bobbin-enrichment-dlq" }
+    ]
+  }
+}
