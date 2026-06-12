@@ -3,7 +3,7 @@ import { env } from "cloudflare:test";
 import { applyTestMigrations } from "../../test/helpers/migrations";
 import { parseSearchQuery } from "../lib/query-parser";
 import { ftsSearch, mergeAndRerank, type ScoredResult } from "./search";
-import { applyTopicBoost, applyTopicFilter } from "./search-topics";
+import { applyTopicBoost } from "./search-topics";
 
 async function seedTopicSearchData() {
   await env.DB.batch([
@@ -83,76 +83,6 @@ describe("applyTopicBoost", () => {
   });
 });
 
-describe("applyTopicFilter", () => {
-  it("filters results to only chunks assigned to the specified topic", async () => {
-    const parsed = parseSearchQuery("topic:ecosystem");
-    const filtered = await applyTopicFilter(env.DB, parsed.topics!);
-
-    // Should return chunk IDs for eco-tagged and eco-synonyms (both assigned to ecosystem)
-    expect(filtered).toContain(1); // eco-tagged
-    expect(filtered).toContain(3); // eco-synonyms
-    expect(filtered).not.toContain(2); // eco-untagged
-    expect(filtered).not.toContain(4); // agent-chunk
-  });
-
-  it("returns intersection when multiple topics specified", async () => {
-    // Only chunks assigned to BOTH ecosystem and agent — none exist in seed data
-    const filtered = await applyTopicFilter(env.DB, [
-      "ecosystem",
-      "agent",
-    ]);
-    expect(filtered).toHaveLength(0);
-  });
-
-  it("returns chunk IDs for agent topic", async () => {
-    const filtered = await applyTopicFilter(env.DB, ["agent"]);
-    expect(filtered).toContain(4); // agent-chunk
-    expect(filtered).toHaveLength(1);
-  });
-
-  it("returns empty array for nonexistent topic", async () => {
-    const filtered = await applyTopicFilter(env.DB, ["nonexistent"]);
-    expect(filtered).toHaveLength(0);
-  });
-
-  it("handles topic intersections that exceed the D1 bind cap", async () => {
-    await env.DB.batch([
-      env.DB.prepare(
-        "INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (1, 'all-topics', 'All topics', 'All topics chunk', 'All topics chunk', 10)"
-      ),
-      env.DB.prepare(
-        "INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (1, 'missing-one-topic', 'Missing one topic', 'Missing one topic chunk', 'Missing one topic chunk', 11)"
-      ),
-    ]);
-
-    const extraTopics = Array.from({ length: 140 }, (_, index) => {
-      const n = index + 1;
-      return env.DB.prepare(
-        "INSERT INTO topics (name, slug, usage_count) VALUES (?, ?, 10)"
-      ).bind(`wide topic ${n}`, `wide-topic-${n}`);
-    });
-    await env.DB.batch(extraTopics);
-
-    const allTopicAssignments = Array.from({ length: 140 }, (_, index) => {
-      const topicId = index + 3;
-      return env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (5, ?)").bind(topicId);
-    });
-    const partialAssignments = Array.from({ length: 139 }, (_, index) => {
-      const topicId = index + 3;
-      return env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (6, ?)").bind(topicId);
-    });
-    await env.DB.batch([...allTopicAssignments, ...partialAssignments]);
-
-    const filtered = await applyTopicFilter(
-      env.DB,
-      Array.from({ length: 140 }, (_, index) => `wide-topic-${index + 1}`),
-    );
-
-    expect(filtered).toContain(5);
-    expect(filtered).not.toContain(6);
-    expect(filtered).toHaveLength(1);
-  });
-});
 
 describe("ftsSearch with topic filter", () => {
   it("narrows FTS results to chunks with matching topic", async () => {

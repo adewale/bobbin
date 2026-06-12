@@ -10,20 +10,11 @@ export interface PurgeSourceResult {
   sourceDeleted: boolean;
 }
 
-export async function getAllSources(db: D1Database): Promise<SourceRow[]> {
-  const result = await db.prepare("SELECT * FROM sources").all<SourceRow>();
-  return result.results;
-}
 
 export async function getSourceByDocId(db: D1Database, docId: string): Promise<SourceRow | null> {
   return await db.prepare("SELECT * FROM sources WHERE google_doc_id = ?").bind(docId).first<SourceRow>();
 }
 
-export async function getLeastRecentSource(db: D1Database): Promise<SourceRow | null> {
-  return await db.prepare(
-    "SELECT * FROM sources ORDER BY last_fetched_at IS NOT NULL, last_fetched_at ASC LIMIT 1"
-  ).first<SourceRow>();
-}
 
 export async function ensureSource(db: D1Database, docId: string, title: string, isArchive = 0, active = 1): Promise<void> {
   await db.prepare(
@@ -108,11 +99,6 @@ export async function markSourceRefreshFailed(db: D1Database, sourceId: number, 
   ).bind(message.substring(0, 500), sourceId).run();
 }
 
-export async function updateSourceFetchedAt(db: D1Database, sourceId: number): Promise<void> {
-  await db.prepare(
-    "UPDATE sources SET last_fetched_at = datetime('now') WHERE id = ?"
-  ).bind(sourceId).run();
-}
 
 export async function getExistingDatesForSource(db: D1Database, sourceId: number): Promise<Set<string>> {
   const result = await db.prepare(

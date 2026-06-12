@@ -42,6 +42,7 @@ import {
 import { normalizeTopicExtractorMode, type TopicExtractorMode } from "../services/yake-runtime";
 import { getExistingDatesForSource, getSourceTag } from "../db/sources";
 import { getUnenrichedChunks, markChunksEnriched, isEnrichmentDone, countPendingEnrichmentChunks } from "../db/ingestion";
+import { recountUsage, recountEpisodeSupport, rebuildEpisodeTopics, syncTopicDistinctiveness, syncTopicBurstMetrics } from "../db/corpus-maintenance";
 import type { Bindings, ParsedChunk, ParsedEpisode, RichBlock, RichLink, RichTextNode } from "../types";
 
 /** Current enrichment algorithm version. Bump to re-enrich all chunks.
@@ -1198,7 +1199,13 @@ export async function processChunkBatch(
           .bind(chunkId, topicSlug)
       );
     }
-    await batchExec(db, ctStmts);
+    // Count actual insertions, not attempted statements: INSERT OR IGNORE
+    // no-ops on duplicates and the metric should say so.
+    let chunkTopicLinksInserted = 0;
+    for (let i = 0; i < ctStmts.length; i += 100) {
+      const results = await db.batch(ctStmts.slice(i, i + 100));
+      for (const result of results) chunkTopicLinksInserted += result.meta.changes || 0;
+    }
     await markDirtyTopicsBySlugs(db, [...uniqueTopics.keys()], "chunk_topic_insertion");
 
     let episodeTopicLinksInserted = 0;
@@ -1216,7 +1223,7 @@ export async function processChunkBatch(
 
     return {
       counts: {
-        chunk_topic_links_inserted: ctStmts.length,
+        chunk_topic_links_inserted: chunkTopicLinksInserted,
         episode_topic_links_inserted: episodeTopicLinksInserted,
         invalid_entity_links_filtered: filteredInvalidEntityLinks,
       },
@@ -1364,54 +1371,6 @@ function canonicalizeExistingTopicName(name: string, kind: string): { name: stri
   return { name: canonical, slug: slugify(canonical) };
 }
 
-async function recountUsage(db: D1Database): Promise<number> {
-  const allIds = await db.prepare("SELECT id FROM topics").all<{ id: number }>();
-  const ids = allIds.results.map((row) => row.id);
-  const BATCH = 90;
-  for (let i = 0; i < ids.length; i += BATCH) {
-    const batch = ids.slice(i, i + BATCH);
-    const placeholders = batch.map(() => "?").join(",");
-    await db.prepare(
-      `UPDATE topics
-       SET usage_count = (SELECT COUNT(*) FROM chunk_topics WHERE topic_id = topics.id)
-       WHERE id IN (${placeholders})`
-    ).bind(...batch).run();
-  }
-  return ids.length;
-}
-
-async function recountEpisodeSupport(db: D1Database): Promise<number> {
-  const allIds = await db.prepare("SELECT id FROM topics").all<{ id: number }>();
-  const ids = allIds.results.map((row) => row.id);
-  const BATCH = 90;
-  for (let i = 0; i < ids.length; i += BATCH) {
-    const batch = ids.slice(i, i + BATCH);
-    const placeholders = batch.map(() => "?").join(",");
-    await db.prepare(
-      `UPDATE topics
-       SET episode_support = (
-         SELECT COUNT(DISTINCT c.episode_id)
-         FROM chunk_topics ct
-         JOIN chunks c ON c.id = ct.chunk_id
-         WHERE ct.topic_id = topics.id
-       )
-       WHERE id IN (${placeholders})`
-    ).bind(...batch).run();
-  }
-  return ids.length;
-}
-
-async function rebuildEpisodeTopics(db: D1Database): Promise<number> {
-  await db.prepare("DELETE FROM episode_topics").run();
-  const insert = await db.prepare(
-    `INSERT OR IGNORE INTO episode_topics (episode_id, topic_id)
-     SELECT DISTINCT c.episode_id, ct.topic_id
-     FROM chunk_topics ct
-     JOIN chunks c ON c.id = ct.chunk_id`
-  ).run();
-  return insert.meta.changes || 0;
-}
-
 async function loadCorpusTopicSupportThreshold(db: D1Database): Promise<number> {
   const totalEpisodes = await db.prepare("SELECT COUNT(*) as c FROM episodes").first<{ c: number }>();
   return topicSupportThreshold(totalEpisodes?.c ?? 0);
@@ -1442,47 +1401,6 @@ async function loadDirtyOrBootstrapTopicIds(db: D1Database): Promise<number[]> {
   return activeTopics.results.map((topic) => topic.id);
 }
 
-async function syncTopicBurstMetrics(db: D1Database): Promise<number> {
-  const rows = await db.prepare(
-    `SELECT ct.topic_id, e.published_date, COUNT(*) as mention_count
-     FROM chunk_topics ct
-     JOIN chunks c ON c.id = ct.chunk_id
-     JOIN episodes e ON e.id = c.episode_id
-     GROUP BY ct.topic_id, e.published_date
-     ORDER BY ct.topic_id ASC, e.published_date ASC`
-  ).all<{ topic_id: number; published_date: string; mention_count: number }>();
-
-  const countsByTopic = new Map<number, Map<string, number>>();
-  const firstQuarterByTopic = new Map<number, string>();
-  const lastQuarterByTopic = new Map<number, string>();
-  for (const row of rows.results) {
-    const quarter = quarterKeyFromIsoDate(row.published_date);
-    const current = countsByTopic.get(row.topic_id) ?? new Map<string, number>();
-    current.set(quarter, (current.get(quarter) ?? 0) + Number(row.mention_count));
-    countsByTopic.set(row.topic_id, current);
-    if (!firstQuarterByTopic.has(row.topic_id) || quarter < (firstQuarterByTopic.get(row.topic_id) ?? quarter)) {
-      firstQuarterByTopic.set(row.topic_id, quarter);
-    }
-    if (!lastQuarterByTopic.has(row.topic_id) || quarter > (lastQuarterByTopic.get(row.topic_id) ?? quarter)) {
-      lastQuarterByTopic.set(row.topic_id, quarter);
-    }
-  }
-
-  const allTopics = await db.prepare("SELECT id FROM topics").all<{ id: number }>();
-  const statements = allTopics.results.map((topic) => {
-    const burst = computeSpanAwareBurstScore(
-      countsByTopic.get(topic.id) ?? new Map(),
-      firstQuarterByTopic.get(topic.id) ?? null,
-      lastQuarterByTopic.get(topic.id) ?? null,
-    );
-    return db.prepare(
-      "UPDATE topics SET burst_score = ?, burst_peak_quarter = ? WHERE id = ?"
-    ).bind(burst.score, burst.peakQuarter, topic.id);
-  });
-  await batchExec(db, statements);
-  return statements.length;
-}
-
 function buildKnownEntityAliasMap() {
   const aliases = new Map<string, { name: string; slug: string }>();
   for (const entity of KNOWN_ENTITIES) {
@@ -1493,19 +1411,6 @@ function buildKnownEntityAliasMap() {
     }
   }
   return aliases;
-}
-
-async function syncTopicDistinctiveness(db: D1Database): Promise<number> {
-  const allIds = await db.prepare("SELECT id, name FROM topics").all<{ id: number; name: string }>();
-  const updates = allIds.results.map((row) =>
-    db.prepare(
-      `UPDATE topics
-       SET distinctiveness = COALESCE((SELECT w.distinctiveness FROM word_stats w WHERE w.word = LOWER(topics.name)), 0)
-       WHERE id = ?`
-    ).bind(row.id)
-  );
-  await batchExec(db, updates);
-  return updates.length;
 }
 
 async function mergeTopicInto(
@@ -1709,30 +1614,36 @@ export async function finalizeEnrichment(db: D1Database): Promise<FinalizeResult
     ).all<{ phrase: string; slug: string; support_count: number; doc_count: number; quality_score: number }>();
     let chunkLinksInserted = 0;
     let auditRowsInserted = 0;
-    let phrasesSkipped = 0;
     const touchedEpisodeIds = new Set<number>();
-    for (const phrase of phrases.results) {
-      const rejectionReason = getPhrasePromotionReason({
-        docCount: phrase.doc_count,
-        supportCount: phrase.support_count,
-        qualityScore: phrase.quality_score,
-        normalizedName: phrase.phrase,
-      });
-      if (rejectionReason) {
-        phrasesSkipped++;
-        continue;
+    const accepted = phrases.results.filter((phrase) => !getPhrasePromotionReason({
+      docCount: phrase.doc_count,
+      supportCount: phrase.support_count,
+      qualityScore: phrase.quality_score,
+      normalizedName: phrase.phrase,
+    }));
+    const phrasesSkipped = phrases.results.length - accepted.length;
+
+    if (accepted.length > 0) {
+      // Create missing phrase topics and resolve ids in bulk: the previous
+      // one-loop-iteration-per-phrase shape issued ~5 sequential queries per
+      // phrase and approached the Workers subrequest cap as the lexicon grew.
+      await batchExec(db, accepted.map((phrase) =>
+        db.prepare("INSERT OR IGNORE INTO topics (name, slug, kind) VALUES (?, ?, 'phrase')")
+          .bind(phrase.phrase, phrase.slug)
+      ));
+
+      const idBySlug = new Map<string, number>();
+      for (const slugBatch of chunkForSqlBindings(accepted.map((phrase) => phrase.slug))) {
+        const placeholders = sqlPlaceholders(slugBatch.length);
+        const rows = await db.prepare(
+          `SELECT id, slug FROM topics WHERE slug IN (${placeholders})`
+        ).bind(...slugBatch).all<{ id: number; slug: string }>();
+        for (const row of rows.results) idBySlug.set(row.slug, row.id);
       }
-      await db.prepare(
-        "INSERT OR IGNORE INTO topics (name, slug, kind) VALUES (?, ?, 'phrase')"
-      ).bind(phrase.phrase, phrase.slug).run();
+      await markDirtyTopicsByIds(db, [...idBySlug.values()], "phrase_lexicon_backfill");
 
-      const topic = await db.prepare(
-        "SELECT id FROM topics WHERE slug = ?"
-      ).bind(phrase.slug).first<{ id: number }>();
-      if (!topic) continue;
-      await markDirtyTopicsByIds(db, [topic.id], "phrase_lexicon_backfill");
-
-      const auditInsert = await db.prepare(
+      const resolved = accepted.filter((phrase) => idBySlug.has(phrase.slug));
+      const auditStmts = resolved.map((phrase) => db.prepare(
         `INSERT INTO topic_candidate_audit (
            chunk_id, topic_id, source, stage, raw_candidate, normalized_candidate,
            topic_name, slug, score, kind, decision, decision_reason, provenance
@@ -1746,7 +1657,7 @@ export async function finalizeEnrichment(db: D1Database): Promise<FinalizeResult
              WHERE a.chunk_id = c.id AND a.slug = ? AND a.decision = 'accepted'
            )`
       ).bind(
-        topic.id,
+        idBySlug.get(phrase.slug)!,
         phrase.phrase,
         phrase.phrase,
         phrase.phrase,
@@ -1754,9 +1665,13 @@ export async function finalizeEnrichment(db: D1Database): Promise<FinalizeResult
         JSON.stringify(["phrase_backfill", "source:phrase_lexicon"]),
         `%${escapeLike(phrase.phrase)}%`,
         phrase.slug
-      ).run();
-      auditRowsInserted += auditInsert.meta.changes || 0;
-      const chunkTopicInsert = await db.prepare(
+      ));
+      for (let i = 0; i < auditStmts.length; i += 50) {
+        const results = await db.batch(auditStmts.slice(i, i + 50));
+        for (const result of results) auditRowsInserted += result.meta.changes || 0;
+      }
+
+      const linkStmts = resolved.map((phrase) => db.prepare(
         `INSERT OR IGNORE INTO chunk_topics (chunk_id, topic_id)
          SELECT a.chunk_id, ?
          FROM topic_candidate_audit a
@@ -1764,19 +1679,25 @@ export async function finalizeEnrichment(db: D1Database): Promise<FinalizeResult
            AND a.slug = ?
            AND a.source = 'phrase_lexicon'
            AND a.decision = 'accepted'`
-      ).bind(topic.id, topic.id, phrase.slug).run();
-      chunkLinksInserted += chunkTopicInsert.meta.changes || 0;
-      const touchedEpisodes = await db.prepare(
-        `SELECT DISTINCT c.episode_id
-         FROM topic_candidate_audit a
-         JOIN chunks c ON c.id = a.chunk_id
-         WHERE a.topic_id = ?
-           AND a.slug = ?
-           AND a.source = 'phrase_lexicon'
-           AND a.decision = 'accepted'`
-      ).bind(topic.id, phrase.slug).all<{ episode_id: number }>();
-      for (const row of touchedEpisodes.results) {
-        touchedEpisodeIds.add(row.episode_id);
+      ).bind(idBySlug.get(phrase.slug)!, idBySlug.get(phrase.slug)!, phrase.slug));
+      for (let i = 0; i < linkStmts.length; i += 50) {
+        const results = await db.batch(linkStmts.slice(i, i + 50));
+        for (const result of results) chunkLinksInserted += result.meta.changes || 0;
+      }
+
+      for (const topicIdBatch of chunkForSqlBindings([...idBySlug.values()])) {
+        const placeholders = sqlPlaceholders(topicIdBatch.length);
+        const touchedEpisodes = await db.prepare(
+          `SELECT DISTINCT c.episode_id
+           FROM topic_candidate_audit a
+           JOIN chunks c ON c.id = a.chunk_id
+           WHERE a.topic_id IN (${placeholders})
+             AND a.source = 'phrase_lexicon'
+             AND a.decision = 'accepted'`
+        ).bind(...topicIdBatch).all<{ episode_id: number }>();
+        for (const row of touchedEpisodes.results) {
+          touchedEpisodeIds.add(row.episode_id);
+        }
       }
     }
 
@@ -1843,7 +1764,7 @@ export async function finalizeEnrichment(db: D1Database): Promise<FinalizeResult
   });
 
   await runStep("episode_support_recount", steps, async () => {
-    const touched = await recountEpisodeSupport(db);
+    const touched = (await recountEpisodeSupport(db)) ?? 0;
     return {
       detail: `${touched} topics updated at threshold ${minimumTopicSupport}`,
       counts: { topics_updated: touched, minimum_episode_support: minimumTopicSupport },
@@ -2100,7 +2021,7 @@ export async function finalizeEnrichment(db: D1Database): Promise<FinalizeResult
   });
 
   await runStep("episode_support_post_merge", steps, async () => {
-    const touched = await recountEpisodeSupport(db);
+    const touched = (await recountEpisodeSupport(db)) ?? 0;
     return {
       detail: `${touched} topics updated at threshold ${minimumTopicSupport}`,
       counts: { topics_updated: touched, minimum_episode_support: minimumTopicSupport },
@@ -2131,16 +2052,25 @@ export async function finalizeEnrichment(db: D1Database): Promise<FinalizeResult
     const entities = await db.prepare(
       "SELECT id, name FROM topics WHERE kind = 'entity' AND usage_count > 0"
     ).all<{ id: number; name: string }>();
+    // One query for every entity's links instead of one query per entity.
+    const linksByEntity = new Map<number, Array<{ chunk_id: number; analysis_text: string }>>();
+    const allEntityLinks = await db.prepare(
+      `SELECT ct.topic_id, ct.chunk_id, COALESCE(c.analysis_text, c.content_plain) as analysis_text
+       FROM chunk_topics ct
+       JOIN chunks c ON ct.chunk_id = c.id
+       JOIN topics t ON t.id = ct.topic_id
+       WHERE t.kind = 'entity' AND t.usage_count > 0`
+    ).all<{ topic_id: number; chunk_id: number; analysis_text: string }>();
+    for (const row of allEntityLinks.results) {
+      const current = linksByEntity.get(row.topic_id) ?? [];
+      current.push({ chunk_id: row.chunk_id, analysis_text: row.analysis_text });
+      linksByEntity.set(row.topic_id, current);
+    }
     let deletedLinks = 0;
     for (const entity of entities.results) {
-      const links = await db.prepare(
-        `SELECT ct.chunk_id, COALESCE(c.analysis_text, c.content_plain) as analysis_text
-         FROM chunk_topics ct
-         JOIN chunks c ON ct.chunk_id = c.id
-         WHERE ct.topic_id = ?`
-      ).bind(entity.id).all<{ chunk_id: number; analysis_text: string }>();
+      const links = linksByEntity.get(entity.id) ?? [];
       const regex = new RegExp(`(^|[^a-z0-9])${escapeRegex(entity.name.toLowerCase())}(?=$|[^a-z0-9])`, "i");
-      const invalidChunkIds = links.results
+      const invalidChunkIds = links
         .filter((row) => !regex.test(row.analysis_text.toLowerCase()))
         .map((row) => row.chunk_id);
       if (invalidChunkIds.length === 0) continue;

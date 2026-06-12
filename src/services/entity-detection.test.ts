@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import fc from "fast-check";
 import {
   extractKnownEntities,
-  identifyDistinctiveEntities,
   extractTopics,
 } from "./topic-extractor";
 
@@ -104,42 +103,6 @@ describe("extractTopics with known entities", () => {
   });
 });
 
-describe("identifyDistinctiveEntities", () => {
-  it("promotes high-distinctiveness non-baseline words", () => {
-    const wordStats = [
-      { word: "stratechery", distinctiveness: 20, in_baseline: 0 },
-      { word: "substack", distinctiveness: 18, in_baseline: 0 },
-      { word: "vercel", distinctiveness: 16, in_baseline: 0 },
-      { word: "the", distinctiveness: 0.1, in_baseline: 1 },
-      { word: "code", distinctiveness: 12, in_baseline: 1 },
-    ];
-    const promoted = identifyDistinctiveEntities(wordStats);
-    expect(promoted).toContain("stratechery");
-    expect(promoted).toContain("substack");
-    expect(promoted).toContain("vercel");
-    expect(promoted).not.toContain("the");
-    expect(promoted).not.toContain("code");
-  });
-
-  it("filters out short words", () => {
-    const wordStats = [
-      { word: "aws", distinctiveness: 25, in_baseline: 0 },
-      { word: "openai", distinctiveness: 30, in_baseline: 0 },
-    ];
-    const promoted = identifyDistinctiveEntities(wordStats);
-    expect(promoted).not.toContain("aws");
-    expect(promoted).toContain("openai");
-  });
-
-  it("returns empty array when no words qualify", () => {
-    const wordStats = [
-      { word: "common", distinctiveness: 2, in_baseline: 1 },
-      { word: "word", distinctiveness: 5, in_baseline: 1 },
-    ];
-    const promoted = identifyDistinctiveEntities(wordStats);
-    expect(promoted).toEqual([]);
-  });
-});
 
 describe("entity detection property-based tests", () => {
   it("extractKnownEntities never throws on arbitrary input", () => {

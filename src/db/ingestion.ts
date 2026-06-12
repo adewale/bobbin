@@ -107,9 +107,6 @@ export async function markChunksEnriched(db: D1Database, chunkIds: number[]) {
   }
 }
 
-export async function resetEnrichmentFlags(db: D1Database) {
-  await db.prepare("UPDATE chunks SET enriched = 0").run();
-}
 
 export async function isEnrichmentDone(db: D1Database): Promise<boolean> {
   const { CURRENT_ENRICHMENT_VERSION } = await import("../jobs/ingest");

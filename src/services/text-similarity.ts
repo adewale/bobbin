@@ -67,39 +67,3 @@ export function simpleStem(word: string): string {
   return w;
 }
 
-/**
- * Cluster topics by string similarity using Dice coefficient.
- * Returns groups where each group maps to a canonical representative.
- *
- * @param names - topic names to cluster
- * @param threshold - Dice threshold for merging (default 0.7)
- * @returns Map from each name to its canonical representative
- */
-export function clusterBySimilarity(
-  names: string[],
-  threshold: number = 0.7
-): Map<string, string> {
-  const canonical = new Map<string, string>();
-  const representatives: string[] = [];
-
-  // Sort by length descending — longer names become representatives
-  const sorted = [...names].sort((a, b) => b.length - a.length);
-
-  for (const name of sorted) {
-    let merged = false;
-    for (const rep of representatives) {
-      if (diceCoefficient(name, rep) >= threshold) {
-        // Merge into existing cluster — keep the longer/more specific name as canonical
-        canonical.set(name, rep);
-        merged = true;
-        break;
-      }
-    }
-    if (!merged) {
-      representatives.push(name);
-      canonical.set(name, name); // self-representative
-    }
-  }
-
-  return canonical;
-}

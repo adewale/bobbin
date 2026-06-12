@@ -1,5 +1,5 @@
 import { parseEpisodeDate } from "../lib/date";
-import { decodeHtmlEntities, resolveGoogleRedirectUrl } from "../lib/html";
+import { decodeHtmlEntities, escapeRegex, resolveGoogleRedirectUrl } from "../lib/html";
 import type { ParsedEpisode, ParsedChunk, RichBlock, RichFootnote, RichImage, RichLink, RichTextNode } from "../types";
 
 const DATE_PATTERN = /\d{1,2}\/\d{1,2}\/\d{2,4}/;
@@ -488,7 +488,7 @@ export function parseHtmlDocument(html: string): ParsedEpisode[] {
     const parsedDate = parseEpisodeDate(dateMatch[0]);
     if (!parsedDate) continue;
 
-    const headingId = html.match(new RegExp(`id="([^"]*)"[^>]*>\s*<span[^>]*>${dateMatch[0]}`))?.[1] || "";
+    const headingId = html.match(new RegExp(`id="([^"]*)"[^>]*>\\s*<span[^>]*>${escapeRegex(dateMatch[0])}`))?.[1] || "";
     const body = section.substring(h1End + 5);
     const split = splitEpisodeContent(body);
     const format = detectFormat(split.chunks);

@@ -2,34 +2,7 @@ import { batchExec } from "../lib/db";
 import { countTokenFrequencies, normalizeChunkText, tokenizeNormalizedText } from "./analysis-text";
 import { computeDistinctiveness, loadEnglishBaseline } from "./distinctiveness";
 
-export function tokenizeForWordStats(text: string): Map<string, number> {
-  const normalized = normalizeChunkText(text);
-  return countTokenFrequencies(tokenizeNormalizedText(normalized.normalizedText));
-}
 
-export async function updateWordStats(
-  db: D1Database,
-  chunkId: number,
-  plainText: string
-): Promise<void> {
-  const wordCounts = tokenizeForWordStats(plainText);
-  if (wordCounts.size === 0) return;
-
-  const batch: D1PreparedStatement[] = [];
-
-  for (const [word, count] of wordCounts) {
-    batch.push(
-      db
-        .prepare(
-          "INSERT OR REPLACE INTO chunk_words (chunk_id, word, count) VALUES (?, ?, ?)"
-        )
-        .bind(chunkId, word, count)
-    );
-  }
-
-  // Process in batches of 50 to stay within D1 limits
-  await batchExec(db, batch);
-}
 
 export async function rebuildWordStatsAggregates(
   db: D1Database

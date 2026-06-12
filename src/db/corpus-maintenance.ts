@@ -24,31 +24,52 @@ export interface CorpusInvariantAudit {
   wordStatsTotalDelta: number;
 }
 
-async function recountUsage(db: D1Database): Promise<number> {
-  const rows = await db.prepare("SELECT COUNT(*) as c FROM topics").first<{ c: number }>();
-  await db.prepare(
-    `UPDATE topics
-     SET usage_count = (SELECT COUNT(*) FROM chunk_topics WHERE topic_id = topics.id)`
-  ).run();
-  return rows?.c || 0;
+// Shared by the finalize pipeline (src/jobs/ingest.ts) and the purge-source
+// repair path. Correlated UPDATEs are batched by explicit row ids: a single
+// full-table correlated UPDATE has previously exceeded D1's CPU limit at
+// 13K+ topics (see CHANGELOG 2026-04-14).
+const RECOUNT_ID_BATCH = 90;
+
+async function loadAllTopicIds(db: D1Database): Promise<number[]> {
+  const allIds = await db.prepare("SELECT id FROM topics").all<{ id: number }>();
+  return allIds.results.map((row) => row.id);
 }
 
-async function recountEpisodeSupport(db: D1Database): Promise<number | null> {
+export async function recountUsage(db: D1Database): Promise<number> {
+  const ids = await loadAllTopicIds(db);
+  for (let i = 0; i < ids.length; i += RECOUNT_ID_BATCH) {
+    const batch = ids.slice(i, i + RECOUNT_ID_BATCH);
+    const placeholders = batch.map(() => "?").join(",");
+    await db.prepare(
+      `UPDATE topics
+       SET usage_count = (SELECT COUNT(*) FROM chunk_topics WHERE topic_id = topics.id)
+       WHERE id IN (${placeholders})`
+    ).bind(...batch).run();
+  }
+  return ids.length;
+}
+
+export async function recountEpisodeSupport(db: D1Database): Promise<number | null> {
   if (!(await topicsHasColumn(db, "episode_support"))) return null;
-  const rows = await db.prepare("SELECT COUNT(*) as c FROM topics").first<{ c: number }>();
-  await db.prepare(
-    `UPDATE topics
-     SET episode_support = (
-       SELECT COUNT(DISTINCT c.episode_id)
-       FROM chunk_topics ct
-       JOIN chunks c ON c.id = ct.chunk_id
-       WHERE ct.topic_id = topics.id
-     )`
-  ).run();
-  return rows?.c || 0;
+  const ids = await loadAllTopicIds(db);
+  for (let i = 0; i < ids.length; i += RECOUNT_ID_BATCH) {
+    const batch = ids.slice(i, i + RECOUNT_ID_BATCH);
+    const placeholders = batch.map(() => "?").join(",");
+    await db.prepare(
+      `UPDATE topics
+       SET episode_support = (
+         SELECT COUNT(DISTINCT c.episode_id)
+         FROM chunk_topics ct
+         JOIN chunks c ON c.id = ct.chunk_id
+         WHERE ct.topic_id = topics.id
+       )
+       WHERE id IN (${placeholders})`
+    ).bind(...batch).run();
+  }
+  return ids.length;
 }
 
-async function rebuildEpisodeTopics(db: D1Database): Promise<number> {
+export async function rebuildEpisodeTopics(db: D1Database): Promise<number> {
   await db.prepare("DELETE FROM episode_topics").run();
   const insert = await db.prepare(
     `INSERT OR IGNORE INTO episode_topics (episode_id, topic_id)
@@ -59,16 +80,21 @@ async function rebuildEpisodeTopics(db: D1Database): Promise<number> {
   return insert.meta.changes || 0;
 }
 
-async function syncTopicDistinctiveness(db: D1Database): Promise<number> {
-  const rows = await db.prepare("SELECT COUNT(*) as c FROM topics").first<{ c: number }>();
-  await db.prepare(
-    `UPDATE topics
-     SET distinctiveness = COALESCE((SELECT w.distinctiveness FROM word_stats w WHERE w.word = LOWER(topics.name)), 0)`
-  ).run();
-  return rows?.c || 0;
+export async function syncTopicDistinctiveness(db: D1Database): Promise<number> {
+  const ids = await loadAllTopicIds(db);
+  for (let i = 0; i < ids.length; i += RECOUNT_ID_BATCH) {
+    const batch = ids.slice(i, i + RECOUNT_ID_BATCH);
+    const placeholders = batch.map(() => "?").join(",");
+    await db.prepare(
+      `UPDATE topics
+       SET distinctiveness = COALESCE((SELECT w.distinctiveness FROM word_stats w WHERE w.word = LOWER(topics.name)), 0)
+       WHERE id IN (${placeholders})`
+    ).bind(...batch).run();
+  }
+  return ids.length;
 }
 
-async function syncTopicBurstMetrics(db: D1Database): Promise<number> {
+export async function syncTopicBurstMetrics(db: D1Database): Promise<number> {
   if (!(await topicsHasColumn(db, "burst_score"))) return 0;
   const rows = await db.prepare(
     `SELECT ct.topic_id, e.published_date, COUNT(*) as mention_count
