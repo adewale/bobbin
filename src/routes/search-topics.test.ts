@@ -49,6 +49,34 @@ describe("GET /api/search", () => {
     const data = await res.json() as any;
     expect(data.results).toHaveLength(0);
   });
+
+  it("rejects over-long queries with 414 like the HTML route", async () => {
+    const res = await SELF.fetch(`http://localhost/api/search?q=${"a".repeat(300)}`);
+    expect(res.status).toBe(414);
+    const data = await res.json() as { error: string };
+    expect(data.error).toBe("Search query too long");
+  });
+
+  it("applies the public search rate limit", async () => {
+    const savedLimiter = (env as any).SEARCH_RATE_LIMIT;
+    (env as any).SEARCH_RATE_LIMIT = { limit: async () => ({ success: false }) };
+    try {
+      const res = await SELF.fetch("http://localhost/api/search?q=ecosystem");
+      expect(res.status).toBe(429);
+    } finally {
+      if (savedLimiter === undefined) delete (env as any).SEARCH_RATE_LIMIT;
+      else (env as any).SEARCH_RATE_LIMIT = savedLimiter;
+    }
+  });
+
+  it("does not let FTS5 grammar in the query escape the phrase quoting", async () => {
+    // A crafted query with FTS5 syntax must neither crash nor change results
+    // beyond normal term matching.
+    const res = await SELF.fetch(`http://localhost/api/search?q=${encodeURIComponent('ecosystem OR dynamics) NEAR(')}`);
+    expect(res.status).toBe(200);
+    const data = await res.json() as any;
+    expect(Array.isArray(data.results)).toBe(true);
+  });
 });
 
 describe("Entity alias expansion in search", () => {

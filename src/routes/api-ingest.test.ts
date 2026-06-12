@@ -23,6 +23,7 @@ describe("/api/ingest source registration", () => {
     expect(before?.c).toBe(0);
 
     const res = await SELF.fetch(`http://localhost/api/ingest?doc=${docId}&limit=1`, {
+      method: "POST",
       headers: { Authorization: "Bearer test-secret" },
     });
     const data = await res.json() as {
@@ -50,6 +51,7 @@ describe("/api/ingest source registration", () => {
     const docId = "1aaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbb";
 
     const res = await SELF.fetch(`http://localhost/api/ingest?doc=${docId}&limit=1`, {
+      method: "POST",
       headers: { Authorization: "Bearer test-secret" },
     });
     const data = await res.json() as {
@@ -75,6 +77,7 @@ describe("/api/ingest source registration", () => {
     ).bind(rogueDocId).run();
 
     const res = await SELF.fetch(`http://localhost/api/ingest?doc=${rogueDocId}&limit=1`, {
+      method: "POST",
       headers: { Authorization: "Bearer test-secret" },
     });
     const data = await res.json() as { error: string };
@@ -108,6 +111,7 @@ describe("/api/ingest source registration", () => {
     ]);
 
     const res = await SELF.fetch("http://localhost/api/purge-source?doc=1IPwKwmEgrL6R2lVe9IaPIu0sPB4O_ZNy8ZA0N0W3yw0", {
+      method: "POST",
       headers: { Authorization: "Bearer test-secret" },
     });
     const data = await res.json() as {

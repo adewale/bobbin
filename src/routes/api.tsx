@@ -1,5 +1,7 @@
 import { Hono } from "hono";
+import type { Context } from "hono";
 import type { AppEnv } from "../types";
+import { allowPublicSearch, MAX_PUBLIC_SEARCH_QUERY_LENGTH } from "../lib/search-gate";
 import { fetchGoogleDoc } from "../crawler/fetch";
 import { parseHtmlDocument } from "../services/html-parser";
 import { backfillExistingEpisodes, ingestParsedEpisodes, enrichChunks, finalizeEnrichment, isEnrichmentComplete, CURRENT_ENRICHMENT_VERSION } from "../jobs/ingest";
@@ -127,10 +129,24 @@ async function tryRecordPipeline(db: D1Database, logId: number | null, summary: 
   }
 }
 
-// Auth middleware for admin endpoints (S1)
-function requireAuth(c: any): Response | null {
-  const auth = c.req.header("Authorization");
-  if (!c.env.ADMIN_SECRET || auth !== `Bearer ${c.env.ADMIN_SECRET}`) {
+async function timingSafeEqualStrings(a: string, b: string): Promise<boolean> {
+  const encoder = new TextEncoder();
+  const [digestA, digestB] = await Promise.all([
+    crypto.subtle.digest("SHA-256", encoder.encode(a)),
+    crypto.subtle.digest("SHA-256", encoder.encode(b)),
+  ]);
+  const bytesA = new Uint8Array(digestA);
+  const bytesB = new Uint8Array(digestB);
+  let diff = 0;
+  for (let i = 0; i < bytesA.length; i++) diff |= bytesA[i] ^ bytesB[i];
+  return diff === 0;
+}
+
+// Auth middleware for admin endpoints (S1). Hashing both values first
+// equalizes their length so the byte comparison is constant-time.
+async function requireAuth(c: Context<AppEnv>): Promise<Response | null> {
+  const auth = c.req.header("Authorization") ?? "";
+  if (!c.env.ADMIN_SECRET || !(await timingSafeEqualStrings(auth, `Bearer ${c.env.ADMIN_SECRET}`))) {
     return c.json({ error: "Unauthorized" }, 401);
   }
   return null;
@@ -139,8 +155,16 @@ function requireAuth(c: any): Response | null {
 api.get("/search", async (c) => {
   const query = c.req.query("q")?.trim() || "";
 
+  if (query.length > MAX_PUBLIC_SEARCH_QUERY_LENGTH) {
+    return c.json({ error: "Search query too long" }, 414);
+  }
+
   if (!query) {
     return c.json({ results: [], query: "" });
+  }
+
+  if (!(await allowPublicSearch(c))) {
+    return c.json({ error: "Too many search requests" }, 429);
   }
 
   let results;
@@ -175,8 +199,8 @@ api.get("/search", async (c) => {
 });
 
 // Admin: ingest episodes (S1 auth, B3 safe parseInt, S5 generic errors)
-api.get("/ingest", async (c) => {
-  const denied = requireAuth(c);
+api.post("/ingest", async (c) => {
+  const denied = await requireAuth(c);
   if (denied) return denied;
 
   const limit = safeParseInt(c.req.query("limit"), 3);
@@ -281,16 +305,16 @@ api.get("/ingest", async (c) => {
   }
 });
 
-api.get("/refresh", async (c) => {
-  const denied = requireAuth(c);
+api.post("/refresh", async (c) => {
+  const denied = await requireAuth(c);
   if (denied) return denied;
 
   const event = await runRefresh(c.env);
   return c.json(event);
 });
 
-api.get("/backfill-source", async (c) => {
-  const denied = requireAuth(c);
+api.post("/backfill-source", async (c) => {
+  const denied = await requireAuth(c);
   if (denied) return denied;
 
   const docId = c.req.query("doc") || "";
@@ -333,12 +357,12 @@ api.get("/backfill-source", async (c) => {
     });
   } catch (e) {
     console.error("Backfill source error:", e);
-    return c.json({ error: "Backfill failed", detail: e instanceof Error ? e.message : String(e) }, 500);
+    return c.json({ error: "Backfill failed" }, 500);
   }
 });
 
-api.get("/purge-source", async (c) => {
-  const denied = requireAuth(c);
+api.post("/purge-source", async (c) => {
+  const denied = await requireAuth(c);
   if (denied) return denied;
 
   const docId = c.req.query("doc") || "";
@@ -355,12 +379,12 @@ api.get("/purge-source", async (c) => {
     return c.json({ status: "ok", ...result, repair, audit });
   } catch (e) {
     console.error("Purge source error:", e);
-    return c.json({ error: "Purge failed", detail: e instanceof Error ? e.message : String(e) }, 500);
+    return c.json({ error: "Purge failed" }, 500);
   }
 });
 
-api.get("/backfill-llm", async (c) => {
-  const denied = requireAuth(c);
+api.post("/backfill-llm", async (c) => {
+  const denied = await requireAuth(c);
   if (denied) return denied;
 
   const docId = c.req.query("doc") || "";
@@ -401,13 +425,13 @@ api.get("/backfill-llm", async (c) => {
     return c.json({ status: "ok", dispatched: processed, mode: "inline" });
   } catch (e) {
     console.error("Backfill LLM error:", e);
-    return c.json({ error: "LLM backfill failed", detail: e instanceof Error ? e.message : String(e) }, 500);
+    return c.json({ error: "LLM backfill failed" }, 500);
   }
 });
 
 // Admin: generate embeddings (S1 auth)
-api.get("/embed", async (c) => {
-  const denied = requireAuth(c);
+api.post("/embed", async (c) => {
+  const denied = await requireAuth(c);
   if (denied) return denied;
 
   const limit = Math.min(Math.max(safeParseInt(c.req.query("limit"), 10), 1), 100);
@@ -451,8 +475,8 @@ api.get("/embed", async (c) => {
 });
 
 // Admin: enrich unenriched chunks (topics, word stats)
-api.get("/enrich", async (c) => {
-  const denied = requireAuth(c);
+api.post("/enrich", async (c) => {
+  const denied = await requireAuth(c);
   if (denied) return denied;
 
   const batchSize = safeParseInt(c.req.query("batch"), 50);
@@ -491,8 +515,8 @@ api.get("/enrich", async (c) => {
 });
 
 // Admin: dispatch enrichment batches to queue for parallel processing
-api.get("/enrich-parallel", async (c) => {
-  const denied = requireAuth(c);
+api.post("/enrich-parallel", async (c) => {
+  const denied = await requireAuth(c);
   if (denied) return denied;
 
   if (!c.env.ENRICHMENT_QUEUE) return c.json({ error: "Enrichment queue unavailable" }, 503);
@@ -532,8 +556,8 @@ api.get("/enrich-parallel", async (c) => {
 });
 
 // Admin: one-time cleanup of stale chunk_topics and orphan topics
-api.get("/cleanup-stale", async (c) => {
-  const denied = requireAuth(c);
+api.post("/cleanup-stale", async (c) => {
+  const denied = await requireAuth(c);
   if (denied) return denied;
 
   try {
@@ -579,9 +603,11 @@ api.get("/cleanup-stale", async (c) => {
     let orphansDeleted = 0;
     while (true) {
       const result = await db.prepare(
-        `DELETE FROM topics WHERE kind != 'entity'
-         AND NOT EXISTS (SELECT 1 FROM chunk_topics WHERE topic_id = topics.id)
-         LIMIT 1000`
+        `DELETE FROM topics WHERE id IN (
+           SELECT id FROM topics WHERE kind != 'entity'
+             AND NOT EXISTS (SELECT 1 FROM chunk_topics WHERE topic_id = topics.id)
+           LIMIT 1000
+         )`
       ).run();
       orphansDeleted += result.meta.changes || 0;
       if ((result.meta.changes || 0) === 0) break;
@@ -594,13 +620,14 @@ api.get("/cleanup-stale", async (c) => {
       orphans_deleted: orphansDeleted,
     });
   } catch (e: any) {
-    return c.json({ error: e.message }, 500);
+    console.error("Cleanup-stale error:", e);
+    return c.json({ error: "Cleanup failed" }, 500);
   }
 });
 
 // Admin: finalize enrichment (run once after all chunks enriched)
-api.get("/finalize", async (c) => {
-  const denied = requireAuth(c);
+api.post("/finalize", async (c) => {
+  const denied = await requireAuth(c);
   if (denied) return denied;
 
   let logId: number | null = null;
@@ -630,16 +657,12 @@ api.get("/finalize", async (c) => {
       endpoint: "/api/finalize",
       extractor_mode: extractorMode,
     });
-    return c.json({
-      error: "Finalization failed",
-      failed_step: e.message?.substring(0, 200),
-      detail: e.stack?.substring(0, 500),
-    }, 500);
+    return c.json({ error: "Finalization failed" }, 500);
   }
 });
 
 api.get("/pipeline-runs", async (c) => {
-  const denied = requireAuth(c);
+  const denied = await requireAuth(c);
   if (denied) return denied;
 
   const limit = safeParseInt(c.req.query("limit"), 20);
@@ -671,7 +694,7 @@ api.get("/pipeline-runs", async (c) => {
 
 // Admin: view ingestion history
 api.get("/ingestion-log", async (c) => {
-  const denied = requireAuth(c);
+  const denied = await requireAuth(c);
   if (denied) return denied;
 
   const result = await c.env.DB.prepare(
@@ -687,7 +710,7 @@ api.get("/ingestion-log", async (c) => {
 
 // Admin: pipeline health check
 api.get("/health", async (c) => {
-  const denied = requireAuth(c);
+  const denied = await requireAuth(c);
   if (denied) return denied;
 
   const [chunks, topics, unenriched, lastRun] = await Promise.all([

@@ -27,6 +27,13 @@
   "ai": {
     "binding": "AI"
   },
+  "ratelimits": [
+    {
+      "name": "SEARCH_RATE_LIMIT",
+      "namespace_id": "1001",
+      "simple": { "limit": 60, "period": 60 }
+    }
+  ],
   "triggers": {
     "crons": ["0 8 * * 2", "0 9 * * 2"]
   },

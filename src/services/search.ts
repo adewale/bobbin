@@ -1,4 +1,5 @@
 import type { ParsedQuery } from "../lib/query-parser";
+import { sanitizeFtsQuery } from "../lib/html";
 import { buildTopicChunkFilterClause } from "./search-topics";
 
 export interface BoostConfig {
@@ -63,21 +64,28 @@ export async function ftsSearch(
   limit: number = 20,
   boosts: BoostConfig = DEFAULT_BOOSTS
 ): Promise<ScoredResult[]> {
-  // Build FTS query: combine text + exact phrases
+  // Build FTS query: combine text + exact phrases. Every term reaches FTS5
+  // as a quoted phrase literal so user input can never inject FTS grammar
+  // (parens, NEAR, column filters).
   const parts: string[] = [];
   if (parsed.text.trim()) {
     const text = parsed.text.trim();
-    // If the text already contains FTS5 operators (e.g. OR from entity alias
-    // expansion), pass it through as-is so the operators aren't swallowed
-    // inside a phrase literal. Otherwise wrap in quotes for phrase matching.
+    // Preserve OR semantics (entity alias expansion and explicit user OR
+    // queries) by quoting each disjunct individually instead of passing the
+    // whole expression through raw.
     if (/\bOR\b/.test(text)) {
-      parts.push(text);
+      const disjuncts = text
+        .split(/\bOR\b/)
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .map((part) => sanitizeFtsQuery(part));
+      if (disjuncts.length > 0) parts.push(disjuncts.join(" OR "));
     } else {
-      parts.push('"' + text.replace(/"/g, "") + '"');
+      parts.push(sanitizeFtsQuery(text));
     }
   }
   for (const phrase of parsed.phrases) {
-    parts.push('"' + phrase.replace(/"/g, "") + '"');
+    parts.push(sanitizeFtsQuery(phrase));
   }
   const ftsQuery = parts.join(" ");
   if (!ftsQuery) return [];

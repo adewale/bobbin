@@ -1,4 +1,5 @@
 import { slugify } from "../lib/slug";
+import { escapeLike } from "../lib/html";
 import { formatDate } from "../lib/date";
 import { countWords } from "../lib/text";
 import { batchExec, chunkForSqlBindings, collectInBatches, sqlPlaceholders } from "../lib/db";
@@ -1739,7 +1740,7 @@ export async function finalizeEnrichment(db: D1Database): Promise<FinalizeResult
          SELECT c.id, ?, 'phrase_lexicon', 'phrase_backfill', ?, ?, ?, ?, 0, 'phrase', 'accepted', 'phrase_backfill', ?
          FROM chunks c
          WHERE c.normalization_version > 0
-           AND LOWER(COALESCE(c.analysis_text, c.content_plain)) LIKE ?
+           AND LOWER(COALESCE(c.analysis_text, c.content_plain)) LIKE ? ESCAPE '\\'
            AND NOT EXISTS (
              SELECT 1 FROM topic_candidate_audit a
              WHERE a.chunk_id = c.id AND a.slug = ? AND a.decision = 'accepted'
@@ -1751,7 +1752,7 @@ export async function finalizeEnrichment(db: D1Database): Promise<FinalizeResult
         phrase.phrase,
         phrase.slug,
         JSON.stringify(["phrase_backfill", "source:phrase_lexicon"]),
-        `%${phrase.phrase}%`,
+        `%${escapeLike(phrase.phrase)}%`,
         phrase.slug
       ).run();
       auditRowsInserted += auditInsert.meta.changes || 0;

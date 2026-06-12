@@ -14,17 +14,37 @@ export function decodeHtmlEntities(html: string): string {
     .replace(/[\u201C\u201D\u201E]/g, '"');
 }
 
+const SAFE_URL_SCHEMES = new Set(["http", "https", "mailto"]);
+
+/**
+ * Allowlist URL schemes for stored and rendered links/images.
+ * Relative URLs, fragments, and protocol-relative URLs pass through;
+ * absolute URLs must be http/https/mailto. Everything else
+ * (javascript:, data:, vbscript:, ...) collapses to "#" so a hostile
+ * href in a source document can never become an executable link.
+ */
+export function sanitizeUrl(rawUrl: string | undefined | null): string {
+  if (!rawUrl) return "#";
+  // Control characters can hide a scheme from naive matching
+  // ("java\tscript:") while browsers still honor it.
+  const trimmed = rawUrl.trim().replace(/[\u0000-\u001F\u007F]/g, "");
+  if (trimmed === "") return "#";
+  const schemeMatch = /^([a-zA-Z][a-zA-Z0-9+.-]*):/.exec(trimmed);
+  if (!schemeMatch) return trimmed;
+  return SAFE_URL_SCHEMES.has(schemeMatch[1].toLowerCase()) ? trimmed : "#";
+}
+
 export function resolveGoogleRedirectUrl(rawHref: string): string {
   const decoded = decodeHtmlEntities(rawHref);
   try {
     const url = new URL(decoded);
     if (url.hostname === "www.google.com" && url.pathname === "/url") {
       const target = url.searchParams.get("q");
-      return target ? decodeURIComponent(target) : decoded;
+      return sanitizeUrl(target ? decodeURIComponent(target) : decoded);
     }
-    return decoded;
+    return sanitizeUrl(decoded);
   } catch {
-    return decoded;
+    return sanitizeUrl(decoded);
   }
 }
 
@@ -46,9 +66,11 @@ export function escapeRegex(str: string): string {
 
 /**
  * Escape LIKE metacharacters for D1/SQLite queries (S2).
+ * The escape character itself must be escaped first, otherwise a
+ * trailing "\" in the input can neutralize the following escape.
  */
 export function escapeLike(str: string): string {
-  return str.replace(/%/g, "\\%").replace(/_/g, "\\_");
+  return str.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
 }
 
 /**
