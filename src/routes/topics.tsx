@@ -221,13 +221,13 @@ topics.get("/:slug", async (c) => {
             const meanY = h - bottomPad - (mean / max) * (h - topPad - bottomPad);
             const landmarks = dates.length > 18
               ? [
-                  { label: dates[0], x: bottomPad },
-                  { label: dates[dates.length - 1], x: w - bottomPad },
+                  { label: dates[0], x: bottomPad, anchor: "start" },
+                  { label: dates[dates.length - 1], x: w - bottomPad, anchor: "end" },
                 ]
               : [
-                  { label: dates[0], x: bottomPad },
-                  { label: dates[Math.floor(dates.length / 2)], x: w / 2 },
-                  { label: dates[dates.length - 1], x: w - bottomPad },
+                  { label: dates[0], x: bottomPad, anchor: "start" },
+                  { label: dates[Math.floor(dates.length / 2)], x: w / 2, anchor: "middle" },
+                  { label: dates[dates.length - 1], x: w - bottomPad, anchor: "end" },
                 ];
 
             return (
@@ -290,7 +290,7 @@ topics.get("/:slug", async (c) => {
 
                     {landmarks.map((lm, i) => (
                       <text key={`lm-${i}`} x={lm.x} y={h + rugH + 12}
-                        text-anchor={i === 0 ? "start" : i === 2 ? "end" : "middle"}
+                        text-anchor={lm.anchor}
                         fill="var(--text-light)" font-size="9" font-family="var(--font-ui)">
                         {lm.label}
                       </text>
