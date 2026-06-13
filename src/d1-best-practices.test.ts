@@ -32,6 +32,35 @@ describe("D1 best-practice bootstrap", () => {
     ]);
   });
 
+  it("word_stats has its primary key and NOT NULL constraints restored (migration 0026)", async () => {
+    const columns = await env.DB.prepare("PRAGMA table_info(word_stats)").all<{
+      name: string; type: string; notnull: number; pk: number; dflt_value: string | null;
+    }>();
+    const byName = new Map(columns.results.map((col) => [col.name, col]));
+
+    expect(byName.get("id")?.pk).toBe(1);
+    expect(byName.get("word")?.notnull).toBe(1);
+    expect(byName.get("total_count")?.notnull).toBe(1);
+    expect(byName.get("doc_count")?.notnull).toBe(1);
+    expect(byName.get("distinctiveness")?.notnull).toBe(1);
+    expect(byName.get("in_baseline")?.notnull).toBe(1);
+
+    // Inserting without an id must assign one (CREATE TABLE AS SELECT had
+    // dropped AUTOINCREMENT, leaving rebuilt rows with id = NULL)
+    await env.DB.prepare(
+      "INSERT INTO word_stats (word, total_count, doc_count) VALUES ('constraint-probe', 1, 1)"
+    ).run();
+    const row = await env.DB.prepare(
+      "SELECT id FROM word_stats WHERE word = 'constraint-probe'"
+    ).first<{ id: number | null }>();
+    expect(typeof row?.id).toBe("number");
+
+    // The word uniqueness guard survives the rebuild
+    await expect(
+      env.DB.prepare("INSERT INTO word_stats (word, total_count, doc_count) VALUES ('constraint-probe', 2, 2)").run()
+    ).rejects.toThrow(/UNIQUE/);
+  });
+
   it("uses composite episode and chunk ordering indexes in query plans", async () => {
     await env.DB.batch([
       env.DB.prepare("INSERT INTO sources (google_doc_id, title) VALUES ('src', 'Source')"),

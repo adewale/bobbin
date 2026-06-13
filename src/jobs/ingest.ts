@@ -1,4 +1,5 @@
 import { slugify } from "../lib/slug";
+import { escapeLike } from "../lib/html";
 import { formatDate } from "../lib/date";
 import { countWords } from "../lib/text";
 import { batchExec, chunkForSqlBindings, collectInBatches, sqlPlaceholders } from "../lib/db";
@@ -24,8 +25,6 @@ import { rebuildWordStatsAggregates } from "../services/word-stats";
 import { rebuildWordStatsPeriods } from "../services/word-stats-periods";
 import { chunkVectorMetadata } from "../services/vector-metadata";
 import { recordCostEvent } from "../services/cost-events";
-import { extractCorpusNgrams } from "../services/ngram-extractor";
-import { extractPMIPhrases } from "../services/pmi-phrases";
 import { computeTopicDisplayDecisions, isNoiseTopic } from "../services/topic-quality";
 import { getCandidatePromotionReason, getCorpusPriorRejectionReason, getPhrasePromotionReason } from "../services/pipeline-tuning";
 import { generateEmbeddings } from "../services/embeddings";
@@ -42,7 +41,8 @@ import {
 } from "../services/topic-similarity";
 import { normalizeTopicExtractorMode, type TopicExtractorMode } from "../services/yake-runtime";
 import { getExistingDatesForSource, getSourceTag } from "../db/sources";
-import { getUnenrichedChunks, markChunksEnriched, isEnrichmentDone } from "../db/ingestion";
+import { getUnenrichedChunks, markChunksEnriched, isEnrichmentDone, countPendingEnrichmentChunks } from "../db/ingestion";
+import { recountUsage, recountEpisodeSupport, rebuildEpisodeTopics, syncTopicDistinctiveness, syncTopicBurstMetrics } from "../db/corpus-maintenance";
 import type { Bindings, ParsedChunk, ParsedEpisode, RichBlock, RichLink, RichTextNode } from "../types";
 
 /** Current enrichment algorithm version. Bump to re-enrich all chunks.
@@ -537,9 +537,23 @@ export async function ingestEpisodesOnly(
     (_episode, episodeSlug, chunk) => `${slugify(chunk.title) || `chunk-${chunk.position}`}-${episodeSlug}-${chunk.position}`,
   );
 
+  const seenInDocument = new Set<string>();
   for (const episode of storedEpisodes) {
     const dateStr = formatDate(episode.parsedDate);
     if (existingDates.has(dateStr)) continue;
+    // Two headings with the same date in one document would both pass the DB
+    // check and collide on the UNIQUE episode slug, permanently failing this
+    // source's refresh at the same heading every run. Skip the later one.
+    if (seenInDocument.has(dateStr)) {
+      console.warn(JSON.stringify({
+        event: "ingest_skip_duplicate_date",
+        source_id: sourceId,
+        date: dateStr,
+        title: episode.title,
+      }));
+      continue;
+    }
+    seenInDocument.add(dateStr);
 
     const episodeSlug = episode.slug;
     const storedChunks = episode.storedChunks;
@@ -1185,7 +1199,13 @@ export async function processChunkBatch(
           .bind(chunkId, topicSlug)
       );
     }
-    await batchExec(db, ctStmts);
+    // Count actual insertions, not attempted statements: INSERT OR IGNORE
+    // no-ops on duplicates and the metric should say so.
+    let chunkTopicLinksInserted = 0;
+    for (let i = 0; i < ctStmts.length; i += 100) {
+      const results = await db.batch(ctStmts.slice(i, i + 100));
+      for (const result of results) chunkTopicLinksInserted += result.meta.changes || 0;
+    }
     await markDirtyTopicsBySlugs(db, [...uniqueTopics.keys()], "chunk_topic_insertion");
 
     let episodeTopicLinksInserted = 0;
@@ -1203,7 +1223,7 @@ export async function processChunkBatch(
 
     return {
       counts: {
-        chunk_topic_links_inserted: ctStmts.length,
+        chunk_topic_links_inserted: chunkTopicLinksInserted,
         episode_topic_links_inserted: episodeTopicLinksInserted,
         invalid_entity_links_filtered: filteredInvalidEntityLinks,
       },
@@ -1296,8 +1316,7 @@ export interface FinalizeStep {
 export interface FinalizeResult {
   usage_recalculated: boolean;
   word_stats_rebuilt: boolean;
-  ngram_dispatched: boolean;
-  related_slugs_method: "similarity_cache" | "queue" | "inline" | "skipped";
+  related_slugs_method: "similarity_cache" | "inline" | "skipped";
   noise_removed: number;
   pruned: number;
   merged: number;
@@ -1352,54 +1371,6 @@ function canonicalizeExistingTopicName(name: string, kind: string): { name: stri
   return { name: canonical, slug: slugify(canonical) };
 }
 
-async function recountUsage(db: D1Database): Promise<number> {
-  const allIds = await db.prepare("SELECT id FROM topics").all<{ id: number }>();
-  const ids = allIds.results.map((row) => row.id);
-  const BATCH = 90;
-  for (let i = 0; i < ids.length; i += BATCH) {
-    const batch = ids.slice(i, i + BATCH);
-    const placeholders = batch.map(() => "?").join(",");
-    await db.prepare(
-      `UPDATE topics
-       SET usage_count = (SELECT COUNT(*) FROM chunk_topics WHERE topic_id = topics.id)
-       WHERE id IN (${placeholders})`
-    ).bind(...batch).run();
-  }
-  return ids.length;
-}
-
-async function recountEpisodeSupport(db: D1Database): Promise<number> {
-  const allIds = await db.prepare("SELECT id FROM topics").all<{ id: number }>();
-  const ids = allIds.results.map((row) => row.id);
-  const BATCH = 90;
-  for (let i = 0; i < ids.length; i += BATCH) {
-    const batch = ids.slice(i, i + BATCH);
-    const placeholders = batch.map(() => "?").join(",");
-    await db.prepare(
-      `UPDATE topics
-       SET episode_support = (
-         SELECT COUNT(DISTINCT c.episode_id)
-         FROM chunk_topics ct
-         JOIN chunks c ON c.id = ct.chunk_id
-         WHERE ct.topic_id = topics.id
-       )
-       WHERE id IN (${placeholders})`
-    ).bind(...batch).run();
-  }
-  return ids.length;
-}
-
-async function rebuildEpisodeTopics(db: D1Database): Promise<number> {
-  await db.prepare("DELETE FROM episode_topics").run();
-  const insert = await db.prepare(
-    `INSERT OR IGNORE INTO episode_topics (episode_id, topic_id)
-     SELECT DISTINCT c.episode_id, ct.topic_id
-     FROM chunk_topics ct
-     JOIN chunks c ON c.id = ct.chunk_id`
-  ).run();
-  return insert.meta.changes || 0;
-}
-
 async function loadCorpusTopicSupportThreshold(db: D1Database): Promise<number> {
   const totalEpisodes = await db.prepare("SELECT COUNT(*) as c FROM episodes").first<{ c: number }>();
   return topicSupportThreshold(totalEpisodes?.c ?? 0);
@@ -1430,47 +1401,6 @@ async function loadDirtyOrBootstrapTopicIds(db: D1Database): Promise<number[]> {
   return activeTopics.results.map((topic) => topic.id);
 }
 
-async function syncTopicBurstMetrics(db: D1Database): Promise<number> {
-  const rows = await db.prepare(
-    `SELECT ct.topic_id, e.published_date, COUNT(*) as mention_count
-     FROM chunk_topics ct
-     JOIN chunks c ON c.id = ct.chunk_id
-     JOIN episodes e ON e.id = c.episode_id
-     GROUP BY ct.topic_id, e.published_date
-     ORDER BY ct.topic_id ASC, e.published_date ASC`
-  ).all<{ topic_id: number; published_date: string; mention_count: number }>();
-
-  const countsByTopic = new Map<number, Map<string, number>>();
-  const firstQuarterByTopic = new Map<number, string>();
-  const lastQuarterByTopic = new Map<number, string>();
-  for (const row of rows.results) {
-    const quarter = quarterKeyFromIsoDate(row.published_date);
-    const current = countsByTopic.get(row.topic_id) ?? new Map<string, number>();
-    current.set(quarter, (current.get(quarter) ?? 0) + Number(row.mention_count));
-    countsByTopic.set(row.topic_id, current);
-    if (!firstQuarterByTopic.has(row.topic_id) || quarter < (firstQuarterByTopic.get(row.topic_id) ?? quarter)) {
-      firstQuarterByTopic.set(row.topic_id, quarter);
-    }
-    if (!lastQuarterByTopic.has(row.topic_id) || quarter > (lastQuarterByTopic.get(row.topic_id) ?? quarter)) {
-      lastQuarterByTopic.set(row.topic_id, quarter);
-    }
-  }
-
-  const allTopics = await db.prepare("SELECT id FROM topics").all<{ id: number }>();
-  const statements = allTopics.results.map((topic) => {
-    const burst = computeSpanAwareBurstScore(
-      countsByTopic.get(topic.id) ?? new Map(),
-      firstQuarterByTopic.get(topic.id) ?? null,
-      lastQuarterByTopic.get(topic.id) ?? null,
-    );
-    return db.prepare(
-      "UPDATE topics SET burst_score = ?, burst_peak_quarter = ? WHERE id = ?"
-    ).bind(burst.score, burst.peakQuarter, topic.id);
-  });
-  await batchExec(db, statements);
-  return statements.length;
-}
-
 function buildKnownEntityAliasMap() {
   const aliases = new Map<string, { name: string; slug: string }>();
   for (const entity of KNOWN_ENTITIES) {
@@ -1481,19 +1411,6 @@ function buildKnownEntityAliasMap() {
     }
   }
   return aliases;
-}
-
-async function syncTopicDistinctiveness(db: D1Database): Promise<number> {
-  const allIds = await db.prepare("SELECT id, name FROM topics").all<{ id: number; name: string }>();
-  const updates = allIds.results.map((row) =>
-    db.prepare(
-      `UPDATE topics
-       SET distinctiveness = COALESCE((SELECT w.distinctiveness FROM word_stats w WHERE w.word = LOWER(topics.name)), 0)
-       WHERE id = ?`
-    ).bind(row.id)
-  );
-  await batchExec(db, updates);
-  return updates.length;
 }
 
 async function mergeTopicInto(
@@ -1672,14 +1589,13 @@ async function archiveZeroUsageLineageTopics(db: D1Database): Promise<number> {
   return ids.length;
 }
 
-export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise<FinalizeResult> {
+export async function finalizeEnrichment(db: D1Database): Promise<FinalizeResult> {
   const totalStart = Date.now();
   const steps: FinalizeStep[] = [];
   const minimumTopicSupport = await loadCorpusTopicSupportThreshold(db);
   const result: FinalizeResult = {
     usage_recalculated: false,
     word_stats_rebuilt: false,
-    ngram_dispatched: false,
     related_slugs_method: "skipped",
     noise_removed: 0,
     pruned: 0,
@@ -1698,30 +1614,36 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
     ).all<{ phrase: string; slug: string; support_count: number; doc_count: number; quality_score: number }>();
     let chunkLinksInserted = 0;
     let auditRowsInserted = 0;
-    let phrasesSkipped = 0;
     const touchedEpisodeIds = new Set<number>();
-    for (const phrase of phrases.results) {
-      const rejectionReason = getPhrasePromotionReason({
-        docCount: phrase.doc_count,
-        supportCount: phrase.support_count,
-        qualityScore: phrase.quality_score,
-        normalizedName: phrase.phrase,
-      });
-      if (rejectionReason) {
-        phrasesSkipped++;
-        continue;
+    const accepted = phrases.results.filter((phrase) => !getPhrasePromotionReason({
+      docCount: phrase.doc_count,
+      supportCount: phrase.support_count,
+      qualityScore: phrase.quality_score,
+      normalizedName: phrase.phrase,
+    }));
+    const phrasesSkipped = phrases.results.length - accepted.length;
+
+    if (accepted.length > 0) {
+      // Create missing phrase topics and resolve ids in bulk: the previous
+      // one-loop-iteration-per-phrase shape issued ~5 sequential queries per
+      // phrase and approached the Workers subrequest cap as the lexicon grew.
+      await batchExec(db, accepted.map((phrase) =>
+        db.prepare("INSERT OR IGNORE INTO topics (name, slug, kind) VALUES (?, ?, 'phrase')")
+          .bind(phrase.phrase, phrase.slug)
+      ));
+
+      const idBySlug = new Map<string, number>();
+      for (const slugBatch of chunkForSqlBindings(accepted.map((phrase) => phrase.slug))) {
+        const placeholders = sqlPlaceholders(slugBatch.length);
+        const rows = await db.prepare(
+          `SELECT id, slug FROM topics WHERE slug IN (${placeholders})`
+        ).bind(...slugBatch).all<{ id: number; slug: string }>();
+        for (const row of rows.results) idBySlug.set(row.slug, row.id);
       }
-      await db.prepare(
-        "INSERT OR IGNORE INTO topics (name, slug, kind) VALUES (?, ?, 'phrase')"
-      ).bind(phrase.phrase, phrase.slug).run();
+      await markDirtyTopicsByIds(db, [...idBySlug.values()], "phrase_lexicon_backfill");
 
-      const topic = await db.prepare(
-        "SELECT id FROM topics WHERE slug = ?"
-      ).bind(phrase.slug).first<{ id: number }>();
-      if (!topic) continue;
-      await markDirtyTopicsByIds(db, [topic.id], "phrase_lexicon_backfill");
-
-      const auditInsert = await db.prepare(
+      const resolved = accepted.filter((phrase) => idBySlug.has(phrase.slug));
+      const auditStmts = resolved.map((phrase) => db.prepare(
         `INSERT INTO topic_candidate_audit (
            chunk_id, topic_id, source, stage, raw_candidate, normalized_candidate,
            topic_name, slug, score, kind, decision, decision_reason, provenance
@@ -1729,23 +1651,27 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
          SELECT c.id, ?, 'phrase_lexicon', 'phrase_backfill', ?, ?, ?, ?, 0, 'phrase', 'accepted', 'phrase_backfill', ?
          FROM chunks c
          WHERE c.normalization_version > 0
-           AND LOWER(COALESCE(c.analysis_text, c.content_plain)) LIKE ?
+           AND LOWER(COALESCE(c.analysis_text, c.content_plain)) LIKE ? ESCAPE '\\'
            AND NOT EXISTS (
              SELECT 1 FROM topic_candidate_audit a
              WHERE a.chunk_id = c.id AND a.slug = ? AND a.decision = 'accepted'
            )`
       ).bind(
-        topic.id,
+        idBySlug.get(phrase.slug)!,
         phrase.phrase,
         phrase.phrase,
         phrase.phrase,
         phrase.slug,
         JSON.stringify(["phrase_backfill", "source:phrase_lexicon"]),
-        `%${phrase.phrase}%`,
+        `%${escapeLike(phrase.phrase)}%`,
         phrase.slug
-      ).run();
-      auditRowsInserted += auditInsert.meta.changes || 0;
-      const chunkTopicInsert = await db.prepare(
+      ));
+      for (let i = 0; i < auditStmts.length; i += 50) {
+        const results = await db.batch(auditStmts.slice(i, i + 50));
+        for (const result of results) auditRowsInserted += result.meta.changes || 0;
+      }
+
+      const linkStmts = resolved.map((phrase) => db.prepare(
         `INSERT OR IGNORE INTO chunk_topics (chunk_id, topic_id)
          SELECT a.chunk_id, ?
          FROM topic_candidate_audit a
@@ -1753,19 +1679,25 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
            AND a.slug = ?
            AND a.source = 'phrase_lexicon'
            AND a.decision = 'accepted'`
-      ).bind(topic.id, topic.id, phrase.slug).run();
-      chunkLinksInserted += chunkTopicInsert.meta.changes || 0;
-      const touchedEpisodes = await db.prepare(
-        `SELECT DISTINCT c.episode_id
-         FROM topic_candidate_audit a
-         JOIN chunks c ON c.id = a.chunk_id
-         WHERE a.topic_id = ?
-           AND a.slug = ?
-           AND a.source = 'phrase_lexicon'
-           AND a.decision = 'accepted'`
-      ).bind(topic.id, phrase.slug).all<{ episode_id: number }>();
-      for (const row of touchedEpisodes.results) {
-        touchedEpisodeIds.add(row.episode_id);
+      ).bind(idBySlug.get(phrase.slug)!, idBySlug.get(phrase.slug)!, phrase.slug));
+      for (let i = 0; i < linkStmts.length; i += 50) {
+        const results = await db.batch(linkStmts.slice(i, i + 50));
+        for (const result of results) chunkLinksInserted += result.meta.changes || 0;
+      }
+
+      for (const topicIdBatch of chunkForSqlBindings([...idBySlug.values()])) {
+        const placeholders = sqlPlaceholders(topicIdBatch.length);
+        const touchedEpisodes = await db.prepare(
+          `SELECT DISTINCT c.episode_id
+           FROM topic_candidate_audit a
+           JOIN chunks c ON c.id = a.chunk_id
+           WHERE a.topic_id IN (${placeholders})
+             AND a.source = 'phrase_lexicon'
+             AND a.decision = 'accepted'`
+        ).bind(...topicIdBatch).all<{ episode_id: number }>();
+        for (const row of touchedEpisodes.results) {
+          touchedEpisodeIds.add(row.episode_id);
+        }
       }
     }
 
@@ -1832,7 +1764,7 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
   });
 
   await runStep("episode_support_recount", steps, async () => {
-    const touched = await recountEpisodeSupport(db);
+    const touched = (await recountEpisodeSupport(db)) ?? 0;
     return {
       detail: `${touched} topics updated at threshold ${minimumTopicSupport}`,
       counts: { topics_updated: touched, minimum_episode_support: minimumTopicSupport },
@@ -1991,13 +1923,20 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
       return { detail: "0 dirty topics", counts: { topics_considered: 0, topics_merged: 0 } };
     }
     const dirtySet = new Set(dirtyTopicIds);
+    // Topics merged away in this loop are hidden in the DB but stay in the
+    // in-memory list. Dice similarity is symmetric, so without this set the
+    // merge target of A→B can later pick the now-hidden A as its own best
+    // match and merge back into it (A→B→A), parking links on an invisible
+    // topic and writing circular topic_merge_audit chains.
+    const mergedAway = new Set<number>();
     let merged = 0;
     let considered = 0;
     for (const topic of activeTopics.results) {
       if (!dirtySet.has(topic.id)) continue;
+      if (mergedAway.has(topic.id)) continue;
       considered += 1;
       const bestMatch = activeTopics.results
-        .filter((candidate) => candidate.id !== topic.id)
+        .filter((candidate) => candidate.id !== topic.id && !mergedAway.has(candidate.id))
         .map((candidate) => ({ candidate, score: diceCoefficient(topic.name, candidate.name) }))
         .filter((candidate) => candidate.score >= 0.7)
         .sort((left, right) =>
@@ -2007,7 +1946,15 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
           || left.candidate.name.localeCompare(right.candidate.name)
         )[0];
       if (!bestMatch) continue;
-      await mergeTopicInto(db, topic, bestMatch.candidate, "similarity_cluster", "near_duplicate_string");
+      // Keep the more-used topic (tie: the longer, more specific name) so a
+      // dirty high-usage topic is never folded into a marginal near-duplicate.
+      const candidate = bestMatch.candidate;
+      const keepCandidate =
+        candidate.usage_count > topic.usage_count
+        || (candidate.usage_count === topic.usage_count && candidate.name.length >= topic.name.length);
+      const [from, to] = keepCandidate ? [topic, candidate] : [candidate, topic];
+      await mergeTopicInto(db, from, to, "similarity_cluster", "near_duplicate_string");
+      mergedAway.add(from.id);
       merged++;
     }
     result.merged += merged;
@@ -2074,7 +2021,7 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
   });
 
   await runStep("episode_support_post_merge", steps, async () => {
-    const touched = await recountEpisodeSupport(db);
+    const touched = (await recountEpisodeSupport(db)) ?? 0;
     return {
       detail: `${touched} topics updated at threshold ${minimumTopicSupport}`,
       counts: { topics_updated: touched, minimum_episode_support: minimumTopicSupport },
@@ -2105,16 +2052,25 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
     const entities = await db.prepare(
       "SELECT id, name FROM topics WHERE kind = 'entity' AND usage_count > 0"
     ).all<{ id: number; name: string }>();
+    // One query for every entity's links instead of one query per entity.
+    const linksByEntity = new Map<number, Array<{ chunk_id: number; analysis_text: string }>>();
+    const allEntityLinks = await db.prepare(
+      `SELECT ct.topic_id, ct.chunk_id, COALESCE(c.analysis_text, c.content_plain) as analysis_text
+       FROM chunk_topics ct
+       JOIN chunks c ON ct.chunk_id = c.id
+       JOIN topics t ON t.id = ct.topic_id
+       WHERE t.kind = 'entity' AND t.usage_count > 0`
+    ).all<{ topic_id: number; chunk_id: number; analysis_text: string }>();
+    for (const row of allEntityLinks.results) {
+      const current = linksByEntity.get(row.topic_id) ?? [];
+      current.push({ chunk_id: row.chunk_id, analysis_text: row.analysis_text });
+      linksByEntity.set(row.topic_id, current);
+    }
     let deletedLinks = 0;
     for (const entity of entities.results) {
-      const links = await db.prepare(
-        `SELECT ct.chunk_id, COALESCE(c.analysis_text, c.content_plain) as analysis_text
-         FROM chunk_topics ct
-         JOIN chunks c ON ct.chunk_id = c.id
-         WHERE ct.topic_id = ?`
-      ).bind(entity.id).all<{ chunk_id: number; analysis_text: string }>();
+      const links = linksByEntity.get(entity.id) ?? [];
       const regex = new RegExp(`(^|[^a-z0-9])${escapeRegex(entity.name.toLowerCase())}(?=$|[^a-z0-9])`, "i");
-      const invalidChunkIds = links.results
+      const invalidChunkIds = links
         .filter((row) => !regex.test(row.analysis_text.toLowerCase()))
         .map((row) => row.chunk_id);
       if (invalidChunkIds.length === 0) continue;
@@ -2331,6 +2287,21 @@ export async function finalizeEnrichment(db: D1Database, queue?: Queue): Promise
     return { detail: `${cleared} dirty topics cleared`, counts: { dirty_topics_cleared: cleared } };
   });
 
+  await runStep("queue_state_cleanup", steps, async () => {
+    // Completed idempotency rows only need to outlive duplicate deliveries.
+    // Without expiry the table grows unboundedly across enrichment campaigns.
+    const purged = await db.prepare(
+      `DELETE FROM queue_message_state
+       WHERE status = 'completed'
+         AND completed_at IS NOT NULL
+         AND completed_at < datetime('now', '-30 days')`
+    ).run();
+    return {
+      detail: `${purged.meta.changes || 0} expired queue-state rows removed`,
+      counts: { queue_state_rows_purged: purged.meta.changes || 0 },
+    };
+  });
+
   result.audit_report = (await db.prepare(
     `SELECT chunk_id, source, raw_candidate, normalized_candidate, decision, decision_reason
      FROM topic_candidate_audit
@@ -2353,7 +2324,6 @@ export async function enrichAllChunks(
   extractorMode: TopicExtractorMode = "naive"
 ): Promise<number> {
   let total = 0;
-  let lastProcessed = -1;
   const start = Date.now();
   const normalizedCorpus = await db.prepare(
     `SELECT id, analysis_text
@@ -2365,19 +2335,23 @@ export async function enrichAllChunks(
     normalizedText: row.analysis_text,
     tokens: tokenizeNormalizedText(row.analysis_text),
   })));
+  let pendingBefore = await countPendingEnrichmentChunks(db);
   while (Date.now() - start < maxMs) {
     const result = await enrichChunks(db, batchSize, extractorMode, {
       phraseLexiconOverride: phraseLexicon,
       rebuildWordStats: false,
     });
     if (result.chunksProcessed === 0) break;
+    total += result.chunksProcessed;
     if (result.batch && onBatch) {
       onBatch(result.batch);
     }
-    // Prevent infinite loop: if we processed the same count twice, some chunks can't be enriched
-    if (result.chunksProcessed === lastProcessed) break;
-    lastProcessed = result.chunksProcessed;
-    total += result.chunksProcessed;
+    // Prevent infinite loop: a batch was processed but the pending set did not
+    // shrink, so the remaining chunks can't make progress. Equal-sized
+    // consecutive batches are normal throughput and must NOT stop the loop.
+    const pendingAfter = await countPendingEnrichmentChunks(db);
+    if (pendingAfter >= pendingBefore) break;
+    pendingBefore = pendingAfter;
   }
   if (total > 0) {
     await rebuildWordStatsAggregates(db);
@@ -2407,7 +2381,18 @@ export async function ingestParsedEpisodes(
   let finalize: FinalizeResult | undefined;
 
   if (result.chunksAdded > 0) {
-    await enrichEpisodesWithLlm(env, sourceId, result.insertedEpisodes);
+    // LLM candidates are an enhancement signal: a failure here must not fail
+    // the ingest after episodes are inserted. /api/backfill-llm recovers them.
+    try {
+      await enrichEpisodesWithLlm(env, sourceId, result.insertedEpisodes);
+    } catch (e) {
+      console.error(JSON.stringify({
+        event: "ingest_llm_enrich_failed",
+        source_id: sourceId,
+        error: (e instanceof Error ? e.message : String(e)).substring(0, 500),
+        recovery: "/api/backfill-llm",
+      }));
+    }
     const enrichResult = await enrichChunks(env.DB, 10000, extractorMode);
     enrichBatch = enrichResult.batch;
 
@@ -2430,12 +2415,17 @@ export async function ingestParsedEpisodes(
           ).bind(...batch).all<{ id: number; content_plain: string; vector_id: string; published_date: string; year: number; topic_slugs: string }>();
           return rows.results;
         });
-        if (unembed.length > 0) {
-          const texts = unembed.map((c) => c.content_plain);
-          const embeddings = await generateEmbeddings(env.AI, texts, env.AI_GATEWAY_ID, `ingest:${insertedChunkIds[0] ?? "none"}:${insertedChunkIds.length}`);
+        // Batch like /api/embed: Workers AI and Vectorize enforce per-request
+        // input limits, and a single oversized call would throw and silently
+        // skip embeddings for exactly the largest ingests.
+        const EMBED_BATCH_SIZE = 100;
+        for (let offset = 0; offset < unembed.length; offset += EMBED_BATCH_SIZE) {
+          const slice = unembed.slice(offset, offset + EMBED_BATCH_SIZE);
+          const texts = slice.map((c) => c.content_plain);
+          const embeddings = await generateEmbeddings(env.AI, texts, env.AI_GATEWAY_ID, `ingest:${slice[0]?.id ?? "none"}:${slice.length}`);
           await recordCostEvent(env.DB, { product: "workers_ai", operation: "embedding", route: "ingest", units: texts.length });
-          await persistChunkEmbeddingCache(env.DB, unembed as Array<{ id: number }>, embeddings);
-          const vectors = unembed.map((c, i) => ({
+          await persistChunkEmbeddingCache(env.DB, slice as Array<{ id: number }>, embeddings);
+          const vectors = slice.map((c, i) => ({
             id: c.vector_id,
             values: embeddings[i],
             metadata: chunkVectorMetadata(c),
@@ -2448,7 +2438,7 @@ export async function ingestParsedEpisodes(
       console.error("Embedding error:", e);
     }
 
-    finalize = await finalizeEnrichment(env.DB, env.ENRICHMENT_QUEUE);
+    finalize = await finalizeEnrichment(env.DB);
     const failedSteps = finalize.steps.filter((step) => step.status === "error");
     if (failedSteps.length > 0) {
       throw new Error(`Finalization failed in steps: ${failedSteps.map((step) => step.name).join(", ")}`);

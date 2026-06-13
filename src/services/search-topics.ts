@@ -67,22 +67,3 @@ export async function applyTopicBoost(
   return boosted;
 }
 
-/**
- * Resolve topic slugs to a set of chunk IDs that are assigned to ALL
- * of the specified topics (intersection). Used by the topic: search
- * operator to filter results.
- */
-export async function applyTopicFilter(
-  db: D1Database,
-  topicSlugs: string[]
-): Promise<number[]> {
-  const normalizedTopicSlugs = normalizeTopicSlugs(topicSlugs);
-  if (normalizedTopicSlugs.length === 0) return [];
-
-  const chunks = await db
-    .prepare(topicChunkFilterSql())
-    .bind(JSON.stringify(normalizedTopicSlugs), normalizedTopicSlugs.length)
-    .all<{ chunk_id: number }>();
-
-  return chunks.results.map((r) => r.chunk_id);
-}

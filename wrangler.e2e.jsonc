@@ -1,6 +1,13 @@
 {
+  // Serving config for browser tests (Playwright webServer) and any
+  // unauthenticated environment such as CI. Identical to wrangler.jsonc
+  // except that the remote-only AI and Vectorize bindings are omitted —
+  // wrangler refuses to start them without a Cloudflare login, and the
+  // app's hybrid-search/embedding paths are guarded on their presence.
+  // The d1 database_id matches wrangler.jsonc so this serves the state
+  // seeded by `npm run fixture:local`.
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "bobbin",
+  "name": "bobbin-e2e",
   "main": "src/index.tsx",
   "compatibility_date": "2026-04-01",
   "compatibility_flags": ["nodejs_compat"],
@@ -18,15 +25,6 @@
       "database_id": "b1e1d8be-b82b-4e10-a97a-37bd8d48c6f1"
     }
   ],
-  "vectorize": [
-    {
-      "binding": "VECTORIZE",
-      "index_name": "bobbin-chunks"
-    }
-  ],
-  "ai": {
-    "binding": "AI"
-  },
   "ratelimits": [
     {
       "name": "SEARCH_RATE_LIMIT",
@@ -34,23 +32,10 @@
       "simple": { "limit": 60, "period": 60 }
     }
   ],
-  "triggers": {
-    "crons": ["0 8 * * 2", "0 9 * * 2"]
-  },
   "queues": {
     "producers": [
       { "binding": "ENRICHMENT_QUEUE", "queue": "bobbin-enrichment" },
       { "binding": "ENRICHMENT_DLQ", "queue": "bobbin-enrichment-dlq" }
-    ],
-    "consumers": [
-      {
-        "queue": "bobbin-enrichment",
-        "max_batch_size": 50,
-        "max_concurrency": 20,
-        "max_retries": 3,
-        "retry_delay": 30,
-        "dead_letter_queue": "bobbin-enrichment-dlq"
-      }
     ]
   }
 }

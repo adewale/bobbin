@@ -79,6 +79,10 @@ Trusted-source policy:
 - unknown doc IDs are rejected instead of being auto-registered
 - `purge-source` removes an already-ingested source by doc ID when provenance audit finds contamination
 
+All state-changing admin endpoints are POST-only and require the
+`Authorization: Bearer <ADMIN_SECRET>` header; read-only endpoints
+(`/api/health`, `/api/pipeline-runs`, `/api/ingestion-log`) stay GET.
+
 Repeatable health check:
 
 ```bash
@@ -90,6 +94,18 @@ This combines:
 - provenance audit of trusted sources
 - invariant audit of derived corpus state
 - Playwright smoke checks across key production pages
+
+Production alerting and queue operations are documented in
+[docs/production-alerts.md](docs/production-alerts.md) (`npm run alerts:production`)
+and [docs/queue-dlq-replay.md](docs/queue-dlq-replay.md).
+
+Additional one-off maintenance scripts in `scripts/` (run with `npx tsx`
+for `.ts`, `node` for `.mjs`): `repair-corpus-derived.ts` repairs derived
+corpus state after manual surgery, `embed-missing-vectorize.mjs` and
+`reindex-vectorize-metadata.mjs` reconcile the Vectorize index,
+`compute-distinctiveness.ts` recomputes word distinctiveness,
+`local-ingest.ts` ingests a single cached doc locally, and
+`clone-live-topic-preview.mjs` snapshots live topic pages for comparison.
 
 Local browser runs, local pipeline runs, and Workers Vitest database bootstrap now all apply the same checked-in D1 migration chain. That keeps the test/local schema aligned with the real app schema, including FTS triggers, secondary indexes, and D1 hardening migrations.
 
@@ -139,14 +155,16 @@ Notes:
 ## Testing
 
 ```bash
+npm run typecheck     # tsc --noEmit
 npm test              # workers-runtime Vitest suites
 npm run test:real     # node/runtime corpus and CSS invariant suites
-npm run test:e2e      # Playwright browser suite against BASE_URL/local server
+npm run test:e2e:local # seed the local fixture, then run the Playwright suite against it
+npm run test:e2e      # Playwright suite; set BASE_URL to target a deployed environment
 npm run test:visual   # opt-in AI visual checks; requires AI_GATEWAY_API_KEY
 npm run test:all      # workers + node Vitest suites
 ```
 
-The default test and local bootstrap path uses the real migration files, not a handwritten test schema. `npm run test:all` is the canonical non-visual verification pass.
+The default test and local bootstrap path uses the real migration files, not a handwritten test schema (the test helper derives the migration list from `migrations/*.sql` automatically). `npm run test:all` is the canonical non-visual verification pass; CI additionally runs the typecheck and the browser suite against a freshly seeded local fixture served by `wrangler.e2e.jsonc`.
 
 ## Search operators
 
@@ -156,6 +174,7 @@ The default test and local bootstrap path uses the real migration files, not a h
 | `before:` | `before:2025-06-01` | Episodes before date |
 | `after:` | `after:2024-01-01` | Episodes after date |
 | `year:` | `year:2025` | Episodes from year |
+| `topic:` | `topic:claude-code` | Chunks assigned to a topic |
 
 ## Project structure
 

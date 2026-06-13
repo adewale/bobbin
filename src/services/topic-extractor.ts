@@ -596,13 +596,6 @@ export function buildPhraseLexicon(
     .slice(0, 200);
 }
 
-export function identifyDistinctiveEntities(
-  wordStats: { word: string; distinctiveness: number; in_baseline: number }[]
-): string[] {
-  return wordStats
-    .filter((word) => word.distinctiveness >= 15 && word.in_baseline === 0 && word.word.length >= 4)
-    .map((word) => word.word);
-}
 
 export function extractEntities(text: string): TopicResult[] {
   return extractHeuristicEntityCandidates(normalizeChunkText(text), 0).map((candidate) => ({
@@ -686,24 +679,3 @@ export function extractTopics(
     .map(toTopicResult);
 }
 
-function extractBigrams(text: string): Map<string, number> {
-  const words = normalizeChunkText(text).normalizedText
-    .toLowerCase()
-    .replace(/[^a-z0-9\s'-]/g, " ")
-    .split(/\s+/)
-    .filter((word) => word.length > 3 && !STOPWORDS.has(word));
-
-  const bigrams = new Map<string, number>();
-  for (let i = 0; i < words.length - 1; i++) {
-    const bigram = `${words[i]} ${words[i + 1]}`;
-    bigrams.set(bigram, (bigrams.get(bigram) || 0) + 1);
-  }
-
-  for (const [bigram, count] of bigrams) {
-    if (count < 2) bigrams.delete(bigram);
-  }
-
-  return bigrams;
-}
-
-void extractBigrams;

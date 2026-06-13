@@ -23,3 +23,5 @@ Check each message body and the related Worker logs before replaying. Determinis
 ## Expected retry behavior
 
 Retryable infrastructure/D1/AI failures call `msg.retry({ delaySeconds })` with bounded exponential backoff plus equal jitter. The per-attempt maximums are 30s, 60s, 120s, then capped at 300s; actual delays are randomized in the upper half of each window to avoid synchronized retry spikes. After configured retries are exhausted, Cloudflare moves the message to `bobbin-enrichment-dlq` instead of silently deleting it.
+
+Non-retryable (deterministic) failures are not retried: the consumer records the failure in `queue_message_state`, forwards the message body directly to `bobbin-enrichment-dlq` via the `ENRICHMENT_DLQ` producer binding, and acks. Every failed message therefore reaches the DLQ — either through exhausted retries or through the direct forward — so the replay procedure above covers both classes once the underlying bug is fixed.

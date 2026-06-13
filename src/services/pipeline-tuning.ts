@@ -93,13 +93,3 @@ export function getCandidatePromotionReason(
   return null;
 }
 
-export function getDisplaySuppressionReason(topic: DisplayTopicStats): string | null {
-  const lower = topic.name.toLowerCase();
-  if (isProtectedTopic(lower)) return null;
-  if (topic.kind === "entity") return null;
-  if ((topic.episode_support ?? 0) < PIPELINE_TUNING.minVisibleEpisodeSupport) return "low_episode_spread";
-  if (!lower.includes(" ") && topic.usage_count < PIPELINE_TUNING.minVisibleSingletonUsage && topic.distinctiveness < PIPELINE_TUNING.minVisibleSingletonDistinctiveness) {
-    return "weak_singleton_filter";
-  }
-  return null;
-}

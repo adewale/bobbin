@@ -50,7 +50,11 @@ for (const viewport of viewports) {
     for (const path of pages) {
       test(`${path} has no overflow or clipped visible text`, async ({ page }) => {
         await page.setViewportSize({ width: viewport.width, height: viewport.height });
-        await page.goto(path, { waitUntil: "networkidle" });
+        const response = await page.goto(path, { waitUntil: "networkidle" });
+
+        // Guard against silently auditing the 404 page when the fixture
+        // (npm run fixture:local) hasn't been seeded.
+        expect(response?.status(), `${path} must exist in the seeded fixture`).toBe(200);
 
         const audit = await auditLayout(page);
 

@@ -4,6 +4,11 @@ const ignoreVisualTests = !process.env.AI_GATEWAY_API_KEY && !process.env.RUN_VI
   ? ["e2e/visual.spec.ts"]
   : [];
 
+// Default to a locally served app (seed it first: npm run fixture:local)
+// so e2e runs exercise the code under review. Set BASE_URL to point the
+// suite at a deployed environment instead (production smoke checks).
+const baseURL = process.env.BASE_URL || "http://localhost:9090";
+
 export default defineConfig({
   testDir: "./e2e",
   timeout: 30_000,
@@ -15,11 +20,21 @@ export default defineConfig({
   reporter: [["html", { open: "never" }]],
 
   use: {
-    baseURL:
-      process.env.BASE_URL || "https://bobbin.adewale-883.workers.dev",
+    baseURL,
     screenshot: "only-on-failure",
     trace: "retain-on-failure",
   },
+
+  webServer: process.env.BASE_URL
+    ? undefined
+    : {
+        // wrangler.e2e.jsonc serves the fixture-seeded local D1 without the
+        // remote-only AI/Vectorize bindings, so no Cloudflare login is needed.
+        command: "npx wrangler dev --config wrangler.e2e.jsonc --port 9090",
+        url: "http://localhost:9090",
+        reuseExistingServer: !process.env.CI,
+        timeout: 120_000,
+      },
 
   projects: [
     {

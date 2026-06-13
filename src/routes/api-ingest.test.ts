@@ -23,6 +23,7 @@ describe("/api/ingest source registration", () => {
     expect(before?.c).toBe(0);
 
     const res = await SELF.fetch(`http://localhost/api/ingest?doc=${docId}&limit=1`, {
+      method: "POST",
       headers: { Authorization: "Bearer test-secret" },
     });
     const data = await res.json() as {
@@ -50,6 +51,7 @@ describe("/api/ingest source registration", () => {
     const docId = "1aaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbb";
 
     const res = await SELF.fetch(`http://localhost/api/ingest?doc=${docId}&limit=1`, {
+      method: "POST",
       headers: { Authorization: "Bearer test-secret" },
     });
     const data = await res.json() as {
@@ -63,6 +65,30 @@ describe("/api/ingest source registration", () => {
       "SELECT title, is_archive FROM sources WHERE google_doc_id = ?"
     ).bind(docId).first<{ title: string; is_archive: number }>();
     expect(source).toBeNull();
+  }, 20_000);
+
+  it("rejects an already-present source row whose doc id is not in the trusted registry", async () => {
+    // A sources row that predates the registry lock (or was de-listed later)
+    // must not remain fetchable: the registry check has to run even when the
+    // row already exists, not only on first registration.
+    const rogueDocId = "1roguerogue_rogue-doc-aaaaaaaaaaaaaaaaa";
+    await env.DB.prepare(
+      "INSERT INTO sources (google_doc_id, title) VALUES (?, 'Rogue Source')"
+    ).bind(rogueDocId).run();
+
+    const res = await SELF.fetch(`http://localhost/api/ingest?doc=${rogueDocId}&limit=1`, {
+      method: "POST",
+      headers: { Authorization: "Bearer test-secret" },
+    });
+    const data = await res.json() as { error: string };
+
+    expect(res.status).toBe(404);
+    expect(data.error).toBe("Unknown or untrusted source");
+
+    const episodes = await env.DB.prepare(
+      "SELECT COUNT(*) as c FROM episodes"
+    ).first<{ c: number }>();
+    expect(episodes?.c).toBe(0);
   }, 20_000);
 
   it("purges an already-ingested untrusted source by doc id", async () => {
@@ -85,6 +111,7 @@ describe("/api/ingest source registration", () => {
     ]);
 
     const res = await SELF.fetch("http://localhost/api/purge-source?doc=1IPwKwmEgrL6R2lVe9IaPIu0sPB4O_ZNy8ZA0N0W3yw0", {
+      method: "POST",
       headers: { Authorization: "Bearer test-secret" },
     });
     const data = await res.json() as {

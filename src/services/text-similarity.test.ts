@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { diceCoefficient, simpleStem, clusterBySimilarity } from "./text-similarity";
+import { diceCoefficient, simpleStem } from "./text-similarity";
 
 describe("diceCoefficient", () => {
   it("returns 1.0 for identical strings", () => {
@@ -59,29 +59,3 @@ describe("simpleStem", () => {
   });
 });
 
-describe("clusterBySimilarity", () => {
-  it("clusters inflectional variants together", () => {
-    const clusters = clusterBySimilarity(["chatbot", "chatbots"], 0.7);
-    // Both should map to the same representative
-    expect(clusters.get("chatbot")).toBe(clusters.get("chatbots"));
-  });
-
-  it("keeps distinct topics separate", () => {
-    const clusters = clusterBySimilarity(["transformer", "platform", "agent"], 0.7);
-    expect(clusters.get("transformer")).toBe("transformer");
-    expect(clusters.get("platform")).toBe("platform");
-    expect(clusters.get("agent")).toBe("agent");
-  });
-
-  it("longer names become the representative", () => {
-    const clusters = clusterBySimilarity(["machine learning", "machine learn"], 0.7);
-    const rep = clusters.get("machine learn");
-    // The longer "machine learning" should be the representative
-    expect(rep).toBe("machine learning");
-  });
-
-  it("handles empty input", () => {
-    const clusters = clusterBySimilarity([], 0.7);
-    expect(clusters.size).toBe(0);
-  });
-});

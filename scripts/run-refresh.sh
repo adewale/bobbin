@@ -24,7 +24,7 @@ echo "=== Step 1: Fetch + parse + ingest new episodes ==="
 # Ingest the CURRENT doc (not archives). The doc query param ensures
 # we target the right source, not the one with the oldest last_fetched_at.
 CURRENT_DOC="1xRiCqpy3LMAgEsHdX-IA23j6nUISdT5nAJmtKbk9wNA"
-RESULT=$(curl -s -m 120 -H "$AUTH" "$BASE/api/ingest?limit=100&doc=$CURRENT_DOC")
+RESULT=$(curl -s -m 120 -X POST -H "$AUTH" "$BASE/api/ingest?limit=100&doc=$CURRENT_DOC")
 echo "  $RESULT"
 echo ""
 
@@ -33,7 +33,7 @@ echo "=== Step 2: Enrich all unenriched chunks ==="
 # legitimately produce the same count (500) across consecutive calls.
 TOTAL_ENRICHED=0
 for i in $(seq 1 120); do
-  RESULT=$(curl -s -m 120 -H "$AUTH" "$BASE/api/enrich?batch=500")
+  RESULT=$(curl -s -m 120 -X POST -H "$AUTH" "$BASE/api/enrich?batch=500")
   PROCESSED=$(echo "$RESULT" | grep -o '"chunksProcessed":[0-9]*' | grep -o '[0-9]*' || echo "0")
   COMPLETE=$(echo "$RESULT" | grep -o '"complete":[a-z]*' | grep -o '[a-z]*$' || echo "unknown")
   TOTAL_ENRICHED=$((TOTAL_ENRICHED + PROCESSED))
@@ -47,7 +47,7 @@ done
 echo ""
 
 echo "=== Step 3: Finalize (n-grams + related_slugs via queue) ==="
-RESULT=$(curl -s -m 300 -H "$AUTH" "$BASE/api/finalize")
+RESULT=$(curl -s -m 300 -X POST -H "$AUTH" "$BASE/api/finalize")
 echo "  $RESULT"
 echo ""
 

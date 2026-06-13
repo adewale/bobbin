@@ -28,12 +28,12 @@ curl -s -H "$AUTH" "$BASE/api/health" | python3 -m json.tool 2>/dev/null || curl
 echo ""
 
 echo "=== Step 1: Delete stale chunk_topics for old-version chunks ==="
-RESULT=$(curl -s -m 300 -H "$AUTH" "$BASE/api/cleanup-stale")
+RESULT=$(curl -s -m 300 -X POST -H "$AUTH" "$BASE/api/cleanup-stale")
 echo "  $RESULT"
 echo ""
 
 echo "=== Step 2: Run finalization (will delete orphans) ==="
-RESULT=$(curl -s -m 300 -H "$AUTH" "$BASE/api/finalize")
+RESULT=$(curl -s -m 300 -X POST -H "$AUTH" "$BASE/api/finalize")
 echo "  $RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); [print(f'  {s[\"name\"]}: {s[\"status\"]} ({s.get(\"detail\",\"\")}) [{s[\"duration_ms\"]}ms]') for s in d.get('steps',[])]" 2>/dev/null || echo "  $RESULT"
 echo ""
 

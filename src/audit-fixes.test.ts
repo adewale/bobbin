@@ -26,19 +26,19 @@ beforeEach(async () => {
 describe("S1: Admin endpoint auth", () => {
   it("GET /api/ingest without auth returns 401", async () => {
     (env as any).ADMIN_SECRET = "test-secret";
-    const res = await SELF.fetch("http://localhost/api/ingest");
+    const res = await SELF.fetch("http://localhost/api/ingest", { method: "POST" });
     expect(res.status).toBe(401);
   });
 
   it("GET /api/refresh without auth returns 401", async () => {
     (env as any).ADMIN_SECRET = "test-secret";
-    const res = await SELF.fetch("http://localhost/api/refresh");
+    const res = await SELF.fetch("http://localhost/api/refresh", { method: "POST" });
     expect(res.status).toBe(401);
   });
 
   it("GET /api/embed without auth returns 401", async () => {
     (env as any).ADMIN_SECRET = "test-secret";
-    const res = await SELF.fetch("http://localhost/api/embed");
+    const res = await SELF.fetch("http://localhost/api/embed", { method: "POST" });
     expect(res.status).toBe(401);
   });
 });
@@ -62,6 +62,7 @@ describe("S3: FTS5 injection safety", () => {
 describe("B3: Bad query params", () => {
   it("GET /api/ingest?limit=abc does not produce NaN", async () => {
     const res = await SELF.fetch("http://localhost/api/ingest", {
+      method: "POST",
       headers: { Authorization: "Bearer test-secret" },
     });
     // Should work with default limit, not NaN
@@ -73,6 +74,7 @@ describe("B3: Bad query params", () => {
 describe("S5: Generic error messages", () => {
   it("API errors do not leak internal details", async () => {
     const res = await SELF.fetch("http://localhost/api/ingest?doc=nonexistent", {
+      method: "POST",
       headers: { Authorization: "Bearer test-secret" },
     });
     const data = await res.json() as any;
@@ -87,6 +89,7 @@ describe("Manual refresh endpoint", () => {
   it("reuses the refresh pipeline and records a refresh run", async () => {
     (env as any).ADMIN_SECRET = "test-secret";
     const res = await SELF.fetch("http://localhost/api/refresh", {
+      method: "POST",
       headers: { Authorization: "Bearer test-secret" },
     });
     const data = await res.json() as any;
@@ -225,6 +228,7 @@ describe("Admin batching guards", () => {
     await env.DB.batch(extraChunks);
 
     const res = await SELF.fetch("http://localhost/api/enrich-parallel?batch=999", {
+      method: "POST",
       headers: { Authorization: "Bearer test-secret" },
     });
     const data = await res.json() as { dispatched: number; batches: number };
@@ -235,5 +239,22 @@ describe("Admin batching guards", () => {
     expect(sent).toHaveLength(2);
     expect(sent.every((message) => message.chunkIds.length <= 90)).toBe(true);
     expect(sent[0]?.type).toBe("enrich-batch");
+  });
+
+  it("GET /api/enrich-parallel returns 503 instead of crashing when the queue binding is missing", async () => {
+    (env as any).ADMIN_SECRET = "test-secret";
+    const savedQueue = (env as any).ENRICHMENT_QUEUE;
+    delete (env as any).ENRICHMENT_QUEUE;
+    try {
+      const res = await SELF.fetch("http://localhost/api/enrich-parallel", {
+        method: "POST",
+        headers: { Authorization: "Bearer test-secret" },
+      });
+      expect(res.status).toBe(503);
+      const data = await res.json() as { error: string };
+      expect(data.error).toBe("Enrichment queue unavailable");
+    } finally {
+      if (savedQueue !== undefined) (env as any).ENRICHMENT_QUEUE = savedQueue;
+    }
   });
 });

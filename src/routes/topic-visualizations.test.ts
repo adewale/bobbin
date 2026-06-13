@@ -77,6 +77,54 @@ describe("Topic detail page — dispersion plot", () => {
     expect(marks).not.toBeNull();
     expect(marks!.length).toBe(2);
   });
+
+  it("anchors the right-edge date label with text-anchor=end when a topic spans >18 dates", async () => {
+    // >18 distinct dates takes the two-landmark branch. The right-edge label
+    // sits at x = w - bottomPad; middle-anchoring it overflows the SVG (caught
+    // by the layout-grid e2e audit). It must be end-anchored.
+    await applyTestMigrations(env.DB);
+    const statements = [
+      env.DB.prepare("INSERT INTO sources (google_doc_id, title) VALUES ('wide', 'Wide')"),
+      env.DB.prepare("INSERT INTO topics (id, name, slug, usage_count) VALUES (1, 'spanning', 'spanning', 20)"),
+    ];
+    const dates: string[] = [];
+    for (let i = 0; i < 20; i++) {
+      const month = String((i % 12) + 1).padStart(2, "0");
+      const day = String((i % 27) + 1).padStart(2, "0");
+      const year = 2024 + Math.floor(i / 12);
+      const date = `${year}-${month}-${day}`;
+      dates.push(date);
+      const episodeId = i + 1;
+      const chunkId = i + 1;
+      statements.push(
+        env.DB.prepare(
+          "INSERT INTO episodes (id, source_id, slug, title, published_date, year, month, day, chunk_count, format) VALUES (?, 1, ?, ?, ?, ?, ?, ?, 1, 'notes')"
+        ).bind(episodeId, `${date}-ep`, `Episode ${episodeId}`, date, year, Number(month), Number(day)),
+        env.DB.prepare(
+          "INSERT INTO chunks (id, episode_id, slug, title, content, content_plain, position) VALUES (?, ?, ?, 'Spanning topic', '<p>x</p>', 'spanning topic content here', 0)"
+        ).bind(chunkId, episodeId, `spanning-${chunkId}`),
+        env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (?, 1)").bind(chunkId),
+        env.DB.prepare("INSERT INTO episode_topics (episode_id, topic_id) VALUES (?, 1)").bind(episodeId),
+      );
+    }
+    await env.DB.batch(statements);
+
+    const res = await SELF.fetch("http://localhost/topics/spanning");
+    expect(res.status).toBe(200);
+    const html = await res.text();
+
+    const lastDate = dates[dates.length - 1];
+    const firstDate = dates[0];
+
+    const lastLabel = html.match(new RegExp(`<text[^>]*>\\s*${lastDate}\\s*</text>`));
+    expect(lastLabel, "right-edge landmark label should render").not.toBeNull();
+    expect(lastLabel![0]).toContain('text-anchor="end"');
+    expect(lastLabel![0]).not.toContain('text-anchor="middle"');
+
+    const firstLabel = html.match(new RegExp(`<text[^>]*>\\s*${firstDate}\\s*</text>`));
+    expect(firstLabel, "left-edge landmark label should render").not.toBeNull();
+    expect(firstLabel![0]).toContain('text-anchor="start"');
+  });
 });
 
 describe("Topic detail page — observation cards and help tips", () => {

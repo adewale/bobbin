@@ -96,4 +96,37 @@ describe("source fidelity rendering", () => {
     expect(html).toContain('<ul class="rich-list rich-depth-1">');
     expect(html).toContain('src="https://example.com/image.png"');
   });
+
+  it("never renders executable URL schemes from stored rich content", async () => {
+    // Rows stored before ingest-side scheme sanitization existed may carry a
+    // hostile href; rendering is the last line of defense.
+    const hostileBlocks = JSON.stringify([
+      {
+        type: "paragraph",
+        depth: 0,
+        listStyle: "paragraph",
+        plainText: "Click me and a safe link.",
+        nodes: [
+          { type: "text", text: "Click me", href: "javascript:alert(document.cookie)" },
+          { type: "text", text: " and " },
+          { type: "text", text: "a safe link", href: "https://example.com/safe" },
+          { type: "image", src: "data:text/html,<script>alert(1)</script>", alt: "bad image" },
+        ],
+      },
+    ]);
+    await env.DB.prepare(
+      "INSERT INTO chunks (episode_id, slug, title, content, content_plain, position, rich_content_json) VALUES (1, 'hostile-doc-1', 'Hostile', 'Hostile', 'Hostile', 1, ?)"
+    ).bind(hostileBlocks).run();
+
+    const res = await SELF.fetch("http://localhost/chunks/hostile-doc-1");
+    const html = await res.text();
+
+    expect(res.status).toBe(200);
+    // Rejection: no executable scheme reaches the page
+    expect(html).not.toContain("javascript:");
+    expect(html).not.toContain("data:text/html");
+    expect(html).toContain('href="#"');
+    // Preservation: the safe link survives untouched
+    expect(html).toContain('href="https://example.com/safe"');
+  });
 });

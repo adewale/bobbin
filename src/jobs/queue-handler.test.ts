@@ -1,13 +1,13 @@
 /**
- * Tests for queue handler behavior (compute-related and assign-ngram).
- * Tests through DB effects since the individual handlers are module-private.
- * We simulate what the handlers do by calling the same SQL patterns.
+ * Tests for queue handler behavior.
+ * Uses a real D1 database; queue messages are driven through
+ * handleEnrichmentBatch with recording ack/retry/DLQ fakes.
  */
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import { env } from "cloudflare:test";
 import { applyTestMigrations } from "../../test/helpers/migrations";
-import { slugify } from "../lib/slug";
-import { handleEnrichBatch, handleEnrichmentBatch, queueRetryDelaySeconds, shouldRetryQueueMessage } from "./queue-handler";
+import { handleEnrichBatch, handleEnrichmentBatch, queueJobKey, queueRetryDelaySeconds, shouldRetryQueueMessage } from "./queue-handler";
+import { CURRENT_ENRICHMENT_VERSION } from "./ingest";
 
 beforeEach(async () => {
   await applyTestMigrations(env.DB);
@@ -30,222 +30,6 @@ beforeEach(async () => {
 
 afterEach(() => {
   vi.restoreAllMocks();
-});
-
-describe("compute-related handler behavior", () => {
-  it("computes related_slugs for a topic with co-occurring topics", async () => {
-    // Setup: topic A and B co-occur on chunk 1 and 2; topic C only on chunk 3
-    await env.DB.batch([
-      env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('ecosystem', 'ecosystem', 2)"),
-      env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('platform', 'platform', 2)"),
-      env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('swarm', 'swarm', 1)"),
-      // ecosystem on chunks 1, 2
-      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 1)"),
-      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (2, 1)"),
-      // platform on chunks 1, 2
-      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 2)"),
-      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (2, 2)"),
-      // swarm only on chunk 3
-      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (3, 3)"),
-    ]);
-
-    // Simulate compute-related for topic "ecosystem" (id=1)
-    const topicId = 1;
-    const related = await env.DB.prepare(
-      `SELECT t.slug FROM chunk_topics ct1
-       JOIN chunk_topics ct2 ON ct1.chunk_id = ct2.chunk_id AND ct1.topic_id != ct2.topic_id
-       JOIN topics t ON ct2.topic_id = t.id
-       WHERE ct1.topic_id = ?
-       GROUP BY ct2.topic_id
-       ORDER BY COUNT(*) DESC
-       LIMIT 5`
-    ).bind(topicId).all<{ slug: string }>();
-
-    const slugs = JSON.stringify(related.results.map((r: { slug: string }) => r.slug));
-    await env.DB.prepare(
-      "UPDATE topics SET related_slugs = ? WHERE id = ?"
-    ).bind(slugs, topicId).run();
-
-    // Verify: ecosystem's related_slugs should include platform
-    const topic = await env.DB.prepare(
-      "SELECT related_slugs FROM topics WHERE id = ?"
-    ).bind(topicId).first<{ related_slugs: string }>();
-
-    expect(topic).not.toBeNull();
-    const parsedSlugs = JSON.parse(topic!.related_slugs);
-    expect(Array.isArray(parsedSlugs)).toBe(true);
-    expect(parsedSlugs).toContain("platform");
-    // swarm should NOT be related (no co-occurrence with ecosystem)
-    expect(parsedSlugs).not.toContain("swarm");
-  });
-
-  it("returns empty related_slugs for a topic with no co-occurrences", async () => {
-    await env.DB.batch([
-      env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('isolated', 'isolated', 1)"),
-      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (3, 1)"),
-    ]);
-
-    const topicId = 1;
-    const related = await env.DB.prepare(
-      `SELECT t.slug FROM chunk_topics ct1
-       JOIN chunk_topics ct2 ON ct1.chunk_id = ct2.chunk_id AND ct1.topic_id != ct2.topic_id
-       JOIN topics t ON ct2.topic_id = t.id
-       WHERE ct1.topic_id = ?
-       GROUP BY ct2.topic_id
-       ORDER BY COUNT(*) DESC
-       LIMIT 5`
-    ).bind(topicId).all<{ slug: string }>();
-
-    const slugs = JSON.stringify(related.results.map((r: { slug: string }) => r.slug));
-    await env.DB.prepare(
-      "UPDATE topics SET related_slugs = ? WHERE id = ?"
-    ).bind(slugs, topicId).run();
-
-    const topic = await env.DB.prepare(
-      "SELECT related_slugs FROM topics WHERE id = ?"
-    ).bind(topicId).first<{ related_slugs: string }>();
-
-    expect(topic).not.toBeNull();
-    const parsedSlugs = JSON.parse(topic!.related_slugs);
-    expect(Array.isArray(parsedSlugs)).toBe(true);
-    expect(parsedSlugs).toHaveLength(0);
-  });
-
-  it("limits related_slugs to 5 entries", async () => {
-    // Create 7 topics, all co-occurring with topic 1
-    const topicInserts = [];
-    const ctInserts = [];
-    for (let i = 1; i <= 7; i++) {
-      topicInserts.push(
-        env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES (?, ?, 5)")
-          .bind(`topic${i}`, `topic${i}`)
-      );
-    }
-    await env.DB.batch(topicInserts);
-
-    // Add more chunks to create co-occurrences
-    for (let chunkIdx = 4; chunkIdx <= 10; chunkIdx++) {
-      await env.DB.prepare(
-        "INSERT INTO chunks (episode_id, slug, title, content, content_plain, position) VALUES (1, ?, 'Extra', 'Extra chunk.', 'Extra chunk.', ?)"
-      ).bind(`extra-${chunkIdx}`, chunkIdx).run();
-    }
-
-    // topic1 on chunks 1-7, each other topic on one chunk with topic1
-    for (let chunkId = 1; chunkId <= 7; chunkId++) {
-      await env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (?, 1)").bind(chunkId).run();
-      if (chunkId <= 7) {
-        await env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (?, ?)")
-          .bind(chunkId, chunkId + 1 <= 7 ? chunkId + 1 : 2).run();
-      }
-    }
-
-    const related = await env.DB.prepare(
-      `SELECT t.slug FROM chunk_topics ct1
-       JOIN chunk_topics ct2 ON ct1.chunk_id = ct2.chunk_id AND ct1.topic_id != ct2.topic_id
-       JOIN topics t ON ct2.topic_id = t.id
-       WHERE ct1.topic_id = 1
-       GROUP BY ct2.topic_id
-       ORDER BY COUNT(*) DESC
-       LIMIT 5`
-    ).bind().all<{ slug: string }>();
-
-    expect(related.results.length).toBeLessThanOrEqual(5);
-  });
-});
-
-describe("assign-ngram handler behavior", () => {
-  it("creates phrase topic and assigns to matching chunks", async () => {
-    // Seed chunks containing "prompt injection"
-    await env.DB.prepare(
-      `INSERT INTO chunks (episode_id, slug, title, content, content_plain, position)
-       VALUES (1, 'pi-chunk-1', 'PI 1', 'Prompt injection is a security concern.', 'prompt injection is a security concern.', 10)`
-    ).run();
-    await env.DB.prepare(
-      `INSERT INTO chunks (episode_id, slug, title, content, content_plain, position)
-       VALUES (1, 'pi-chunk-2', 'PI 2', 'Another prompt injection example here.', 'another prompt injection example here.', 11)`
-    ).run();
-
-    const phrase = "prompt injection";
-    const slug = slugify(phrase);
-
-    // Simulate handleAssignNgram
-    await env.DB.prepare(
-      "INSERT OR IGNORE INTO topics (name, slug, kind) VALUES (?, ?, 'phrase')"
-    ).bind(phrase, slug).run();
-
-    const topic = await env.DB.prepare(
-      "SELECT id FROM topics WHERE slug = ?"
-    ).bind(slug).first<{ id: number }>();
-    expect(topic).not.toBeNull();
-
-    const matchingChunks = await env.DB.prepare(
-      "SELECT id FROM chunks WHERE LOWER(content_plain) LIKE ? ESCAPE '\\'"
-    ).bind(`%${phrase}%`).all<{ id: number }>();
-
-    for (const c of matchingChunks.results) {
-      await env.DB.prepare(
-        "INSERT OR IGNORE INTO chunk_topics (chunk_id, topic_id) VALUES (?, ?)"
-      ).bind(c.id, topic!.id).run();
-    }
-
-    await env.DB.prepare(
-      "UPDATE topics SET usage_count = (SELECT COUNT(*) FROM chunk_topics WHERE topic_id = ?) WHERE id = ?"
-    ).bind(topic!.id, topic!.id).run();
-
-    // Verify: topic exists with kind='phrase'
-    const result = await env.DB.prepare(
-      "SELECT kind, usage_count FROM topics WHERE slug = ?"
-    ).bind(slug).first<{ kind: string; usage_count: number }>();
-    expect(result).not.toBeNull();
-    expect(result!.kind).toBe("phrase");
-    // Matches pi-chunk-1, pi-chunk-2, and chunk-2 from seed data (which also contains "prompt injection")
-    expect(result!.usage_count).toBeGreaterThanOrEqual(2);
-  });
-
-  it("does not create topic for very short slugs", async () => {
-    const phrase = "a b";
-    const slug = slugify(phrase);
-
-    // slug for "a b" would be "a-b" (3 chars) — should be skipped
-    if (!slug || slug.length < 3) {
-      // This is the expected behavior: the handler exits early
-      expect(slug.length).toBeLessThanOrEqual(3);
-      return;
-    }
-
-    // If slug somehow passes the length check, verify no topic created
-    const topic = await env.DB.prepare(
-      "SELECT id FROM topics WHERE slug = ?"
-    ).bind(slug).first();
-    expect(topic).toBeNull();
-  });
-
-  it("does not double-assign chunks for existing phrase topics", async () => {
-    // Pre-create the topic and one assignment
-    await env.DB.prepare(
-      "INSERT INTO topics (name, slug, kind) VALUES ('ecosystem dynamics', 'ecosystem-dynamics', 'phrase')"
-    ).run();
-    const topicId = (await env.DB.prepare("SELECT id FROM topics WHERE slug = 'ecosystem-dynamics'").first<{ id: number }>())!.id;
-
-    // chunk-1 content contains "ecosystem" but not the exact phrase "ecosystem dynamics"
-    // chunk-2 contains "ecosystem" in content but let's add one that has the phrase
-    await env.DB.prepare(
-      `INSERT INTO chunks (episode_id, slug, title, content, content_plain, position)
-       VALUES (1, 'eco-dyn-chunk', 'Eco Dyn', 'The ecosystem dynamics of platform markets.', 'the ecosystem dynamics of platform markets.', 20)`
-    ).run();
-    const chunkId = (await env.DB.prepare("SELECT id FROM chunks WHERE slug = 'eco-dyn-chunk'").first<{ id: number }>())!.id;
-
-    // First assignment
-    await env.DB.prepare("INSERT OR IGNORE INTO chunk_topics (chunk_id, topic_id) VALUES (?, ?)").bind(chunkId, topicId).run();
-    // Second (duplicate) assignment
-    await env.DB.prepare("INSERT OR IGNORE INTO chunk_topics (chunk_id, topic_id) VALUES (?, ?)").bind(chunkId, topicId).run();
-
-    // Should only have one row (INSERT OR IGNORE prevents duplicates)
-    const count = await env.DB.prepare(
-      "SELECT COUNT(*) as c FROM chunk_topics WHERE chunk_id = ? AND topic_id = ?"
-    ).bind(chunkId, topicId).first<{ c: number }>();
-    expect(count!.c).toBe(1);
-  });
 });
 
 describe("enrich-batch handler", () => {
@@ -372,17 +156,46 @@ describe("enrich-batch handler", () => {
   });
 });
 
-describe("queue message event logs", () => {
-  it("emits one wide JSON success line per processed message", async () => {
+describe("queue job idempotency keys", () => {
+  it("scopes enrich-batch keys to the current enrichment version", () => {
+    const key = queueJobKey({ type: "enrich-batch", chunkIds: [3, 1, 2] });
+    expect(key).toBe(`enrich-batch:v${CURRENT_ENRICHMENT_VERSION}:1,2,3`);
+  });
+
+  it("re-runs an enrich-batch whose chunk set completed under an older version", async () => {
+    // A version bump re-derives the same deterministic chunk-id batches.
+    // Keys recorded by earlier campaigns (legacy version-less format and
+    // older versions) must NOT cause the new campaign to be skipped.
     await env.DB.batch([
-      env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('ecosystem', 'ecosystem', 2)"),
-      env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('platform', 'platform', 2)"),
-      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 1)"),
-      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (2, 1)"),
-      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 2)"),
-      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (2, 2)"),
+      env.DB.prepare(
+        "INSERT INTO queue_message_state (job_key, message_type, status, completed_at) VALUES ('enrich-batch:1,2', 'enrich-batch', 'completed', datetime('now'))"
+      ),
+      env.DB.prepare(
+        `INSERT INTO queue_message_state (job_key, message_type, status, completed_at) VALUES ('enrich-batch:v${CURRENT_ENRICHMENT_VERSION - 1}:1,2', 'enrich-batch', 'completed', datetime('now'))`
+      ),
     ]);
 
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const ack = vi.fn();
+    await handleEnrichmentBatch(
+      {
+        messages: [
+          { id: "rerun-msg", attempts: 1, body: { type: "enrich-batch", chunkIds: [1, 2] }, ack, retry: vi.fn() },
+        ],
+      } as any,
+      { DB: env.DB, ENRICHMENT_QUEUE: {} } as any,
+    );
+
+    expect(ack).toHaveBeenCalledTimes(1);
+    const enriched = await env.DB.prepare(
+      "SELECT COUNT(*) as c FROM chunks WHERE id IN (1, 2) AND enriched = 1"
+    ).first<{ c: number }>();
+    expect(enriched!.c).toBe(2);
+  });
+});
+
+describe("queue message event logs", () => {
+  it("emits one wide JSON success line per processed message", async () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const ack = vi.fn();
     const retry = vi.fn();
@@ -391,7 +204,7 @@ describe("queue message event logs", () => {
       {
         messages: [
           {
-            body: { type: "compute-related", topicId: 1 },
+            body: { type: "enrich-batch", chunkIds: [1, 2] },
             ack,
             retry,
           },
@@ -406,16 +219,18 @@ describe("queue message event logs", () => {
 
     const payload = JSON.parse(String(logSpy.mock.calls[0][0]));
     expect(payload.event).toBe("queue_message");
-    expect(payload.message_type).toBe("compute-related");
+    expect(payload.message_type).toBe("enrich-batch");
     expect(payload.status).toBe("ok");
     expect(payload.elapsed_ms).toBeGreaterThanOrEqual(0);
-    expect(payload.topic_id).toBe(1);
+    expect(payload.chunk_count).toBe(2);
+    expect(payload.chunks_processed).toBe(2);
   });
 
   it("acks and skips a queue job that already completed", async () => {
+    const completedKey = queueJobKey({ type: "enrich-batch", chunkIds: [1, 2] });
     await env.DB.prepare(
-      "INSERT INTO queue_message_state (job_key, message_id, message_type, status) VALUES ('compute-related:1', 'old-msg', 'compute-related', 'completed')"
-    ).run();
+      "INSERT INTO queue_message_state (job_key, message_id, message_type, status) VALUES (?, 'old-msg', 'enrich-batch', 'completed')"
+    ).bind(completedKey).run();
 
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const ack = vi.fn();
@@ -427,7 +242,7 @@ describe("queue message event logs", () => {
           {
             id: "new-msg",
             attempts: 1,
-            body: { type: "compute-related", topicId: 1 },
+            body: { type: "enrich-batch", chunkIds: [1, 2] },
             ack,
             retry,
           },
@@ -440,17 +255,15 @@ describe("queue message event logs", () => {
     expect(retry).not.toHaveBeenCalled();
     const payload = JSON.parse(String(logSpy.mock.calls[0][0]));
     expect(payload.status).toBe("skipped_completed");
+
+    // Positive control: the chunks were not re-enriched
+    const enriched = await env.DB.prepare(
+      "SELECT COUNT(*) as c FROM chunks WHERE id IN (1, 2) AND enriched = 1"
+    ).first<{ c: number }>();
+    expect(enriched!.c).toBe(0);
   });
 
   it("records queue job state for successful messages", async () => {
-    await env.DB.batch([
-      env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('ecosystem', 'ecosystem', 2)"),
-      env.DB.prepare("INSERT INTO topics (name, slug, usage_count) VALUES ('platform', 'platform', 2)"),
-      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 1)"),
-      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (2, 1)"),
-      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 2)"),
-    ]);
-
     vi.spyOn(console, "log").mockImplementation(() => {});
     await handleEnrichmentBatch(
       {
@@ -458,7 +271,7 @@ describe("queue message event logs", () => {
           {
             id: "msg-state-ok",
             attempts: 1,
-            body: { type: "compute-related", topicId: 1 },
+            body: { type: "enrich-batch", chunkIds: [1] },
             ack: vi.fn(),
             retry: vi.fn(),
           },
@@ -468,9 +281,9 @@ describe("queue message event logs", () => {
     );
 
     const state = await env.DB.prepare(
-      "SELECT message_id, message_type, status, attempts FROM queue_message_state WHERE job_key = 'compute-related:1'"
-    ).first<{ message_id: string; message_type: string; status: string; attempts: number }>();
-    expect(state).toEqual({ message_id: "msg-state-ok", message_type: "compute-related", status: "completed", attempts: 1 });
+      "SELECT message_id, message_type, status, attempts FROM queue_message_state WHERE job_key = ?"
+    ).bind(queueJobKey({ type: "enrich-batch", chunkIds: [1] })).first<{ message_id: string; message_type: string; status: string; attempts: number }>();
+    expect(state).toEqual({ message_id: "msg-state-ok", message_type: "enrich-batch", status: "completed", attempts: 1 });
   });
 
   it("emits one wide JSON error line and retries retryable failures", async () => {
@@ -482,7 +295,7 @@ describe("queue message event logs", () => {
       {
         messages: [
           {
-            body: { type: "compute-related", topicId: 1 },
+            body: { type: "enrich-batch", chunkIds: [1] },
             attempts: 2,
             ack,
             retry,
@@ -508,11 +321,61 @@ describe("queue message event logs", () => {
 
     const payload = JSON.parse(String(errorSpy.mock.calls.find((call) => String(call[0]).startsWith("{"))?.[0]));
     expect(payload.event).toBe("queue_message");
-    expect(payload.message_type).toBe("compute-related");
+    expect(payload.message_type).toBe("enrich-batch");
     expect(payload.status).toBe("error");
     expect(payload.retry).toBe(true);
     expect(payload.error).toContain("SQLITE_BUSY");
     expect(payload.elapsed_ms).toBeGreaterThanOrEqual(0);
+  });
+
+  it("forwards non-retryable failures to the dead-letter queue before acking", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const ack = vi.fn();
+    const retry = vi.fn();
+    const dlqSend = vi.fn().mockResolvedValue(undefined);
+    const body = { type: "enrich-batch" as const, chunkIds: [1] };
+
+    await handleEnrichmentBatch(
+      {
+        messages: [{ body, attempts: 1, ack, retry }],
+      } as any,
+      {
+        DB: {
+          prepare() {
+            throw new Error("D1_ERROR: too many SQL variables");
+          },
+        },
+        ENRICHMENT_QUEUE: {},
+        ENRICHMENT_DLQ: { send: dlqSend },
+      } as any,
+    );
+
+    expect(retry).not.toHaveBeenCalled();
+    expect(dlqSend).toHaveBeenCalledTimes(1);
+    expect(dlqSend).toHaveBeenCalledWith(body);
+    expect(ack).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not touch the dead-letter queue for retryable failures", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const dlqSend = vi.fn().mockResolvedValue(undefined);
+
+    await handleEnrichmentBatch(
+      {
+        messages: [{ body: { type: "enrich-batch", chunkIds: [1] }, attempts: 1, ack: vi.fn(), retry: vi.fn() }],
+      } as any,
+      {
+        DB: {
+          prepare() {
+            throw new Error("SQLITE_BUSY test failure");
+          },
+        },
+        ENRICHMENT_QUEUE: {},
+        ENRICHMENT_DLQ: { send: dlqSend },
+      } as any,
+    );
+
+    expect(dlqSend).not.toHaveBeenCalled();
   });
 });
 
@@ -530,10 +393,17 @@ describe("queue retry policy", () => {
     expect(shouldRetryQueueMessage(new Error("D1_ERROR: Network connection lost"))).toBe(true);
     expect(shouldRetryQueueMessage(new Error("SQLITE_BUSY: database is locked"))).toBe(true);
     expect(shouldRetryQueueMessage(new Error("503 Service Unavailable"))).toBe(true);
+    expect(shouldRetryQueueMessage(new Error("AiError: status 429"))).toBe(true);
   });
 
   it("does not retry deterministic application or SQL-shape failures", () => {
     expect(shouldRetryQueueMessage(new Error("D1_ERROR: too many SQL variables"))).toBe(false);
     expect(shouldRetryQueueMessage(new TypeError("Cannot read properties of undefined"))).toBe(false);
+  });
+
+  it("does not mistake numbers inside identifiers for HTTP status codes", () => {
+    // "5036" contains the substring "503"; a naive substring match retries this forever
+    expect(shouldRetryQueueMessage(new Error("enrichment failed for chunk 5036"))).toBe(false);
+    expect(shouldRetryQueueMessage(new Error("processed 429 chunks before failure"))).toBe(false);
   });
 });

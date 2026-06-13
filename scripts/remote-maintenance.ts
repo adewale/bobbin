@@ -26,7 +26,9 @@ function buildUrl(baseUrl: string, path: string, params: URLSearchParams) {
 async function callAdmin(path: string, params: URLSearchParams) {
   const baseUrl = requireEnv("BASE_URL");
   const adminSecret = requireEnv("ADMIN_SECRET");
+  // Admin endpoints are state-changing and therefore POST-only
   const response = await fetch(buildUrl(baseUrl, path, params), {
+    method: "POST",
     headers: {
       Authorization: `Bearer ${adminSecret}`,
     },

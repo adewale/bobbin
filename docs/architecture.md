@@ -64,16 +64,16 @@ Google Docs (mobilebasic HTML)
 ### Admin (requires `Authorization: Bearer ADMIN_SECRET`)
 | Route | Purpose |
 |-------|---------|
-| `GET /api/ingest?limit=N&doc=ID` | Fetch, parse, and ingest N new episodes from a trusted source doc |
-| `GET /api/refresh` | Canonical refresh pipeline over the trusted source registry: ensure source, fetch, parse, ingest, enrich, finalize |
-| `GET /api/purge-source?doc=ID` | Remove an already-ingested source and all dependent rows by doc ID |
-| `GET /api/backfill-source?doc=ID&offset=N&limit=N&llm=0|1` | Reparse an existing trusted source and repair episode/chunk fidelity artifacts |
-| `GET /api/backfill-llm?doc=ID&limit=N` | Backfill missing episode-level LLM proposal caches |
-| `GET /api/embed?limit=N` | Batch-embed N chunks to Vectorize |
-| `GET /api/enrich?batch=N` | Enrich unenriched chunks (topics, word stats) |
-| `GET /api/enrich-parallel?batch=N` | Dispatch enrichment batches to queue |
-| `GET /api/finalize` | Run finalization (18 steps, quality gates, cleanup) |
-| `GET /api/cleanup-stale` | One-time: delete stale chunk_topics + orphan topics |
+| `POST /api/ingest?limit=N&doc=ID` | Fetch, parse, and ingest N new episodes from a trusted source doc |
+| `POST /api/refresh` | Canonical refresh pipeline over the trusted source registry: ensure source, fetch, parse, ingest, enrich, finalize |
+| `POST /api/purge-source?doc=ID` | Remove an already-ingested source and all dependent rows by doc ID |
+| `POST /api/backfill-source?doc=ID&offset=N&limit=N&llm=0|1` | Reparse an existing trusted source and repair episode/chunk fidelity artifacts |
+| `POST /api/backfill-llm?doc=ID&limit=N` | Backfill missing episode-level LLM proposal caches |
+| `POST /api/embed?limit=N` | Batch-embed N chunks to Vectorize |
+| `POST /api/enrich?batch=N` | Enrich unenriched chunks (topics, word stats) |
+| `POST /api/enrich-parallel?batch=N` | Dispatch enrichment batches to queue |
+| `POST /api/finalize` | Run finalization (18 steps, quality gates, cleanup) |
+| `POST /api/cleanup-stale` | One-time: delete stale chunk_topics + orphan topics |
 | `GET /api/health` | Pipeline health check (chunk/topic counts, unenriched) |
 | `GET /api/ingestion-log` | View recent ingestion history |
 
@@ -138,7 +138,7 @@ ingestion_log (audit trail)
 ```
 
 Triggered by:
-- **Cron**: `0 8 * * 3` and `0 9 * * 3`, guarded at runtime so the job runs exactly once at Tuesday 09:00 Europe/London year-round — runs the full pipeline via `runRefresh` across the trusted non-empty sources in the checked-in registry
+- **Cron**: `0 8 * * 2` and `0 9 * * 2`, guarded at runtime so the job runs exactly once at Tuesday 09:00 Europe/London year-round — runs the full pipeline via `runRefresh` across the trusted non-empty sources in the checked-in registry
 - **Manual**: Admin API endpoints with Bearer auth
 
 Operational maintenance can also be driven through `scripts/remote-maintenance.ts` / `npm run maintenance:remote`, which wraps the deployed admin routes with explicit `BASE_URL` and `ADMIN_SECRET` inputs.

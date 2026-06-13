@@ -35,9 +35,17 @@ for (const page of htmlPages) {
     }) => {
       const consoleErrors: string[] = [];
       p.on("console", (msg) => {
-        if (msg.type() === "error") {
-          consoleErrors.push(msg.text());
+        if (msg.type() !== "error") return;
+        // Only same-origin resources and page scripts are part of the app's
+        // contract; third-party CDN availability (e.g. the fonts stylesheet)
+        // varies with the environment's egress policy.
+        const sourceUrl = msg.location()?.url ?? "";
+        try {
+          if (sourceUrl && new URL(sourceUrl).host !== new URL(p.url()).host) return;
+        } catch {
+          // Unparseable source URL — keep the error visible.
         }
+        consoleErrors.push(msg.text());
       });
 
       const response = await p.goto(page.path, {

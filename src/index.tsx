@@ -21,10 +21,32 @@ app.onError((err, c) => {
   return c.text("Internal Server Error", 500);
 });
 
-// Cache-Control for SSR pages
+// Security headers + Cache-Control for SSR pages
 app.use("*", async (c, next) => {
   await next();
+  // Responses served from the Cache API have immutable headers; rebuild
+  // the response so the security headers apply to cache hits too.
+  try {
+    c.res.headers.set("X-Content-Type-Options", "nosniff");
+  } catch {
+    c.res = new Response(c.res.body, c.res);
+    c.res.headers.set("X-Content-Type-Options", "nosniff");
+  }
+  c.res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  if (c.res.headers.get("content-type")?.includes("text/html")) {
+    c.res.headers.set("X-Frame-Options", "DENY");
+    // Backstops the rendered-content sinks: no inline/eval script can run
+    // even if a hostile fragment ever reaches the page.
+    c.res.headers.set(
+      "Content-Security-Policy",
+      "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; " +
+      "font-src https://fonts.gstatic.com; img-src 'self' https: data:; " +
+      "base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+    );
+  }
   if (
+    c.req.method === "GET" &&
+    !new URL(c.req.url).pathname.startsWith("/api/") &&
     c.res.headers.get("content-type")?.includes("text/html") &&
     !c.res.headers.has("cache-control")
   ) {

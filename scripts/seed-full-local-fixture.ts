@@ -25,7 +25,7 @@ async function main() {
   run("Bootstrap cached corpus", "npx", ["tsx", "scripts/local-pipeline.ts", "all", "--clean", "--config", configPath]);
   run("Seed deterministic episode rail demo", "node", ["scripts/seed-episode-rail-demo.mjs", "--config", configPath]);
 
-  const { env, dispose } = await getPlatformProxy({ configPath });
+  const { env, dispose } = await getPlatformProxy({ configPath, remoteBindings: false });
   const db = env.DB as D1Database;
 
   try {

@@ -8,6 +8,7 @@ import { Breadcrumbs } from "../components/Breadcrumbs";
 import { RichContent, RichFootnotes, parseFootnotesJson, parseRichContentJson } from "../components/RichContent";
 import { TopicList } from "../components/TopicList";
 import { monthName } from "../lib/date";
+import { sanitizeUrl } from "../lib/html";
 import { collectExternalLinks } from "../lib/episode-rail";
 import { getAdjacentEpisodes, getAllEpisodesGrouped, getChunksByEpisode, getEpisodeBySlug, getEpisodeRailInsights, getEpisodeTopicsBlended } from "../db/episodes";
 
@@ -202,7 +203,7 @@ episodes.get("/:slug", async (c) => {
                 return hasBody ? (
                   <details key={chunk.id} class="chunk-row" id={chunk.slug}>
                     <summary>
-                      <a href={`/chunks/${chunk.slug}`} class="chunk-num" onclick="event.stopPropagation()">{idx + 1}</a>
+                      <a href={`/chunks/${chunk.slug}`} class="chunk-num">{idx + 1}</a>
                       <span class="chunk-title">{chunk.title}</span>
                     </summary>
                     <div class="chunk-body">
@@ -388,7 +389,7 @@ episodes.get("/:slug", async (c) => {
                 <ul class="episode-insight-list">
                   {externalLinks.map((link) => (
                     <li key={link.href}>
-                      <a href={link.href} target="_blank" rel="noreferrer">{link.label}</a>
+                      <a href={sanitizeUrl(link.href)} target="_blank" rel="noreferrer">{link.label}</a>
                     </li>
                   ))}
                 </ul>

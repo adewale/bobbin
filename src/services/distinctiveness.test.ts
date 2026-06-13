@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import fc from "fast-check";
 import {
   computeDistinctiveness,
-  detectSIPs,
   loadEnglishBaseline,
   type DistinctivenessResult,
 } from "./distinctiveness";
@@ -62,34 +61,6 @@ describe("computeDistinctiveness", () => {
   });
 });
 
-describe("detectSIPs (Statistically Improbable Phrases)", () => {
-  it("detects phrases unique to the corpus", () => {
-    const texts = [
-      "Resonant computing challenges the dominant paradigm. Resonant computing is the future.",
-      "Cognitive labor is abundant. Cognitive labor changes everything.",
-      "The software market is growing rapidly.",
-    ];
-
-    const sips = detectSIPs(texts, 2);
-    const phrases = sips.map((s) => s.phrase);
-
-    expect(phrases).toContain("resonant computing");
-    expect(phrases).toContain("cognitive labor");
-    // "software market" only appears once, below threshold
-    expect(phrases).not.toContain("software market");
-  });
-
-  it("returns phrases with frequency counts", () => {
-    const texts = [
-      "Claude Code is great. Claude Code transforms development.",
-      "Claude Code is the best tool.",
-    ];
-    const sips = detectSIPs(texts, 2);
-    const claudeCode = sips.find((s) => s.phrase === "claude code");
-    expect(claudeCode).toBeDefined();
-    expect(claudeCode!.count).toBeGreaterThanOrEqual(2);
-  });
-});
 
 describe("PBT: distinctiveness invariants", () => {
   const baseline = loadEnglishBaseline();

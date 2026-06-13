@@ -6,6 +6,8 @@ import {
   escapeRegex,
   escapeLike,
   sanitizeFtsQuery,
+  sanitizeUrl,
+  resolveGoogleRedirectUrl,
   escapeXml,
   getBaseUrl,
   safeParseInt,
@@ -57,6 +59,73 @@ describe("escapeLike", () => {
         expect(escapeLike(s)).toBe(s);
       })
     );
+  });
+
+  it("escapes the escape character itself so a trailing backslash cannot neutralize it", () => {
+    expect(escapeLike("100%\\")).toBe("100\\%\\\\");
+    expect(escapeLike("a\\_b")).toBe("a\\\\\\_b");
+  });
+});
+
+describe("sanitizeUrl", () => {
+  it("preserves safe absolute and relative URLs", () => {
+    expect(sanitizeUrl("https://example.com/page?q=1#frag")).toBe("https://example.com/page?q=1#frag");
+    expect(sanitizeUrl("http://example.com")).toBe("http://example.com");
+    expect(sanitizeUrl("mailto:someone@example.com")).toBe("mailto:someone@example.com");
+    expect(sanitizeUrl("/chunks/some-slug#id.target")).toBe("/chunks/some-slug#id.target");
+    expect(sanitizeUrl("#id.target")).toBe("#id.target");
+    expect(sanitizeUrl("?page=2")).toBe("?page=2");
+    expect(sanitizeUrl("//example.com/protocol-relative")).toBe("//example.com/protocol-relative");
+  });
+
+  it("neutralizes executable and data URL schemes", () => {
+    expect(sanitizeUrl("javascript:alert(document.cookie)")).toBe("#");
+    expect(sanitizeUrl("JavaScript:alert(1)")).toBe("#");
+    expect(sanitizeUrl("vbscript:msgbox(1)")).toBe("#");
+    expect(sanitizeUrl("data:text/html,<script>alert(1)</script>")).toBe("#");
+  });
+
+  it("neutralizes schemes hidden behind control characters", () => {
+    expect(sanitizeUrl("java\tscript:alert(1)")).toBe("#");
+    expect(sanitizeUrl("java\nscript:alert(1)")).toBe("#");
+    expect(sanitizeUrl("\u0001javascript:alert(1)")).toBe("#");
+  });
+
+  it("maps empty and missing values to a no-op fragment", () => {
+    expect(sanitizeUrl("")).toBe("#");
+    expect(sanitizeUrl(undefined)).toBe("#");
+    expect(sanitizeUrl(null)).toBe("#");
+    expect(sanitizeUrl("   ")).toBe("#");
+  });
+
+  it("never returns a URL with an unsafe scheme", () => {
+    fc.assert(
+      fc.property(fc.string(), (s) => {
+        const result = sanitizeUrl(s);
+        const scheme = /^([a-zA-Z][a-zA-Z0-9+.-]*):/.exec(result)?.[1]?.toLowerCase();
+        if (scheme) {
+          expect(["http", "https", "mailto"]).toContain(scheme);
+        }
+      })
+    );
+  });
+});
+
+describe("resolveGoogleRedirectUrl", () => {
+  it("unwraps Google redirect URLs to their safe targets", () => {
+    expect(
+      resolveGoogleRedirectUrl("https://www.google.com/url?q=https%3A%2F%2Fexample.com%2Fpost")
+    ).toBe("https://example.com/post");
+  });
+
+  it("neutralizes a javascript: URL wrapped in a Google redirect", () => {
+    expect(
+      resolveGoogleRedirectUrl("https://www.google.com/url?q=javascript%3Aalert(1)")
+    ).toBe("#");
+  });
+
+  it("neutralizes a direct javascript: href", () => {
+    expect(resolveGoogleRedirectUrl("javascript:alert(1)")).toBe("#");
   });
 });
 

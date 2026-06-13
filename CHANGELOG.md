@@ -1,5 +1,59 @@
 # Changelog
 
+## 2026-06-12 — Audit remediation: pipeline correctness, security hardening, real CI
+
+Fixes every finding from `docs/audit-codebase-2026-06.md`.
+
+### Fixed
+- `enrichAllChunks` no longer stops after two equal-sized batches: the loop guard now checks that the pending-chunk count actually shrinks, and every processed batch is counted. Large backlogs (new sources, enrichment-version bumps) drain within the time budget.
+- A duplicate episode date inside one source document is skipped with a structured log instead of permanently failing that source's weekly refresh on the UNIQUE slug collision.
+- Queue idempotency keys for `enrich-batch` include the enrichment version, so re-enrichment campaigns after a version bump are no longer silently skipped; finalize purges completed queue-state rows older than 30 days.
+- The queue consumer resolves `TOPIC_EXTRACTOR_MODE` from the environment instead of hardcoding `naive`; non-retryable queue failures are forwarded to the dead-letter queue (new `ENRICHMENT_DLQ` producer binding) before acking; retry matching no longer treats numbers inside identifiers ("chunk 5036") as HTTP status codes.
+- Manual-ingest embeddings are batched (100 per Workers AI call / Vectorize upsert) so large ingests no longer silently lose embeddings; LLM-enrichment failures no longer fail the refresh or ingest (episodes stay eligible for `/api/backfill-llm`).
+- `similarity_cluster` can no longer merge two near-duplicate topics into each other (A→B→A) and park links on hidden topics; merges keep the higher-usage topic.
+- `/api/ingest` enforces the trusted-source registry even when a sources row already exists; `/api/enrich-parallel` returns 503 instead of crashing when the queue binding is missing.
+- The mobile search form no longer overflows a 375px viewport (`min-width: 0` on the flex input) — caught by the newly-real browser suite.
+
+### Security
+- Link/image URLs from source docs are scheme-allowlisted (http/https/mailto/relative) at ingest and again at render, so a `javascript:` href in a trusted doc can never become an executable link.
+- HTML responses carry a Content-Security-Policy (no `unsafe-inline`), `X-Frame-Options`, `X-Content-Type-Options`, and `Referrer-Policy`; the one inline event handler was removed.
+- `/api/search` enforces the same query-length cap and per-IP rate limit as `/search`; the `SEARCH_RATE_LIMIT` native rate-limiter binding is now actually configured.
+- FTS5 queries are built exclusively from quoted phrase literals (OR disjuncts are re-quoted individually), eliminating FTS grammar injection.
+- Admin auth comparison is constant-time; all state-changing admin endpoints are POST-only; authenticated 500s no longer echo internal error details.
+
+### Changed
+- CI runs the typecheck, both Vitest suites, and the Playwright suite (Chromium + WebKit) against a locally seeded fixture, with `continue-on-error` removed — e2e now tests the code under review instead of production. New `wrangler.e2e.jsonc` serves the fixture without the remote-only AI/Vectorize bindings.
+- Removed the producer-less queue subsystem (`compute-related`, `extract-ngrams`, `assign-ngram`, PMI phrase extraction) and 17 dead exports across db/services/lib.
+- The recount family lives once in `src/db/corpus-maintenance.ts` (shared by finalize and purge-repair); finalize's phrase backfill and entity validation are batched instead of one-query-per-item.
+- The test migration helper derives its migration list from `migrations/*.sql` and its drop list from `sqlite_master`, so new migrations are automatically applied in tests.
+
+### Added
+- Migration `0026_word_stats_constraints.sql` restores the primary key, NOT NULLs, defaults, and indexes that `word_stats` lost in migration 0007.
+- `npm run typecheck`, `npm run test:e2e:local`; `tsx` as a pinned devDependency; `engines`/`.nvmrc` for Node 22; `data/raw/README.md` documenting fixture content ownership.
+
+---
+
+## 2026-06-06 — Stabilize production ingestion and alerting
+
+- Production ingestion stabilization plus cost-event alerting hardening (migration `0025_cost_event_alerting.sql`, `npm run alerts:production`).
+
+## 2026-06-04 — MIT licence
+
+- Added the MIT `LICENSE` file and `license` field (#3).
+
+## 2026-05-07/08 — Scheduled refresh hardening and London-time cron
+
+- Weekly refresh runs exactly once at Tuesday 09:00 Europe/London via dual UTC crons (`0 8 * * 2`, `0 9 * * 2`) and an `Intl`-based runtime gate (`src/lib/london-cron.ts`).
+- Scheduled refresh logging and interrupted-run recovery hardened (`failRunningIngestionLogs`, refresh soft budget).
+
+## 2026-05-01 — Trusted-source lock, purge repair, and health checks
+
+- Corpus ingestion locked to the checked-in trusted Komoroske source registry (`src/data/source-registry.ts`); unknown doc IDs are rejected.
+- `/api/purge-source` removes a contaminated source; derived corpus state is repaired and invariant-audited afterwards (`src/db/corpus-maintenance.ts`, `scripts/repair-corpus-derived.ts`).
+- Trusted archive source HTML cached in `source_html_chunks`; production health checks added (`npm run health:production`).
+
+---
+
 ## 2026-04-30 — Correct-by-construction redesign spec, baselines, and rollback prep
 
 ### Added

@@ -80,6 +80,28 @@ describe("parseHtmlDocument", () => {
   });
 });
 
+describe("link scheme sanitization at ingest", () => {
+  it("neutralizes javascript: hrefs (direct and Google-redirect-wrapped) and keeps safe links", () => {
+    const html = [
+      '<h1><span>4/20/26</span></h1>',
+      '<li style="margin-left:36pt"><span><a href="javascript:alert(document.cookie)">Hostile direct</a></span></li>',
+      '<li style="margin-left:36pt"><span><a href="https://www.google.com/url?q=javascript%3Aalert(1)">Hostile wrapped</a></span></li>',
+      '<li style="margin-left:36pt"><span><a href="https://www.google.com/url?q=https%3A%2F%2Fexample.com%2Fpost">Safe wrapped</a></span></li>',
+    ].join("");
+
+    const episodes = parseHtmlDocument(html);
+    expect(episodes).toHaveLength(1);
+    const hrefs = episodes[0].chunks.flatMap((chunk) =>
+      chunk.richContent.flatMap((block) => block.nodes.map((node) => node.href).filter(Boolean))
+    );
+
+    // Rejection: no executable scheme is ever stored
+    expect(hrefs.some((href) => String(href).startsWith("javascript:"))).toBe(false);
+    // Preservation: the safe target survives, unwrapped from the redirect
+    expect(hrefs).toContain("https://example.com/post");
+  });
+});
+
 describe("extractDocLinksFromHtml", () => {
   it("extracts Google Doc IDs from links", () => {
     const links = extractDocLinksFromHtml(sampleHtml);

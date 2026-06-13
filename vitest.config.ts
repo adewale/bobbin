@@ -11,6 +11,8 @@ export default defineConfig({
   test: {
     minWorkers: 1,
     maxWorkers: 4,
-    exclude: ["e2e/**", "node_modules/**", "src/**/distinctiveness.test.ts", "src/routes/real-data.test.ts", "src/services/real-data.test.ts", "src/services/source-fidelity.corpus.test.tsx", ".claude/**"],
+    // scripts/** and the entries below run under vitest.node.config.ts;
+    // listing them here keeps every test file in exactly one suite.
+    exclude: ["e2e/**", "node_modules/**", "scripts/**", "src/**/distinctiveness.test.ts", "src/**/html-parser.property.test.ts", "src/routes/real-data.test.ts", "src/services/real-data.test.ts", "src/services/source-fidelity.corpus.test.tsx", ".claude/**"],
   },
 });

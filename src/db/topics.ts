@@ -135,18 +135,6 @@ export async function getTopicChunks(
   return result.results;
 }
 
-export async function getTopicAllChunks(db: D1Database, topicId: number) {
-  const result = await db.prepare(
-    `SELECT c.id, c.episode_id, c.slug, c.title, c.content_plain, c.position,
-            e.slug as episode_slug, e.title as episode_title, e.published_date
-     FROM chunks c
-     JOIN chunk_topics ct ON c.id = ct.chunk_id
-     JOIN episodes e ON c.episode_id = e.id
-     WHERE ct.topic_id = ?
-     ORDER BY e.published_date ASC, c.position ASC, c.id ASC`
-  ).bind(topicId).all();
-  return result.results as any[];
-}
 
 export async function getTopicDriftChunks(db: D1Database, topicId: number, sampleSize = 30) {
   const result = await db.prepare(
@@ -186,17 +174,6 @@ export async function getTopicSparkline(db: D1Database, topicId: number) {
   return result.results as any[];
 }
 
-export async function getTopicDiffChunks(db: D1Database, topicId: number) {
-  const result = await db.prepare(
-    `SELECT c.*, e.slug as episode_slug, e.title as episode_title, e.published_date
-     FROM chunks c
-     JOIN chunk_topics ct ON c.id = ct.chunk_id
-     JOIN episodes e ON c.episode_id = e.id
-     WHERE ct.topic_id = ?
-     ORDER BY e.published_date ASC, c.position ASC, c.id ASC`
-  ).bind(topicId).all();
-  return result.results as any[];
-}
 
 export async function getTopicEpisodes(db: D1Database, topicId: number) {
   const result = await db.prepare(
@@ -266,29 +243,6 @@ export async function getTopicKWIC(db: D1Database, topicName: string, limit = 10
   return result.results as { content_plain: string; slug: string; published_date: string }[];
 }
 
-export async function getTopicRanksByYear(db: D1Database) {
-  const result = await db.prepare(
-    `SELECT t.id, t.name, t.slug, e.year, COUNT(*) as year_count
-     FROM chunk_topics ct
-     JOIN topics t ON ct.topic_id = t.id
-     JOIN chunks c ON ct.chunk_id = c.id
-     JOIN episodes e ON c.episode_id = e.id
-     GROUP BY t.id, e.year
-     ORDER BY e.year, year_count DESC`
-  ).all();
-
-  // Group by year, rank within each year
-  const byYear = new Map<number, { id: number; name: string; slug: string; count: number; rank: number }[]>();
-  for (const r of result.results as any[]) {
-    if (!byYear.has(r.year)) byYear.set(r.year, []);
-    byYear.get(r.year)!.push({ id: r.id, name: r.name, slug: r.slug, count: r.year_count, rank: 0 });
-  }
-  // Assign ranks (already sorted by count DESC)
-  for (const [, topics] of byYear) {
-    topics.forEach((t, i) => t.rank = i + 1);
-  }
-  return byYear;
-}
 
 export async function getTopicRankHistory(db: D1Database, topicId: number): Promise<TopicRankHistoryPoint[]> {
   const result = await db.prepare(

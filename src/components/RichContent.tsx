@@ -1,18 +1,23 @@
 import type { RichBlock, RichFootnote, RichTextNode } from "../types";
+import { sanitizeUrl } from "../lib/html";
 
 function renderNode(node: RichTextNode, key: string) {
   if (node.type === "break") return <br key={key} />;
   if (node.type === "image" && node.src) {
+    // Defense in depth for rows stored before scheme sanitization existed:
+    // never emit a non-http(s) image source.
+    const src = sanitizeUrl(node.src);
+    if (src === "#") return <span key={key}>{node.alt || ""}</span>;
     return (
       <figure key={key} class="rich-image-figure">
-        <img src={node.src} alt={node.alt || ""} class="rich-image" loading="lazy" />
+        <img src={src} alt={node.alt || ""} class="rich-image" loading="lazy" />
         {node.alt ? <figcaption>{node.alt}</figcaption> : null}
       </figure>
     );
   }
 
   let content: any = node.text || "";
-  if (node.href) content = <a href={node.href}>{content}</a>;
+  if (node.href) content = <a href={sanitizeUrl(node.href)}>{content}</a>;
   if (node.superscript) content = <sup>{content}</sup>;
   if (node.strikethrough) content = <s>{content}</s>;
   if (node.underline) content = <u>{content}</u>;

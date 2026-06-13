@@ -42,7 +42,7 @@ echo "=== Step 1: Enrich chunks ==="
 echo "  (loops until no more chunks to process)"
 PREV_PROCESSED=-1
 for i in $(seq 1 60); do
-  RESULT=$(curl -s -m 120 -H "$AUTH" "$BASE/api/enrich?batch=500")
+  RESULT=$(curl -s -m 120 -X POST -H "$AUTH" "$BASE/api/enrich?batch=500")
   PROCESSED=$(echo "$RESULT" | grep -o '"chunksProcessed":[0-9]*' | grep -o '[0-9]*' || echo "0")
   COMPLETE=$(echo "$RESULT" | grep -o '"complete":[a-z]*' | grep -o '[a-z]*$' || echo "unknown")
   echo "  Batch $i: processed=$PROCESSED complete=$COMPLETE"
@@ -62,7 +62,7 @@ done
 echo ""
 echo "=== Step 2: Run finalization ==="
 echo "  (fast steps inline, slow steps dispatched to queue)"
-RESULT=$(curl -s -m 300 -H "$AUTH" "$BASE/api/finalize")
+RESULT=$(curl -s -m 300 -X POST -H "$AUTH" "$BASE/api/finalize")
 echo "  Result: $RESULT"
 
 echo ""

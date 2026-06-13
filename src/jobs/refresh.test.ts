@@ -21,6 +21,33 @@ beforeEach(async () => {
 });
 
 describe("runRefresh", () => {
+  it("does not fail a source when optional LLM enrichment throws", async () => {
+    // LLM candidates are an enhancement signal: a transient Workers AI error
+    // must not mark the source failed after its episodes are already inserted.
+    // The episodes stay eligible for /api/backfill-llm recovery.
+    const testEnv = makeRefreshTestEnv();
+    testEnv.__TEST_ENRICH_EPISODES_WITH_LLM = async () => {
+      throw new Error("AiError: capacity temporarily exceeded");
+    };
+
+    const event = await runRefresh(testEnv);
+
+    expect(event.status).toBe("completed");
+    expect(event.sources_failed).toBe(0);
+    expect(event.new_episodes).toBeGreaterThan(0);
+
+    const episodes = await env.DB.prepare("SELECT COUNT(*) as c FROM episodes").first<{ c: number }>();
+    expect(episodes!.c).toBeGreaterThan(0);
+    const llmRuns = await env.DB.prepare("SELECT COUNT(*) as c FROM llm_enrichment_runs").first<{ c: number }>();
+    expect(llmRuns!.c).toBe(0);
+
+    // The failure stays observable in the cycle report
+    const cycleLog = await env.DB.prepare(
+      "SELECT pipeline_report FROM ingestion_log WHERE run_type = 'refresh_cycle' ORDER BY id DESC LIMIT 1"
+    ).first<{ pipeline_report: string }>();
+    expect(cycleLog?.pipeline_report).toContain("llm_enrich_error");
+  }, 20000);
+
   it("seeds the current doc source if sources table is empty", async () => {
     const before = await env.DB.prepare("SELECT COUNT(*) as c FROM sources").first();
     expect((before as any).c).toBe(0);
