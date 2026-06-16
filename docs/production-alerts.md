@@ -20,6 +20,7 @@ If `ALERT_WEBHOOK_URL` is omitted, the script still prints JSON and exits non-ze
 
 - `ingestion_log.status = 'running'` older than `STALE_RUNNING_MINUTES` (default: `30`).
 - failed `refresh` / `refresh_cycle` rows completed in the last `FAILED_REFRESH_HOURS` (default: `24`).
+- latest successful or partial `refresh_cycle` is older than `MAX_REFRESH_AGE_HOURS` (default: `192`, eight days), which catches missed weekly cron invocations even when no row is left `running` or `failed`.
 - `bobbin-enrichment-dlq` has at least one message. The check uses Cloudflare Queues pull with a 1-second visibility timeout and does not ack messages. The DLQ must have HTTP Pull enabled once:
 
 ```bash
@@ -35,7 +36,7 @@ npx wrangler queues consumer http add bobbin-enrichment-dlq --config wrangler.re
 
 Yes. The useful remainder is:
 
-- one command that checks all four production risk conditions
+- one command that checks the production risk conditions
 - app-level AI/Vectorize cost-event recording in D1
 - JSON output suitable for local cron, launchd, another monitoring system, or manual incident checks
 - optional webhook notification without coupling to GitHub repo secrets

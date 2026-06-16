@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-06-16 — Restore scheduled refresh
+
+### Fixed
+- Production refresh cron now uses explicit weekday names (`0 8 * * TUE`, `0 9 * * TUE`) instead of numeric day-of-week values, avoiding Cloudflare-vs-Unix weekday ambiguity before the London-time runtime gate.
+- Local fixture seeding now drops persisted D1 objects dynamically from `sqlite_master`, so CI/local e2e no longer fail when a previous test run left newer migration tables behind.
+
 ## 2026-06-12 — Audit remediation: pipeline correctness, security hardening, real CI
 
 Fixes every finding from `docs/audit-codebase-2026-06.md`.

@@ -138,7 +138,7 @@ ingestion_log (audit trail)
 ```
 
 Triggered by:
-- **Cron**: `0 8 * * 2` and `0 9 * * 2`, guarded at runtime so the job runs exactly once at Tuesday 09:00 Europe/London year-round — runs the full pipeline via `runRefresh` across the trusted non-empty sources in the checked-in registry
+- **Cron**: `0 8 * * TUE` and `0 9 * * TUE`, guarded at runtime so the job runs exactly once at Tuesday 09:00 Europe/London year-round. The weekday is spelled out because Cloudflare's numeric day-of-week mapping differs from standard Unix cron — runs the full pipeline via `runRefresh` across the trusted non-empty sources in the checked-in registry
 - **Manual**: Admin API endpoints with Bearer auth
 
 Operational maintenance can also be driven through `scripts/remote-maintenance.ts` / `npm run maintenance:remote`, which wraps the deployed admin routes with explicit `BASE_URL` and `ADMIN_SECRET` inputs.

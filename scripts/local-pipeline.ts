@@ -21,36 +21,45 @@ import { ingestEpisodesOnly, enrichAllChunks, finalizeEnrichment } from "../src/
 import { ensureSource } from "../src/db/sources";
 import { LOCAL_DEV_WRANGLER_CONFIG_PATH } from "../src/lib/local-dev-config";
 
-const RESET_STATEMENTS = [
-  "DROP TRIGGER IF EXISTS chunks_ai",
-  "DROP TRIGGER IF EXISTS chunks_ad",
-  "DROP TRIGGER IF EXISTS chunks_au",
-  "DROP TABLE IF EXISTS chunks_fts",
-  "DROP TABLE IF EXISTS episode_artifact_chunks",
-  "DROP TABLE IF EXISTS source_html_chunks",
-  "DROP TABLE IF EXISTS llm_episode_candidate_evidence",
-  "DROP TABLE IF EXISTS llm_episode_candidates",
-  "DROP TABLE IF EXISTS llm_enrichment_runs",
-  "DROP TABLE IF EXISTS pipeline_stage_metrics",
-  "DROP TABLE IF EXISTS pipeline_runs",
-  "DROP TABLE IF EXISTS topic_lineage_archive",
-  "DROP TABLE IF EXISTS topic_merge_audit",
-  "DROP TABLE IF EXISTS topic_candidate_audit",
-  "DROP TABLE IF EXISTS phrase_lexicon",
-  "DROP TABLE IF EXISTS chunk_words",
-  "DROP TABLE IF EXISTS word_stats",
-  "DROP TABLE IF EXISTS episode_topics",
-  "DROP TABLE IF EXISTS chunk_topics",
-  "DROP TABLE IF EXISTS topics",
-  "DROP TABLE IF EXISTS episode_tags",
-  "DROP TABLE IF EXISTS chunk_tags",
-  "DROP TABLE IF EXISTS tags",
-  "DROP TABLE IF EXISTS concordance",
-  "DROP TABLE IF EXISTS chunks",
-  "DROP TABLE IF EXISTS episodes",
-  "DROP TABLE IF EXISTS ingestion_log",
-  "DROP TABLE IF EXISTS sources",
-];
+// FTS5 shadow tables are managed by SQLite and are dropped implicitly with
+// their virtual table; attempting to drop them directly is an error.
+function isFtsShadowTable(name: string): boolean {
+  return /_fts_(data|idx|content|docsize|config)$/.test(name);
+}
+
+function quoteSqlIdentifier(name: string): string {
+  return `"${name.replaceAll('"', '""')}"`;
+}
+
+async function dropAllUserObjects(db: D1Database): Promise<void> {
+  // Derive the reset list from sqlite_master instead of maintaining a stale
+  // mirror of migrations/*.sql. This keeps local fixture seeding reliable after
+  // new tables are added and after prior test runs leave a persisted D1 state.
+  const objects = await db.prepare(
+    `SELECT name, type FROM sqlite_master
+     WHERE type IN ('table', 'trigger', 'view')
+       AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\'
+       AND name NOT LIKE '\\_cf%' ESCAPE '\\'
+       AND name != 'd1_migrations'
+     ORDER BY rowid`
+  ).all<{ name: string; type: string }>();
+
+  const drops = [
+    ...objects.results
+      .filter((object) => object.type === "trigger")
+      .map((object) => `DROP TRIGGER IF EXISTS ${quoteSqlIdentifier(object.name)}`),
+    ...objects.results
+      .filter((object) => object.type === "view")
+      .map((object) => `DROP VIEW IF EXISTS ${quoteSqlIdentifier(object.name)}`),
+    ...objects.results
+      .filter((object) => object.type === "table" && !isFtsShadowTable(object.name))
+      .reverse()
+      .map((object) => `DROP TABLE IF EXISTS ${quoteSqlIdentifier(object.name)}`),
+  ];
+  if (drops.length > 0) {
+    await db.batch(drops.map((sql) => db.prepare(sql)));
+  }
+}
 
 async function applyLocalMigrations(db: D1Database) {
   function splitSqlStatements(sql: string): string[] {
@@ -73,7 +82,7 @@ async function applyLocalMigrations(db: D1Database) {
       current.push(line);
 
       if (inTrigger) {
-        if (/^END;$/i.test(trimmed)) {
+        if (/^END;\s*(--.*)?$/i.test(trimmed)) {
           statements.push(current.join("\n").trim());
           current = [];
           inTrigger = false;
@@ -101,7 +110,7 @@ async function applyLocalMigrations(db: D1Database) {
     .map((fileName) => readFileSync(join(migrationDir, fileName), "utf8"))
     .flatMap(splitSqlStatements);
 
-  await db.batch(RESET_STATEMENTS.map((sql) => db.prepare(sql)));
+  await dropAllUserObjects(db);
   for (const sql of migrationSql) {
     await db.prepare(sql).run();
   }

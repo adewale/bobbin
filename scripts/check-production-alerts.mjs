@@ -8,6 +8,7 @@ const CONFIG = process.env.WRANGLER_CONFIG || "wrangler.remote.jsonc";
 const DLQ_NAME = process.env.DLQ_NAME || "bobbin-enrichment-dlq";
 const STALE_RUNNING_MINUTES = Number(process.env.STALE_RUNNING_MINUTES || 30);
 const FAILED_REFRESH_HOURS = Number(process.env.FAILED_REFRESH_HOURS || 24);
+const MAX_REFRESH_AGE_HOURS = Number(process.env.MAX_REFRESH_AGE_HOURS || 192);
 const COST_WINDOW_MINUTES = Number(process.env.COST_WINDOW_MINUTES || 60);
 const WORKERS_AI_EVENT_THRESHOLD = Number(process.env.WORKERS_AI_EVENT_THRESHOLD || 500);
 const WORKERS_AI_UNIT_THRESHOLD = Number(process.env.WORKERS_AI_UNIT_THRESHOLD || 5000);
@@ -86,6 +87,15 @@ function checkD1State() {
      ORDER BY completed_at DESC
      LIMIT 10`
   );
+  const [latestRefreshCycle] = d1(
+    `SELECT id, status, started_at, completed_at,
+            ROUND((julianday('now') - julianday(COALESCE(completed_at, started_at))) * 24, 2) AS age_hours
+     FROM ingestion_log
+     WHERE run_type = 'refresh_cycle'
+       AND status IN ('completed', 'partial')
+     ORDER BY COALESCE(completed_at, started_at) DESC
+     LIMIT 1`
+  );
   const costRows = d1(
     `SELECT product, operation, COUNT(*) AS events, COALESCE(SUM(units), 0) AS units FROM cloudflare_cost_events WHERE created_at >= datetime('now', '-${COST_WINDOW_MINUTES} minutes') GROUP BY product, operation ORDER BY product, operation`
   );
@@ -98,6 +108,11 @@ function checkD1State() {
   checks.push(failedRefreshes.length > 0
     ? { status: "alert", summary: `${failedRefreshes.length} failed refresh log(s) in last ${FAILED_REFRESH_HOURS}h`, details: failedRefreshes }
     : { status: "ok", summary: `No failed refreshes in last ${FAILED_REFRESH_HOURS}h`, details: [] });
+
+  const latestRefreshAge = Number(latestRefreshCycle?.age_hours ?? Number.POSITIVE_INFINITY);
+  checks.push(!latestRefreshCycle || latestRefreshAge > MAX_REFRESH_AGE_HOURS
+    ? { status: "alert", summary: `Latest successful refresh_cycle is older than ${MAX_REFRESH_AGE_HOURS}h`, details: latestRefreshCycle ?? {} }
+    : { status: "ok", summary: `Latest successful refresh_cycle age ${latestRefreshAge}h`, details: latestRefreshCycle });
 
   for (const row of costRows) {
     const events = Number(row.events ?? 0);
