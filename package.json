@@ -35,7 +35,7 @@
   },
   "dependencies": {
     "@ade_oshineye/yaket": "^0.4.0",
-    "hono": "^4.12.11"
+    "hono": "^4.12.31"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.14.1",
