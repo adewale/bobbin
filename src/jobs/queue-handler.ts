@@ -63,37 +63,107 @@ export function queueJobKey(body: EnrichmentMessage): string {
   return JSON.stringify(body);
 }
 
-async function beginQueueJob(db: D1Database, messageId: string | undefined, body: EnrichmentMessage, attempts: number | undefined): Promise<"run" | "completed"> {
-  const jobKey = queueJobKey(body);
-  const existing = await db.prepare("SELECT status FROM queue_message_state WHERE job_key = ?").bind(jobKey).first<{ status: string }>();
-  if (existing?.status === "completed") return "completed";
+export const QUEUE_JOB_LEASE_SECONDS = 5 * 60;
 
-  await db.prepare(
-    `INSERT INTO queue_message_state (job_key, message_id, message_type, status, attempts, updated_at)
-     VALUES (?, ?, ?, 'running', ?, datetime('now'))
+export type QueueJobClaim =
+  | { state: "run"; leaseToken: string }
+  | { state: "completed" }
+  | { state: "in_progress"; retryAfterSeconds: number };
+
+export async function claimQueueJob(
+  db: D1Database,
+  messageId: string | undefined,
+  body: EnrichmentMessage,
+  attempts: number | undefined,
+  options: { nowEpochSeconds?: number; leaseToken?: string } = {},
+): Promise<QueueJobClaim> {
+  const jobKey = queueJobKey(body);
+  const nowEpochSeconds = options.nowEpochSeconds ?? Math.floor(Date.now() / 1000);
+  const leaseExpiresAt = nowEpochSeconds + QUEUE_JOB_LEASE_SECONDS;
+  const leaseToken = options.leaseToken ?? crypto.randomUUID();
+  // Claim in one statement. A SELECT followed by an UPSERT lets two deliveries
+  // observe the missing row and both run the same expensive enrichment job.
+  // Retrying/failed rows and expired leases are claimable; a lease token fences
+  // a recovered job from late completion/failure by its abandoned owner.
+  const claimed = await db.prepare(
+    `INSERT INTO queue_message_state (
+       job_key, message_id, message_type, status, attempts,
+       lease_token, lease_expires_at, updated_at
+     )
+     VALUES (?, ?, ?, 'running', ?, ?, datetime(?, 'unixepoch'), datetime(?, 'unixepoch'))
      ON CONFLICT(job_key) DO UPDATE SET
        message_id = excluded.message_id,
-       status = CASE WHEN queue_message_state.status = 'completed' THEN 'completed' ELSE 'running' END,
+       status = 'running',
        attempts = excluded.attempts,
-       updated_at = datetime('now')`
-  ).bind(jobKey, messageId ?? null, body.type, Math.max(1, attempts ?? 1)).run();
-  return "run";
+       lease_token = excluded.lease_token,
+       lease_expires_at = excluded.lease_expires_at,
+       last_error = NULL,
+       completed_at = NULL,
+       updated_at = excluded.updated_at
+     WHERE queue_message_state.status <> 'completed'
+       AND (queue_message_state.status <> 'running'
+         OR queue_message_state.lease_expires_at IS NULL
+         OR unixepoch(queue_message_state.lease_expires_at) <= ?)
+     RETURNING lease_token`
+  ).bind(
+    jobKey,
+    messageId ?? null,
+    body.type,
+    Math.max(1, attempts ?? 1),
+    leaseToken,
+    leaseExpiresAt,
+    nowEpochSeconds,
+    nowEpochSeconds,
+  ).first<{ lease_token: string }>();
+  if (claimed?.lease_token === leaseToken) return { state: "run", leaseToken };
+
+  const existing = await db.prepare(
+    `SELECT status, unixepoch(lease_expires_at) AS lease_expires_at
+     FROM queue_message_state WHERE job_key = ?`
+  ).bind(jobKey).first<{ status: string; lease_expires_at: number | null }>();
+  if (existing?.status === "completed") return { state: "completed" };
+  const retryAfterSeconds = Math.max(
+    1,
+    (existing?.lease_expires_at ?? nowEpochSeconds) - nowEpochSeconds + 1,
+  );
+  return { state: "in_progress", retryAfterSeconds };
 }
 
-async function completeQueueJob(db: D1Database, body: EnrichmentMessage): Promise<void> {
-  await db.prepare(
+export async function completeQueueJob(
+  db: D1Database,
+  body: EnrichmentMessage,
+  leaseToken: string,
+): Promise<boolean> {
+  const result = await db.prepare(
     `UPDATE queue_message_state
-     SET status = 'completed', last_error = NULL, updated_at = datetime('now'), completed_at = datetime('now')
-     WHERE job_key = ?`
-  ).bind(queueJobKey(body)).run();
+     SET status = 'completed', last_error = NULL,
+         lease_token = NULL, lease_expires_at = NULL,
+         updated_at = datetime('now'), completed_at = datetime('now')
+     WHERE job_key = ? AND status = 'running' AND lease_token = ?`
+  ).bind(queueJobKey(body), leaseToken).run();
+  return (result.meta.changes ?? 0) > 0;
 }
 
-async function failQueueJob(db: D1Database, body: EnrichmentMessage, status: "retrying" | "failed", error: unknown): Promise<void> {
-  await db.prepare(
+export async function failQueueJob(
+  db: D1Database,
+  body: EnrichmentMessage,
+  leaseToken: string,
+  status: "retrying" | "failed",
+  error: unknown,
+): Promise<boolean> {
+  const result = await db.prepare(
     `UPDATE queue_message_state
-     SET status = ?, last_error = ?, updated_at = datetime('now')
-     WHERE job_key = ?`
-  ).bind(status, (error instanceof Error ? error.message : String(error)).substring(0, 500), queueJobKey(body)).run();
+     SET status = ?, last_error = ?,
+         lease_token = NULL, lease_expires_at = NULL,
+         updated_at = datetime('now')
+     WHERE job_key = ? AND status = 'running' AND lease_token = ?`
+  ).bind(
+    status,
+    (error instanceof Error ? error.message : String(error)).substring(0, 500),
+    queueJobKey(body),
+    leaseToken,
+  ).run();
+  return (result.meta.changes ?? 0) > 0;
 }
 
 export async function handleEnrichBatch(
@@ -161,9 +231,11 @@ export async function handleEnrichmentBatch(
   async function processOne(msg: Message<EnrichmentMessage>) {
     const startedAt = Date.now();
     const context = queueMessageContext(msg.body);
+    let leaseToken: string | undefined;
     try {
-      const jobState = await beginQueueJob(env.DB, (msg as { id?: string }).id, msg.body, (msg as { attempts?: number }).attempts);
-      if (jobState === "completed") {
+      const attempts = (msg as { attempts?: number }).attempts;
+      const claim = await claimQueueJob(env.DB, (msg as { id?: string }).id, msg.body, attempts);
+      if (claim.state === "completed") {
         msg.ack();
         console.log(JSON.stringify({
           event: "queue_message",
@@ -174,6 +246,18 @@ export async function handleEnrichmentBatch(
         }));
         return;
       }
+      if (claim.state === "in_progress") {
+        msg.retry({ delaySeconds: claim.retryAfterSeconds });
+        console.log(JSON.stringify({
+          event: "queue_message",
+          message_type: msg.body.type,
+          status: "deferred_in_progress",
+          elapsed_ms: Date.now() - startedAt,
+          ...context,
+        }));
+        return;
+      }
+      leaseToken = claim.leaseToken;
 
       let counts: Record<string, number> = {};
       if (msg.body.type === "enrich-batch" && msg.body.chunkIds) {
@@ -182,7 +266,18 @@ export async function handleEnrichmentBatch(
         await enrichEpisodeIdsWithLlm(env, [msg.body.episodeId]);
         counts = { episodes_processed: 1 };
       }
-      await completeQueueJob(env.DB, msg.body);
+      const completed = await completeQueueJob(env.DB, msg.body, leaseToken);
+      if (!completed) {
+        msg.ack();
+        console.log(JSON.stringify({
+          event: "queue_message",
+          message_type: msg.body.type,
+          status: "superseded_after_run",
+          elapsed_ms: Date.now() - startedAt,
+          ...context,
+        }));
+        return;
+      }
       msg.ack();
       console.log(JSON.stringify({
         event: "queue_message",
@@ -204,7 +299,20 @@ export async function handleEnrichmentBatch(
         ...context,
       }));
       try {
-        await failQueueJob(env.DB, msg.body, retryable ? "retrying" : "failed", e);
+        const recorded = leaseToken
+          ? await failQueueJob(env.DB, msg.body, leaseToken, retryable ? "retrying" : "failed", e)
+          : false;
+        if (leaseToken && !recorded) {
+          msg.ack();
+          console.log(JSON.stringify({
+            event: "queue_message",
+            message_type: msg.body.type,
+            status: "superseded_error",
+            elapsed_ms: Date.now() - startedAt,
+            ...context,
+          }));
+          return;
+        }
       } catch (stateError) {
         console.error("Queue job state update failed:", stateError);
       }

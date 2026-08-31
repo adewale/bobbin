@@ -4,9 +4,21 @@
  * handleEnrichmentBatch with recording ack/retry/DLQ fakes.
  */
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
+import fc from "fast-check";
 import { env } from "cloudflare:test";
 import { applyTestMigrations } from "../../test/helpers/migrations";
-import { handleEnrichBatch, handleEnrichmentBatch, queueJobKey, queueRetryDelaySeconds, shouldRetryQueueMessage } from "./queue-handler";
+import {
+  claimQueueJob,
+  completeQueueJob,
+  failQueueJob,
+  handleEnrichBatch,
+  handleEnrichmentBatch,
+  QUEUE_JOB_LEASE_SECONDS,
+  queueJobKey,
+  queueRetryDelaySeconds,
+  shouldRetryQueueMessage,
+  type EnrichmentMessage,
+} from "./queue-handler";
 import { CURRENT_ENRICHMENT_VERSION } from "./ingest";
 
 beforeEach(async () => {
@@ -194,6 +206,176 @@ describe("queue job idempotency keys", () => {
   });
 });
 
+describe("queue job lifecycle model", () => {
+  const bodies: EnrichmentMessage[] = [
+    { type: "enrich-batch", chunkIds: [1] },
+    { type: "enrich-batch", chunkIds: [2] },
+    { type: "enrich-batch", chunkIds: [2, 1] },
+    { type: "llm-episode-enrich", episodeId: 1 },
+  ];
+  type JobStatus = "running" | "retrying" | "failed" | "completed";
+  type JobState = {
+    status: JobStatus;
+    leaseToken: string | null;
+    leaseExpiresAt: number | null;
+  };
+  type Model = { now: number; jobs: Map<string, JobState> };
+  type Real = { db: D1Database };
+  type Action =
+    | { kind: "claim"; bodyIndex: number; attempts: number; leaseToken: string }
+    | { kind: "complete"; bodyIndex: number; owner: "current" | "stale" }
+    | { kind: "fail"; bodyIndex: number; owner: "current" | "stale"; status: "retrying" | "failed" }
+    | { kind: "elapse"; seconds: number };
+
+  class QueueCommand implements fc.AsyncCommand<Model, Real> {
+    constructor(private readonly action: Action) {}
+
+    check(): boolean {
+      return true;
+    }
+
+    async run(model: Model, real: Real): Promise<void> {
+      const action = this.action;
+      if (action.kind === "elapse") {
+        model.now += action.seconds;
+      } else {
+        const body = bodies[action.bodyIndex % bodies.length];
+        const key = queueJobKey(body);
+        const before = model.jobs.get(key);
+        if (action.kind === "claim") {
+          const activeLease = before?.status === "running"
+            && before.leaseExpiresAt !== null
+            && before.leaseExpiresAt > model.now;
+          const expected = before?.status === "completed"
+            ? "completed"
+            : activeLease
+              ? "in_progress"
+              : "run";
+          const actual = await claimQueueJob(
+            real.db,
+            `message-${action.bodyIndex}-${action.attempts}`,
+            body,
+            action.attempts,
+            { nowEpochSeconds: model.now, leaseToken: action.leaseToken },
+          );
+          expect(actual.state).toBe(expected);
+          if (actual.state === "in_progress") {
+            expect(actual.retryAfterSeconds).toBe(before!.leaseExpiresAt! - model.now + 1);
+          } else if (actual.state === "run") {
+            expect(actual.leaseToken).toBe(action.leaseToken);
+            model.jobs.set(key, {
+              status: "running",
+              leaseToken: action.leaseToken,
+              leaseExpiresAt: model.now + QUEUE_JOB_LEASE_SECONDS,
+            });
+          }
+        } else {
+          const token = action.owner === "current" && before?.leaseToken
+            ? before.leaseToken
+            : `stale-${action.bodyIndex}`;
+          const expected = before?.status === "running" && before.leaseToken === token;
+          if (action.kind === "complete") {
+            expect(await completeQueueJob(real.db, body, token)).toBe(expected);
+            if (expected) {
+              model.jobs.set(key, { status: "completed", leaseToken: null, leaseExpiresAt: null });
+            }
+          } else {
+            expect(await failQueueJob(real.db, body, token, action.status, new Error("model failure"))).toBe(expected);
+            if (expected) {
+              model.jobs.set(key, { status: action.status, leaseToken: null, leaseExpiresAt: null });
+            }
+          }
+        }
+      }
+
+      const rows = await real.db.prepare(
+        `SELECT job_key, status, lease_token,
+                unixepoch(lease_expires_at) AS lease_expires_at
+         FROM queue_message_state ORDER BY job_key`
+      ).all<{
+        job_key: string;
+        status: JobStatus;
+        lease_token: string | null;
+        lease_expires_at: number | null;
+      }>();
+      const actualJobs = rows.results.map((row) => [row.job_key, {
+        status: row.status,
+        leaseToken: row.lease_token,
+        leaseExpiresAt: row.lease_expires_at,
+      }] as const);
+      const expectedJobs = [...model.jobs].sort(([left], [right]) => left.localeCompare(right));
+      expect(actualJobs).toEqual(expectedJobs);
+    }
+
+    toString(): string {
+      return JSON.stringify(this.action);
+    }
+  }
+
+  const bodyIndex = fc.integer({ min: 0, max: bodies.length - 1 });
+  const commandArbs = [
+    fc.tuple(bodyIndex, fc.integer({ min: 1, max: 8 }), fc.uuid())
+      .map(([index, attempts, leaseToken]) => new QueueCommand({
+        kind: "claim", bodyIndex: index, attempts, leaseToken,
+      })),
+    fc.tuple(bodyIndex, fc.constantFrom<"current" | "stale">("current", "stale"))
+      .map(([index, owner]) => new QueueCommand({ kind: "complete", bodyIndex: index, owner })),
+    fc.tuple(
+      bodyIndex,
+      fc.constantFrom<"current" | "stale">("current", "stale"),
+      fc.constantFrom<"retrying" | "failed">("retrying", "failed"),
+    ).map(([index, owner, status]) => new QueueCommand({
+      kind: "fail", bodyIndex: index, owner, status,
+    })),
+    fc.integer({ min: 0, max: QUEUE_JOB_LEASE_SECONDS * 2 })
+      .map((seconds) => new QueueCommand({ kind: "elapse", seconds })),
+  ];
+
+  it("atomically admits only one of two concurrent deliveries", async () => {
+    const body: EnrichmentMessage = { type: "enrich-batch", chunkIds: [1, 2] };
+    const claims = await Promise.all([
+      claimQueueJob(env.DB, "first", body, 1, { nowEpochSeconds: 1_700_000_000, leaseToken: "first-lease" }),
+      claimQueueJob(env.DB, "duplicate", body, 1, { nowEpochSeconds: 1_700_000_000, leaseToken: "duplicate-lease" }),
+    ]);
+    expect(claims.map((claim) => claim.state).sort()).toEqual(["in_progress", "run"]);
+  });
+
+  it("recovers an abandoned claim after its lease and fences the stale owner", async () => {
+    const body: EnrichmentMessage = { type: "enrich-batch", chunkIds: [1, 2] };
+    const now = 1_700_000_000;
+    expect(await claimQueueJob(env.DB, "crashed", body, 1, {
+      nowEpochSeconds: now,
+      leaseToken: "abandoned-lease",
+    })).toEqual({ state: "run", leaseToken: "abandoned-lease" });
+
+    expect(await claimQueueJob(env.DB, "early-retry", body, 2, {
+      nowEpochSeconds: now + QUEUE_JOB_LEASE_SECONDS - 1,
+      leaseToken: "early-lease",
+    })).toEqual({ state: "in_progress", retryAfterSeconds: 2 });
+
+    expect(await claimQueueJob(env.DB, "recovery", body, 3, {
+      nowEpochSeconds: now + QUEUE_JOB_LEASE_SECONDS,
+      leaseToken: "recovery-lease",
+    })).toEqual({ state: "run", leaseToken: "recovery-lease" });
+    expect(await completeQueueJob(env.DB, body, "abandoned-lease")).toBe(false);
+    expect(await failQueueJob(env.DB, body, "abandoned-lease", "failed", new Error("late"))).toBe(false);
+    expect(await completeQueueJob(env.DB, body, "recovery-lease")).toBe(true);
+  });
+
+  it("matches claim, completion, failure, retry, and reordering semantics", async () => {
+    await fc.assert(
+      fc.asyncProperty(fc.commands(commandArbs, { maxCommands: 30 }), async (commands) => {
+        await env.DB.prepare("DELETE FROM queue_message_state").run();
+        await fc.asyncModelRun(() => ({
+          model: { now: 1_700_000_000, jobs: new Map() },
+          real: { db: env.DB },
+        }), commands);
+      }),
+      { numRuns: 100 },
+    );
+  });
+});
+
 describe("queue message event logs", () => {
   it("emits one wide JSON success line per processed message", async () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -261,6 +443,27 @@ describe("queue message event logs", () => {
       "SELECT COUNT(*) as c FROM chunks WHERE id IN (1, 2) AND enriched = 1"
     ).first<{ c: number }>();
     expect(enriched!.c).toBe(0);
+  });
+
+  it("defers a duplicate while the first delivery is still running", async () => {
+    const body = { type: "enrich-batch" as const, chunkIds: [1, 2] };
+    await claimQueueJob(env.DB, "first-msg", body, 1);
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const ack = vi.fn();
+    const retry = vi.fn();
+
+    await handleEnrichmentBatch(
+      {
+        messages: [{ id: "duplicate-msg", attempts: 2, body, ack, retry }],
+      } as any,
+      { DB: env.DB, ENRICHMENT_QUEUE: {} } as any,
+    );
+
+    expect(ack).not.toHaveBeenCalled();
+    expect(retry).toHaveBeenCalledTimes(1);
+    expect(retry.mock.calls[0][0].delaySeconds).toBeGreaterThanOrEqual(QUEUE_JOB_LEASE_SECONDS - 1);
+    expect(retry.mock.calls[0][0].delaySeconds).toBeLessThanOrEqual(QUEUE_JOB_LEASE_SECONDS + 1);
+    expect(JSON.parse(String(logSpy.mock.calls[0][0])).status).toBe("deferred_in_progress");
   });
 
   it("records queue job state for successful messages", async () => {
