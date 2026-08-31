@@ -1076,3 +1076,53 @@ The lesson is: **if a public analytics query maps to a stable period, precompute
 96. Retry backoff should include jitter to avoid synchronized recovery spikes.
 97. Queue idempotency needs durable job state that operators can inspect.
 98. Stable public analytics periods should be precomputed during pipeline finalization, not repeatedly scanned on demand.
+
+## What we learned from leasing enrichment queue jobs
+
+### A durable idempotency row is not an atomic claim
+
+The enrichment consumer already recorded a durable job key and status, but it
+claimed work with `SELECT` followed by `UPSERT`. Two deliveries could both read
+“missing” before either write became visible and both run the same expensive
+enrichment. The row made the race observable; it did not prevent it.
+
+The fix admits work with one conditional upsert whose `WHERE` guard and
+`RETURNING` result form a single statement. A concurrent duplicate receives
+`in_progress` rather than permission to run.
+
+The lesson is: **idempotency admission must be one atomic database transition;
+a durable key wrapped around a check-then-write race is still at-least-twice
+execution**.
+
+### Recovery leases require ownership fencing
+
+Changing the claim to “only one worker” created the opposite failure mode: a
+worker that died after claiming could strand the job forever. A bounded lease
+makes abandoned work reclaimable, but reclaiming alone is unsafe. The original
+worker may resume after expiry and complete or fail the job now owned by its
+replacement.
+
+Each claim therefore carries a unique lease token. Completion and failure update
+the row only while that exact token still owns a running job. A state-machine
+property exercises expiry, takeover, late completion, and late failure against
+the D1 implementation after every command.
+
+The lesson is: **a recovery lease and an ownership fence are one protocol, not
+two optional features; every terminal write must prove it still owns the claim**.
+
+### An active duplicate must remain retriable
+
+Acknowledging a duplicate merely because another delivery currently holds the
+lease can lose the queue's recovery path if that owner crashes. The consumer now
+defers the duplicate until just after the active lease expires. Completed work is
+still acknowledged immediately, while live work remains available as a recovery
+delivery.
+
+The lesson is: **distinguish completed duplicates from active duplicates;
+acknowledge the former and delay-retry the latter through the recovery boundary**.
+
+### Updated lesson list addendum
+
+99. Durable queue state prevents duplicate execution only when admission is one atomic database transition.
+100. Reclaimable leases need unique owner tokens, and every completion/failure write must be fenced by that token.
+101. Active duplicate deliveries should remain retriable through lease expiry; only terminal duplicates are safe to acknowledge.
