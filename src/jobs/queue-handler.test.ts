@@ -356,6 +356,29 @@ describe("queue message event logs", () => {
     expect(ack).toHaveBeenCalledTimes(1);
   });
 
+  it("still acks non-retryable failures when no ENRICHMENT_DLQ is bound", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const ack = vi.fn();
+    const retry = vi.fn();
+
+    await handleEnrichmentBatch(
+      {
+        messages: [{ body: { type: "enrich-batch", chunkIds: [1] }, attempts: 1, ack, retry }],
+      } as any,
+      {
+        DB: {
+          prepare() {
+            throw new Error("D1_ERROR: too many SQL variables");
+          },
+        },
+        ENRICHMENT_QUEUE: {},
+      } as any,
+    );
+
+    expect(retry).not.toHaveBeenCalled();
+    expect(ack).toHaveBeenCalledTimes(1);
+  });
+
   it("does not touch the dead-letter queue for retryable failures", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const dlqSend = vi.fn().mockResolvedValue(undefined);
