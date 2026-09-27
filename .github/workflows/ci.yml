@@ -25,6 +25,9 @@ jobs:
       - name: Run Workers pool tests
         run: npm test
 
+      - name: Run scale tests (serial, own budget)
+        run: npm run test:slow
+
       - name: Run Node.js tests
         run: npm run test:real
 
