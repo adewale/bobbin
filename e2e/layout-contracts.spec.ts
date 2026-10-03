@@ -87,7 +87,9 @@ test.describe("page grid", () => {
       if (path === "/episodes") {
         // The year table of contents is dropped on phones rather than
         // stacked under thirteen thousand pixels of episodes.
-        await expect(page.locator(".page-with-rail > .page-rail .page-toc")).toBeHidden();
+        const toc = page.locator(".page-with-rail > .page-rail .page-toc");
+        await expect(toc).toHaveCount(1);
+        await expect(toc).toBeHidden();
         return;
       }
       const phoneRail = await box(page, ".page-with-rail > .page-rail");
@@ -159,9 +161,14 @@ test.describe("rail panels", () => {
     expect(panel["border-top-style"]).toBe("solid");
     expect(parseFloat(panel["border-top-width"])).toBeGreaterThan(0);
 
-    const wrapper = await style(page, ".page-rail", ["background-color", "border-top-style"]);
-    expect(wrapper["background-color"]).toBe("rgba(0, 0, 0, 0)");
-    expect(wrapper["border-top-style"]).toBe("none");
+    // The topic rail and the chunk/episode rail (.topics-margin) are
+    // different wrappers; neither may paint a card around the cards.
+    for (const path of [TOPIC, "/chunks/rail-demo-current-1"]) {
+      await open(page, path);
+      const wrapper = await style(page, ".page-rail", ["background-color", "border-top-style"]);
+      expect(wrapper["background-color"], path).toBe("rgba(0, 0, 0, 0)");
+      expect(wrapper["border-top-style"], path).toBe("none");
+    }
   });
 
   test("rail text uses the UI face, not the body serif", async ({ page }) => {
@@ -215,16 +222,19 @@ test.describe("help tips", () => {
 test.describe("type scale", () => {
   const TITLE_PROPS = ["font-family", "font-size", "font-weight"];
 
-  test("episode rows, search-result titles and topic tiles share one title scale", async ({ page }) => {
+  test("episode rows, search-result and observation titles, and topic tiles share one title scale", async ({ page }) => {
     await open(page, "/episodes");
     const episodeTitle = await style(page, ".browse-episodes .list-row-title", TITLE_PROPS);
     await open(page, "/search?q=ChatGPT");
     const resultTitle = await style(page, ".chunk-card h3", TITLE_PROPS);
+    await open(page, TOPIC);
+    const observationTitle = await style(page, ".topic-observation-card h3", TITLE_PROPS);
     await open(page, "/topics");
     const topicTile = await style(page, ".multiple-name", TITLE_PROPS);
     const paragraph = await style(page, "main p", ["font-family", "font-size"]);
 
     expect(resultTitle).toEqual(episodeTitle);
+    expect(observationTitle).toEqual(episodeTitle);
     expect(topicTile).toEqual(episodeTitle);
     // ...and that scale is the body text scale, not a heading scale.
     expect(episodeTitle["font-family"]).toBe(paragraph["font-family"]);

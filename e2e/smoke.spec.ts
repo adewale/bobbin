@@ -12,7 +12,7 @@ const htmlPages: Array<{
   titleContains: string;
   selector: string;
   text?: string;
-  /** Renders archive data, so it must not show the empty-archive notice. */
+  /** Shows the empty-archive notice when D1 is empty, so it must not here. */
   archive?: boolean;
 }> = [
   { path: "/", titleContains: "Home", selector: ".page-tagline", text: "A searchable archive", archive: true },
@@ -22,9 +22,9 @@ const htmlPages: Array<{
   {
     path: "/search?q=ChatGPT",
     titleContains: "ChatGPT",
-    selector: ".search-results p",
-    text: "ChatGPT",
-    archive: true,
+    // Search never shows the empty-archive notice; a result card is the
+    // proof that archive data loaded.
+    selector: ".search-results .chunk-card",
   },
   { path: "/design", titleContains: "Design", selector: "h1", text: "Design" },
 ];
@@ -68,9 +68,9 @@ for (const page of htmlPages) {
         await expect(target).toContainText(page.text);
       }
 
-      // (d) Archive pages rendered data, not the empty-archive notice that
-      // the same 200 response carries on an unseeded database. (/design
-      // shows that notice on purpose, as a component sample.)
+      // (d) Home, episodes and topics rendered data, not the empty-archive
+      // notice that the same 200 response carries on an unseeded database.
+      // (/design shows that notice on purpose, as a component sample.)
       if (page.archive) {
         await expect(p.locator(".empty-archive-state")).toHaveCount(0);
       }

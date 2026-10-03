@@ -1,18 +1,19 @@
 import { test, expect } from "@playwright/test";
 
 // Each page names a landmark that only renders when the seeded fixture
-// (npm run fixture:local) is loaded. A 200 alone is not enough: the home,
-// topics, episodes and search pages answer 200 on an empty database too,
-// with an empty-archive notice that would otherwise be audited instead.
-// (/design is static and shows that notice on purpose, as a sample.)
+// (npm run fixture:local) is loaded. A 200 alone is not enough: home,
+// topics and episodes answer 200 on an empty database with an
+// empty-archive notice, and search answers 200 with "0 results"; either
+// would otherwise be audited instead. Detail pages 404 without the fixture.
+// (/design is static and shows the notice on purpose, as a sample.)
 const pages = [
   { path: "/", archive: true, landmark: ".latest-episode-panel" },
   { path: "/topics", archive: true, landmark: ".multiples-grid" },
-  { path: "/topics/chatgpt#observations", archive: true, landmark: ".topic-detail-layout" },
-  { path: "/search?q=ChatGPT", archive: true, landmark: ".chunk-card" },
+  { path: "/topics/chatgpt#observations", landmark: ".topic-detail-layout" },
+  { path: "/search?q=ChatGPT", landmark: ".chunk-card" },
   { path: "/episodes", archive: true, landmark: ".browse-episodes" },
-  { path: "/episodes/2026-05-12-rail-demo", archive: true, landmark: ".episode-chunks" },
-  { path: "/chunks/rail-demo-current-1", archive: true, landmark: ".chunk-detail" },
+  { path: "/episodes/2026-05-12-rail-demo", landmark: ".episode-chunks" },
+  { path: "/chunks/rail-demo-current-1", landmark: ".chunk-detail" },
   { path: "/design", landmark: "main h1" },
 ];
 
