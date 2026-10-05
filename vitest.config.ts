@@ -40,7 +40,7 @@ export default defineConfig({
           // scripts/**, test/** and the entries below run under
           // vitest.node.config.ts; listing them here keeps every test file in
           // exactly one suite. Scale tests run in workers-slow.
-          exclude: ["e2e/**", "node_modules/**", "scripts/**", "test/**", "src/**/distinctiveness.test.ts", "src/**/html-parser.property.test.ts", "src/routes/real-data.test.ts", "src/services/real-data.test.ts", "src/services/source-fidelity.corpus.test.tsx", ".claude/**", ...SLOW_TESTS],
+          exclude: ["e2e/**", "node_modules/**", "scripts/**", "test/**", "src/**/distinctiveness.test.ts", "src/**/html-parser.property.test.ts", "src/services/real-data.test.ts", "src/services/source-fidelity.corpus.test.tsx", ".claude/**", ...SLOW_TESTS],
         },
       },
       {
