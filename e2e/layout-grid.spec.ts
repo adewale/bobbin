@@ -1,14 +1,20 @@
 import { test, expect } from "@playwright/test";
 
+// Each page names a landmark that only renders when the seeded fixture
+// (npm run fixture:local) is loaded. A 200 alone is not enough: home,
+// topics and episodes answer 200 on an empty database with an
+// empty-archive notice, and search answers 200 with "0 results"; either
+// would otherwise be audited instead. Detail pages 404 without the fixture.
+// (/design is static and shows the notice on purpose, as a sample.)
 const pages = [
-  "/",
-  "/topics",
-  "/topics/chatgpt#observations",
-  "/search?q=ChatGPT",
-  "/episodes",
-  "/episodes/2026-05-12-rail-demo",
-  "/chunks/rail-demo-current-1",
-  "/design",
+  { path: "/", archive: true, landmark: ".latest-episode-panel" },
+  { path: "/topics", archive: true, landmark: ".multiples-grid" },
+  { path: "/topics/chatgpt#observations", landmark: ".topic-detail-layout" },
+  { path: "/search?q=ChatGPT", landmark: ".chunk-card" },
+  { path: "/episodes", archive: true, landmark: ".browse-episodes" },
+  { path: "/episodes/2026-05-12-rail-demo", landmark: ".episode-chunks" },
+  { path: "/chunks/rail-demo-current-1", landmark: ".chunk-detail" },
+  { path: "/design", landmark: "main h1" },
 ];
 
 const viewports = [
@@ -47,14 +53,18 @@ async function auditLayout(page: import("@playwright/test").Page) {
 
 for (const viewport of viewports) {
   test.describe(`layout-grid ${viewport.name}`, () => {
-    for (const path of pages) {
+    for (const { path, landmark, archive } of pages) {
       test(`${path} has no overflow or clipped visible text`, async ({ page }) => {
         await page.setViewportSize({ width: viewport.width, height: viewport.height });
         const response = await page.goto(path, { waitUntil: "networkidle" });
 
-        // Guard against silently auditing the 404 page when the fixture
-        // (npm run fixture:local) hasn't been seeded.
+        // Guard against silently auditing the 404 page or the empty-archive
+        // state when the fixture hasn't been seeded.
         expect(response?.status(), `${path} must exist in the seeded fixture`).toBe(200);
+        if (archive) {
+          await expect(page.locator(".empty-archive-state"), `${path} rendered the empty-archive state`).toHaveCount(0);
+        }
+        await expect(page.locator(landmark).first(), `${path} must render ${landmark}`).toBeVisible();
 
         const audit = await auditLayout(page);
 
