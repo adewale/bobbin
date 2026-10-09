@@ -1,4 +1,4 @@
-/// <reference types="@cloudflare/vitest-pool-workers/types/cloudflare-test" />
+/// <reference types="@cloudflare/vitest-plugin/types" />
 
 declare module "*?raw" {
   const content: string;

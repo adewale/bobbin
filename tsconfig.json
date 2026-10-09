@@ -9,7 +9,7 @@
     "forceConsistentCasingInFileNames": true,
     "jsx": "react-jsx",
     "jsxImportSource": "hono/jsx",
-    "types": ["node", "@cloudflare/vitest-pool-workers"],
+    "types": ["node", "@cloudflare/vitest-plugin/types"],
     "lib": ["ESNext", "DOM"],
     "outDir": "dist",
     "rootDir": "."
