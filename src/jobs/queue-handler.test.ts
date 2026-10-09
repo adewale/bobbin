@@ -33,6 +33,26 @@ afterEach(() => {
 });
 
 describe("enrich-batch handler", () => {
+  it("retains episode-topic publication on failure and replaces it safely on retry", async () => {
+    await env.DB.prepare("INSERT INTO topics (name, slug, kind) VALUES ('Previous', 'previous', 'concept'), ('Kept', 'kept', 'concept')").run();
+    await env.DB.prepare("INSERT INTO episode_topics (episode_id, topic_id) SELECT 1, id FROM topics WHERE slug = 'previous'").run();
+    // An unprocessed chunk in the same episode must contribute to the rebuild.
+    await env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) SELECT 3, id FROM topics WHERE slug = 'kept'").run();
+    await env.DB.prepare(`CREATE TRIGGER fail_episode_publication BEFORE INSERT ON episode_topics
+      BEGIN SELECT RAISE(ABORT, 'SQLITE_BUSY publication test'); END`).run();
+    await expect(handleEnrichBatch(env.DB, [1, 2])).rejects.toThrow('SQLITE_BUSY');
+    expect((await env.DB.prepare("SELECT t.slug FROM episode_topics et JOIN topics t ON t.id = et.topic_id WHERE et.episode_id = 1").all()).results)
+      .toEqual([{ slug: 'previous' }]);
+    await env.DB.prepare('DROP TRIGGER fail_episode_publication').run();
+    await handleEnrichBatch(env.DB, [1, 2]);
+    const publication = "SELECT topic_id FROM episode_topics WHERE episode_id = 1 ORDER BY topic_id";
+    const expected = (await env.DB.prepare("SELECT DISTINCT ct.topic_id FROM chunk_topics ct JOIN chunks c ON c.id = ct.chunk_id WHERE c.episode_id = 1 ORDER BY ct.topic_id").all()).results;
+    expect(expected.length).toBeGreaterThan(0);
+    expect((await env.DB.prepare(publication).all()).results).toEqual(expected);
+    await handleEnrichBatch(env.DB, [1, 2]);
+    expect((await env.DB.prepare(publication).all()).results).toEqual(expected);
+  });
+
   it("creates topic assignments for specified chunks", async () => {
     // Seed word_stats so IDF can be loaded
     await env.DB.batch([
