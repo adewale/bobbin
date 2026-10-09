@@ -157,6 +157,70 @@ describe("enrich-batch handler", () => {
 });
 
 describe("queue job idempotency keys", () => {
+  it("uses the atomic result when completion wins just before the upsert", async () => {
+    const body = { type: "enrich-batch" as const, chunkIds: [1, 2] };
+    const prepare = env.DB.prepare.bind(env.DB);
+    const db = {
+      prepare(sql: string) {
+        if (!sql.includes("INSERT INTO queue_message_state")) return prepare(sql);
+        return { bind(...values: unknown[]) {
+          const statement = prepare(sql).bind(...values);
+          const complete = async () => {
+            await prepare("INSERT INTO queue_message_state (job_key, message_type, status) VALUES (?, 'enrich-batch', 'completed')")
+              .bind(queueJobKey(body)).run();
+          };
+          return {
+            first: async () => { await complete(); return statement.first(); },
+            run: async () => { await complete(); return statement.run(); },
+          };
+        } };
+      },
+      batch: env.DB.batch.bind(env.DB),
+    } as unknown as D1Database;
+    const ack = vi.fn();
+    const retry = vi.fn();
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    await handleEnrichmentBatch({ messages: [{ body, ack, retry }] } as any, { DB: db } as any);
+    expect(ack).toHaveBeenCalledTimes(1);
+    expect(retry).not.toHaveBeenCalled();
+    expect(await prepare("SELECT SUM(enriched) AS n FROM chunks").first()).toEqual({ n: 0 });
+  });
+
+  it("does not let a late transient failure overwrite another delivery's completion", async () => {
+    const body = { type: "enrich-batch" as const, chunkIds: [] };
+    const prepare = env.DB.prepare.bind(env.DB);
+    let resolveCompletion!: () => void;
+    const completed = new Promise<void>(resolve => { resolveCompletion = resolve; });
+    let completions = 0;
+    const db = {
+      prepare(sql: string) {
+        if (!sql.includes("SET status = 'completed'")) return prepare(sql);
+        return { bind(...values: unknown[]) {
+          const statement = prepare(sql).bind(...values);
+          return { run: async () => {
+            if (++completions === 1) {
+              const result = await statement.run();
+              resolveCompletion();
+              return result;
+            }
+            await completed;
+            throw new Error("SQLITE_BUSY");
+          } };
+        } };
+      },
+    } as unknown as D1Database;
+    const ack = vi.fn(), retry = vi.fn();
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    await handleEnrichmentBatch({ messages: [
+      { body, ack, retry }, { body, ack, retry },
+    ] } as any, { DB: db } as any);
+    expect(ack).toHaveBeenCalledTimes(1);
+    expect(retry).toHaveBeenCalledTimes(1);
+    expect(await prepare("SELECT status, last_error FROM queue_message_state WHERE job_key = ?")
+      .bind(queueJobKey(body)).first()).toEqual({ status: "completed", last_error: null });
+  });
+
   it("scopes enrich-batch keys to the current enrichment version", () => {
     const key = queueJobKey({ type: "enrich-batch", chunkIds: [3, 1, 2] });
     expect(key).toBe(`enrich-batch:v${CURRENT_ENRICHMENT_VERSION}:1,2,3`);

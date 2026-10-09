@@ -83,6 +83,28 @@ describe("llm ingest contract", () => {
       candidateName: "Prompt injection attack",
     });
     expect(boosts.get(2)).toBeUndefined();
+
+    const replacement = [{
+      name: "Claude Code", slug: "claude-code", kind: "entity" as const,
+      confidence: 0.9, rankPosition: 0, aliases: [],
+      evidence: [{ chunkSlug: "chunk-b", quote: "Claude Code" }],
+    }];
+    // A bad evidence FK must roll back the whole replacement, including the
+    // cascading delete of the previously published run.
+    await expect(persistEpisodeLlmCandidates(env.DB, 1, 1, "replacement", replacement,
+      new Map([["chunk-b", 9999]]))).rejects.toThrow();
+    expect((await loadLlmBoostsForChunks(env.DB, [1])).get(1)?.get("prompt-injection-attack")).toEqual({
+      confidence: 0.95, kind: "phrase", candidateName: "Prompt injection attack",
+    });
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await persistEpisodeLlmCandidates(env.DB, 1, 1, "replacement", replacement, new Map([["chunk-b", 2]]));
+    }
+    expect(await env.DB.prepare("SELECT raw_response_json FROM llm_enrichment_runs WHERE episode_id = 1").all())
+      .toMatchObject({ results: [{ raw_response_json: "replacement" }] });
+    expect(await env.DB.prepare("SELECT candidate_name FROM llm_episode_candidates WHERE episode_id = 1").all())
+      .toMatchObject({ results: [{ candidate_name: "Claude Code" }] });
+    expect(await env.DB.prepare("SELECT chunk_id, quote FROM llm_episode_candidate_evidence").all())
+      .toMatchObject({ results: [{ chunk_id: 2, quote: "Claude Code" }] });
   });
 
   it("loads episode/chunk rows and enriches existing episodes by id", async () => {

@@ -192,21 +192,24 @@ export async function persistEpisodeLlmCandidates(
   candidates: EpisodeLlmCandidate[],
   chunkIdBySlug: Map<string, number>,
 ): Promise<void> {
-  await db.prepare("DELETE FROM llm_enrichment_runs WHERE episode_id = ?").bind(episodeId).run();
-
-  const run = await db.prepare(
-    `INSERT INTO llm_enrichment_runs (source_id, episode_id, extractor_model, prompt_version, schema_version, status, raw_response_json)
-     VALUES (?, ?, ?, ?, ?, 'completed', ?)`
-  ).bind(sourceId, episodeId, LLM_EXTRACTOR_MODEL, LLM_PROMPT_VERSION, LLM_SCHEMA_VERSION, rawResponse).run();
-  const runId = Number(run.meta.last_row_id);
+  // Publish a complete replacement, including evidence, in one D1 transaction.
+  // Subqueries resolve IDs inside that transaction; no delete/insert gap or
+  // cross-delivery last_row_id can mix two results.
+  const statements: D1PreparedStatement[] = [
+    db.prepare("DELETE FROM llm_enrichment_runs WHERE episode_id = ?").bind(episodeId),
+    db.prepare(
+      `INSERT INTO llm_enrichment_runs (source_id, episode_id, extractor_model, prompt_version, schema_version, status, raw_response_json)
+       VALUES (?, ?, ?, ?, ?, 'completed', ?)`
+    ).bind(sourceId, episodeId, LLM_EXTRACTOR_MODEL, LLM_PROMPT_VERSION, LLM_SCHEMA_VERSION, rawResponse),
+  ];
 
   for (const candidate of candidates) {
-    const inserted = await db.prepare(
+    statements.push(db.prepare(
       `INSERT INTO llm_episode_candidates (
          run_id, episode_id, candidate_name, normalized_name, slug, kind, confidence, rank_position, aliases_json
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       ) VALUES ((SELECT id FROM llm_enrichment_runs WHERE episode_id = ?), ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
-      runId,
+      episodeId,
       episodeId,
       candidate.name,
       candidate.name,
@@ -215,17 +218,21 @@ export async function persistEpisodeLlmCandidates(
       candidate.confidence,
       candidate.rankPosition,
       JSON.stringify(candidate.aliases),
-    ).run();
-    const candidateId = Number(inserted.meta.last_row_id);
+    ));
     for (const evidence of candidate.evidence) {
       const chunkId = chunkIdBySlug.get(evidence.chunkSlug);
       if (!chunkId) continue;
-      await db.prepare(
+      statements.push(db.prepare(
         `INSERT INTO llm_episode_candidate_evidence (candidate_id, chunk_id, chunk_slug, quote)
-         VALUES (?, ?, ?, ?)`
-      ).bind(candidateId, chunkId, evidence.chunkSlug, evidence.quote).run();
+         VALUES (
+           (SELECT id FROM llm_episode_candidates
+            WHERE run_id = (SELECT id FROM llm_enrichment_runs WHERE episode_id = ?)
+              AND slug = ? ORDER BY id DESC LIMIT 1),
+           ?, ?, ?)`
+      ).bind(episodeId, candidate.slug, chunkId, evidence.chunkSlug, evidence.quote));
     }
   }
+  await db.batch(statements);
 }
 
 export async function enrichEpisodesWithLlm(env: Bindings, sourceId: number, episodes: Array<{
