@@ -113,16 +113,30 @@ describe("entity detection property-based tests", () => {
     );
   });
 
-  it("extractTopics never returns more than maxTopics results", () => {
+  // Curated entities are always included and do not count against maxTopics
+  // (since the YAKE pipeline, 7e40874); the cap applies to everything else.
+  it("extractTopics caps non-entity topics at maxTopics", () => {
     fc.assert(
       fc.property(
         fc.string({ minLength: 10, maxLength: 500 }),
         fc.integer({ min: 1, max: 20 }),
         (text, maxTopics) => {
           const topics = extractTopics(text, maxTopics);
-          expect(topics.length).toBeLessThanOrEqual(maxTopics);
+          expect(topics.filter((t) => t.kind !== "entity").length).toBeLessThanOrEqual(maxTopics);
         }
-      )
+      ),
+      // Found by an unseeded run of the old "at most maxTopics results"
+      // property: "HN" is a curated alias of Hacker News.
+      { examples: [["    0\"0{HN", 1]] }
     );
+  });
+
+  it("extractTopics returns curated entities on top of maxTopics", () => {
+    const text = "OpenAI and Anthropic shipped new models. Developers compare agent frameworks, " +
+      "evaluation harnesses and retrieval pipelines for production systems.";
+    const topics = extractTopics(text, 5);
+    expect(topics.filter((t) => t.kind === "entity").map((t) => t.name).sort()).toEqual(["Anthropic", "OpenAI"]);
+    expect(topics.filter((t) => t.kind !== "entity")).toHaveLength(5);
+    expect(topics).toHaveLength(7);
   });
 });
