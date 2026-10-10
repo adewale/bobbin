@@ -157,7 +157,7 @@ Notes:
 ```bash
 npm run typecheck     # tsc --noEmit
 npm test              # workers-runtime Vitest suites (AI/Vectorize bound to fakes)
-npm run test:slow     # scale tests: serial, own 30 s budget
+npm run test:slow     # scale tests: serial, default Vitest timeouts
 npm run test:real     # node/runtime corpus and binding-guard invariant suites
 npm run test:e2e:local # seed the local fixture, then run the Playwright suite against it
 npm run test:e2e      # Playwright suite; set BASE_URL to target a deployed environment

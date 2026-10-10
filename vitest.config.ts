@@ -3,8 +3,8 @@ import { cloudflareTest } from "@cloudflare/vitest-pool-workers";
 
 // Scale tests seed hundreds of chunks and thousands of chunk_topics rows and
 // run whole-pipeline finalization. They run in their own project, one file
-// at a time (`npm run test:slow`), with a budget sized from measurement,
-// instead of competing with the rest of the suite under a 5 s default.
+// at a time (`npm run test:slow`), instead of competing with the rest of the
+// suite for CPU under the same default timeouts.
 const SLOW_TESTS = ["src/jobs/finalization-scale.test.ts"];
 
 export default defineConfig({
@@ -48,11 +48,9 @@ export default defineConfig({
         test: {
           name: "workers-slow",
           include: SLOW_TESTS,
-          // Measured at load avg ~20 on 4 CPUs: 5.7-8.6 s per test run
-          // serially, 10.2 s when run alongside the full suite (where the
-          // 5 s default timed out). ~3x the worst case.
-          testTimeout: 30_000,
-          hookTimeout: 30_000,
+          // Vitest's default timeouts apply (5 s per test, 10 s per hook).
+          // Running these files serially, away from the rest of the pool, is
+          // what keeps them inside those defaults; do not raise them here.
         },
       },
     ],
