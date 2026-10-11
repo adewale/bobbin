@@ -19,8 +19,32 @@ import { batchExec } from "../lib/db";
 
 const NUM_CHUNKS = 200;
 const TOPICS_PER_CHUNK = 10;
+const SEED = 0x5eed;
+
+// Deterministic PRNG (mulberry32) so every run seeds the same data: a failure
+// reproduces, and the seeded shape cannot drift between runs.
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function shuffled<T>(items: T[], random: () => number): T[] {
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
 
 beforeEach(async () => {
+  const random = mulberry32(SEED);
   await applyTestMigrations(env.DB);
   await env.DB.prepare(
     "INSERT INTO sources (google_doc_id, title) VALUES ('test', 'Test')"
@@ -67,7 +91,7 @@ beforeEach(async () => {
     topicStmts.push(
       env.DB.prepare(
         "INSERT INTO topics (name, slug, kind, usage_count) VALUES (?, ?, 'concept', ?)"
-      ).bind(word, word, Math.floor(Math.random() * 20) + 2)
+      ).bind(word, word, Math.floor(random() * 20) + 2)
     );
   }
 
@@ -84,7 +108,7 @@ beforeEach(async () => {
     topicStmts.push(
       env.DB.prepare(
         "INSERT INTO topics (name, slug, kind, usage_count) VALUES (?, ?, 'concept', ?)"
-      ).bind(name, concept, Math.floor(Math.random() * 50) + 5)
+      ).bind(name, concept, Math.floor(random() * 50) + 5)
     );
   }
 
@@ -93,7 +117,7 @@ beforeEach(async () => {
     topicStmts.push(
       env.DB.prepare(
         "INSERT INTO topics (name, slug, kind, usage_count) VALUES (?, ?, 'concept', ?)"
-      ).bind(`topic-${i}`, `topic-${i}`, Math.floor(Math.random() * 30) + 1)
+      ).bind(`topic-${i}`, `topic-${i}`, Math.floor(random() * 30) + 1)
     );
   }
 
@@ -103,7 +127,7 @@ beforeEach(async () => {
     topicStmts.push(
       env.DB.prepare(
         "INSERT INTO topics (name, slug, kind, usage_count) VALUES (?, ?, 'entity', ?)"
-      ).bind(entity, `entity-${entity}`, Math.floor(Math.random() * 40) + 3)
+      ).bind(entity, `entity-${entity}`, Math.floor(random() * 40) + 3)
     );
   }
 
@@ -114,7 +138,7 @@ beforeEach(async () => {
     topicStmts.push(
       env.DB.prepare(
         "INSERT INTO topics (name, slug, kind, usage_count) VALUES (?, ?, 'phrase', ?)"
-      ).bind(phrase, phrase.replace(/\s+/g, "-"), Math.floor(Math.random() * 25) + 5)
+      ).bind(phrase, phrase.replace(/\s+/g, "-"), Math.floor(random() * 25) + 5)
     );
   }
 
@@ -148,8 +172,7 @@ beforeEach(async () => {
   const nonEntityIds = topicIds.filter((id: number) => !entityTopics.results.some((et: { id: number }) => et.id === id));
   const ctStmts: D1PreparedStatement[] = [];
   for (let chunkId = 1; chunkId <= NUM_CHUNKS; chunkId++) {
-    const shuffled = [...nonEntityIds].sort(() => Math.random() - 0.5);
-    const selected = shuffled.slice(0, TOPICS_PER_CHUNK);
+    const selected = shuffled(nonEntityIds, random).slice(0, TOPICS_PER_CHUNK);
     for (const topicId of selected) {
       ctStmts.push(
         env.DB.prepare("INSERT OR IGNORE INTO chunk_topics (chunk_id, topic_id) VALUES (?, ?)")
@@ -170,10 +193,10 @@ beforeEach(async () => {
     "llm", "model", "data", "code", "prompt", "token", "embedding",
     "inference", "training", "fine", "tune", "vector", "search"];
   for (let chunkId = 1; chunkId <= NUM_CHUNKS; chunkId++) {
-    for (const word of commonWords.slice(0, 10 + Math.floor(Math.random() * 10))) {
+    for (const word of commonWords.slice(0, 10 + Math.floor(random() * 10))) {
       wordStmts.push(
         env.DB.prepare("INSERT OR REPLACE INTO chunk_words (chunk_id, word, count) VALUES (?, ?, ?)")
-          .bind(chunkId, word, Math.floor(Math.random() * 5) + 1)
+          .bind(chunkId, word, Math.floor(random() * 5) + 1)
       );
     }
   }

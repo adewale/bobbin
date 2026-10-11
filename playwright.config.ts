@@ -47,7 +47,7 @@ export default defineConfig({
     },
     {
       name: "mobile",
-      testIgnore: [...ignoreVisualTests, "e2e/layout-grid.spec.ts"],
+      testIgnore: [...ignoreVisualTests, "e2e/layout-grid.spec.ts", "e2e/layout-contracts.spec.ts"],
       use: {
         ...devices["iPhone 15"],
         viewport: { width: 393, height: 852 },

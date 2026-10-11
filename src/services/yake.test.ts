@@ -148,6 +148,16 @@ describe("extractYakeKeywords", () => {
     expect(kw10.length).toBeLessThanOrEqual(10);
   });
 
+  it("treats slashes, quotes and brackets as word boundaries", () => {
+    const text = "Teams weigh AI/ML tooling against LLM/agent workflows. " +
+      "The \"agentic\"{workflow} pattern shapes tools/frameworks for developers.";
+    const words = extractYakeKeywords(text, 20).flatMap((k) => k.keyword.split(" "));
+    for (const fused of ["aiml", "llmagent", "agenticworkflow", "toolsframeworks"]) {
+      expect(words).not.toContain(fused);
+    }
+    expect(words).toEqual(expect.arrayContaining(["llm", "agent", "agentic", "workflow", "frameworks"]));
+  });
+
   it("handles all-stopwords text gracefully", () => {
     const text = "The is a an and or but for with from to in on at by.";
     const keywords = extractYakeKeywords(text, 5);
