@@ -9,7 +9,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
 import { applyTestMigrations } from "../../test/helpers/migrations";
-import { finalizeEnrichment, enrichChunks, enrichAllChunks } from "./ingest";
+import { CURRENT_ENRICHMENT_VERSION, finalizeEnrichment, enrichChunks, enrichAllChunks } from "./ingest";
 
 beforeEach(async () => {
   await applyTestMigrations(env.DB);
@@ -177,8 +177,8 @@ describe("enrichAllChunks (Issue 4)", () => {
     expect(total).toBeGreaterThanOrEqual(3);
 
     const unenriched = await env.DB.prepare(
-      "SELECT COUNT(*) as c FROM chunks WHERE enriched = 0 OR enrichment_version < 5"
-    ).first<{ c: number }>();
+      "SELECT COUNT(*) as c FROM chunks WHERE enriched = 0 OR enrichment_version < ?"
+    ).bind(CURRENT_ENRICHMENT_VERSION).first<{ c: number }>();
     expect(unenriched!.c).toBe(0);
   });
 

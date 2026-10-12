@@ -55,8 +55,10 @@ import type { Bindings, ParsedChunk, ParsedEpisode, RichBlock, RichLink, RichTex
  *     candidate provenance, early rejection, and persisted display flags
  * v6: relative support threshold, burst metrics, incremental finalize scope,
  *     cached topic similarity, and structured queue events
+ * v7: the naive YAKE tokenizer splits words at punctuation (no fused topics
+ *     such as "aiml" from "AI/ML")
  */
-export const CURRENT_ENRICHMENT_VERSION = 6;
+export const CURRENT_ENRICHMENT_VERSION = 7;
 
 export interface PipelineAuditSample {
   chunk_id: number;
