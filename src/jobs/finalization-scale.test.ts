@@ -282,8 +282,24 @@ describe("finalizeEnrichment at scale", () => {
     expect(noiseCount).toBeGreaterThan(10);
 
     const start = Date.now();
-    const result = await finalizeEnrichment(env.DB);
+    let writeCalls = 0;
+    const wrap = (statement: D1PreparedStatement): D1PreparedStatement => new Proxy(statement, {
+      get(target, key) {
+        if (key === "bind") return (...args: unknown[]) => wrap(target.bind(...args));
+        if (key === "run") return () => { writeCalls++; return target.run(); };
+        const value = Reflect.get(target, key, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    const countedDb = {
+      prepare: (sql: string) => wrap(env.DB.prepare(sql)),
+      batch: (statements: D1PreparedStatement[]) => { writeCalls++; return env.DB.batch(statements); },
+    } as D1Database;
+    const result = await finalizeEnrichment(countedDb);
     const elapsed = Date.now() - start;
+
+    // Catch per-topic round trips directly, not just on a slow CI machine.
+    expect(writeCalls).toBeLessThanOrEqual(60);
 
     // With batched operations, should complete quickly even with 200+ topics
     expect(elapsed).toBeLessThan(10000);

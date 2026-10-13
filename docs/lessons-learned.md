@@ -1108,3 +1108,11 @@ calls, and await reset completion. Keep a runtime positive control for both
 bindings. Seed CI with the existing provider-free E2E config, which shares the
 local database ID used by the browser server; do not initialize remote provider
 bindings merely to seed local SQL data.
+
+An outer array chunk does not batch I/O when its body still awaits individual
+topic DELETE/UPDATE calls. Scale finalization exposed hundreds of those round
+trips in pruning and canonical renaming. Use bounded IN-clause replacements
+and batch independent renames, flushing pending renames before dependent
+merges. Count actual write dispatches in the existing scale control; a generous
+elapsed-time assertion on a fast laptop can miss an N+1 regression. Preserve
+the existing test deadlines instead of moving work to a larger hook timeout.

@@ -31,6 +31,25 @@ beforeEach(async () => {
   await batchExec(env.DB, stmts);
 });
 
+describe("canonical renames", () => {
+  it("preserves links and canonical metadata when a rename precedes a duplicate merge", async () => {
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO topics (name, slug, kind, usage_count) VALUES ('Graph API', 'old-first', 'concept', 10)"),
+      env.DB.prepare("INSERT INTO topics (name, slug, kind, usage_count) VALUES ('GRAPH API', 'old-second', 'concept', 6)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) SELECT id, 1 FROM chunks"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) SELECT id, 2 FROM chunks WHERE id > 4"),
+    ]);
+    const result = await finalizeEnrichment(env.DB);
+    expect(result.steps.find(step => step.name === 'canonicalize_topics')?.status).toBe('ok');
+    expect((await env.DB.prepare("SELECT slug FROM topics WHERE usage_count > 0").all()).results)
+      .toEqual([{ slug: 'graph-api' }]);
+    expect((await env.DB.prepare("SELECT to_slug FROM topic_merge_audit WHERE stage = 'canonicalize_topics'").all()).results)
+      .toEqual([{ to_slug: 'graph-api' }]);
+    expect(await env.DB.prepare("SELECT COUNT(*) AS c FROM chunk_topics WHERE topic_id = 1").first())
+      .toEqual({ c: 10 });
+  });
+});
+
 describe("df≥5 quality gate", () => {
   it("prunes topics with fewer than 5 chunk associations", async () => {
     // Topic A: df=3 (below threshold)
