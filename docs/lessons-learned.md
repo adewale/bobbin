@@ -1076,3 +1076,15 @@ The lesson is: **if a public analytics query maps to a stable period, precompute
 96. Retry backoff should include jitter to avoid synchronized recovery spikes.
 97. Queue idempotency needs durable job state that operators can inspect.
 98. Stable public analytics periods should be precomputed during pipeline finalization, not repeatedly scanned on demand.
+
+### October 2026: completion and result replacement are database contracts
+
+Read the state returned by the UPSERT, not an earlier SELECT: another delivery
+can complete in between. Failure updates must exclude completed rows. Publish
+an LLM run, candidates and evidence in one D1 batch so a retry cannot leave a
+deleted result or mix IDs across deliveries. Episode-topic delete/rebuild also
+belongs in a single batch; a failed insert must retain the previous links,
+including those contributed by unprocessed chunks in the same episode.
+These changes do not exclude
+overlapping paid calls. Establish their frequency and billing impact from
+existing production evidence before adding ownership or lease machinery.

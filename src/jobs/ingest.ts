@@ -1188,10 +1188,6 @@ export async function processChunkBatch(
     }
 
     episodeIds = [...new Set(chunkTopicPairs.map((pair) => pair.episodeId).concat(episodeIds))];
-    for (const epId of episodeIds) {
-      await db.prepare("DELETE FROM episode_topics WHERE episode_id = ?").bind(epId).run();
-    }
-
     const ctStmts: D1PreparedStatement[] = [];
     for (const { chunkId, topicSlug } of chunkTopicPairs) {
       ctStmts.push(
@@ -1211,13 +1207,16 @@ export async function processChunkBatch(
     let episodeTopicLinksInserted = 0;
     for (const episodeIdBatch of chunkForSqlBindings(episodeIds)) {
       const placeholders = sqlPlaceholders(episodeIdBatch.length);
-      const result = await db.prepare(
+      const [, result] = await db.batch([
+        db.prepare(`DELETE FROM episode_topics WHERE episode_id IN (${placeholders})`).bind(...episodeIdBatch),
+        db.prepare(
         `INSERT OR IGNORE INTO episode_topics (episode_id, topic_id)
          SELECT DISTINCT c.episode_id, ct.topic_id
          FROM chunks c
          JOIN chunk_topics ct ON ct.chunk_id = c.id
          WHERE c.episode_id IN (${placeholders})`
-      ).bind(...episodeIdBatch).run();
+        ).bind(...episodeIdBatch),
+      ]);
       episodeTopicLinksInserted += result.meta.changes || 0;
     }
 

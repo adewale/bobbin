@@ -33,6 +33,26 @@ afterEach(() => {
 });
 
 describe("enrich-batch handler", () => {
+  it("retains episode-topic publication on failure and replaces it safely on retry", async () => {
+    await env.DB.prepare("INSERT INTO topics (name, slug, kind) VALUES ('Previous', 'previous', 'concept'), ('Kept', 'kept', 'concept')").run();
+    await env.DB.prepare("INSERT INTO episode_topics (episode_id, topic_id) SELECT 1, id FROM topics WHERE slug = 'previous'").run();
+    // An unprocessed chunk in the same episode must contribute to the rebuild.
+    await env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) SELECT 3, id FROM topics WHERE slug = 'kept'").run();
+    await env.DB.prepare(`CREATE TRIGGER fail_episode_publication BEFORE INSERT ON episode_topics
+      BEGIN SELECT RAISE(ABORT, 'SQLITE_BUSY publication test'); END`).run();
+    await expect(handleEnrichBatch(env.DB, [1, 2])).rejects.toThrow('SQLITE_BUSY');
+    expect((await env.DB.prepare("SELECT t.slug FROM episode_topics et JOIN topics t ON t.id = et.topic_id WHERE et.episode_id = 1").all()).results)
+      .toEqual([{ slug: 'previous' }]);
+    await env.DB.prepare('DROP TRIGGER fail_episode_publication').run();
+    await handleEnrichBatch(env.DB, [1, 2]);
+    const publication = "SELECT topic_id FROM episode_topics WHERE episode_id = 1 ORDER BY topic_id";
+    const expected = (await env.DB.prepare("SELECT DISTINCT ct.topic_id FROM chunk_topics ct JOIN chunks c ON c.id = ct.chunk_id WHERE c.episode_id = 1 ORDER BY ct.topic_id").all()).results;
+    expect(expected.length).toBeGreaterThan(0);
+    expect((await env.DB.prepare(publication).all()).results).toEqual(expected);
+    await handleEnrichBatch(env.DB, [1, 2]);
+    expect((await env.DB.prepare(publication).all()).results).toEqual(expected);
+  });
+
   it("creates topic assignments for specified chunks", async () => {
     // Seed word_stats so IDF can be loaded
     await env.DB.batch([
@@ -157,6 +177,70 @@ describe("enrich-batch handler", () => {
 });
 
 describe("queue job idempotency keys", () => {
+  it("uses the atomic result when completion wins just before the upsert", async () => {
+    const body = { type: "enrich-batch" as const, chunkIds: [1, 2] };
+    const prepare = env.DB.prepare.bind(env.DB);
+    const db = {
+      prepare(sql: string) {
+        if (!sql.includes("INSERT INTO queue_message_state")) return prepare(sql);
+        return { bind(...values: unknown[]) {
+          const statement = prepare(sql).bind(...values);
+          const complete = async () => {
+            await prepare("INSERT INTO queue_message_state (job_key, message_type, status) VALUES (?, 'enrich-batch', 'completed')")
+              .bind(queueJobKey(body)).run();
+          };
+          return {
+            first: async () => { await complete(); return statement.first(); },
+            run: async () => { await complete(); return statement.run(); },
+          };
+        } };
+      },
+      batch: env.DB.batch.bind(env.DB),
+    } as unknown as D1Database;
+    const ack = vi.fn();
+    const retry = vi.fn();
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    await handleEnrichmentBatch({ messages: [{ body, ack, retry }] } as any, { DB: db } as any);
+    expect(ack).toHaveBeenCalledTimes(1);
+    expect(retry).not.toHaveBeenCalled();
+    expect(await prepare("SELECT SUM(enriched) AS n FROM chunks").first()).toEqual({ n: 0 });
+  });
+
+  it("does not let a late transient failure overwrite another delivery's completion", async () => {
+    const body = { type: "enrich-batch" as const, chunkIds: [] };
+    const prepare = env.DB.prepare.bind(env.DB);
+    let resolveCompletion!: () => void;
+    const completed = new Promise<void>(resolve => { resolveCompletion = resolve; });
+    let completions = 0;
+    const db = {
+      prepare(sql: string) {
+        if (!sql.includes("SET status = 'completed'")) return prepare(sql);
+        return { bind(...values: unknown[]) {
+          const statement = prepare(sql).bind(...values);
+          return { run: async () => {
+            if (++completions === 1) {
+              const result = await statement.run();
+              resolveCompletion();
+              return result;
+            }
+            await completed;
+            throw new Error("SQLITE_BUSY");
+          } };
+        } };
+      },
+    } as unknown as D1Database;
+    const ack = vi.fn(), retry = vi.fn();
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    await handleEnrichmentBatch({ messages: [
+      { body, ack, retry }, { body, ack, retry },
+    ] } as any, { DB: db } as any);
+    expect(ack).toHaveBeenCalledTimes(1);
+    expect(retry).toHaveBeenCalledTimes(1);
+    expect(await prepare("SELECT status, last_error FROM queue_message_state WHERE job_key = ?")
+      .bind(queueJobKey(body)).first()).toEqual({ status: "completed", last_error: null });
+  });
+
   it("scopes enrich-batch keys to the current enrichment version", () => {
     const key = queueJobKey({ type: "enrich-batch", chunkIds: [3, 1, 2] });
     expect(key).toBe(`enrich-batch:v${CURRENT_ENRICHMENT_VERSION}:1,2,3`);
@@ -353,6 +437,29 @@ describe("queue message event logs", () => {
     expect(retry).not.toHaveBeenCalled();
     expect(dlqSend).toHaveBeenCalledTimes(1);
     expect(dlqSend).toHaveBeenCalledWith(body);
+    expect(ack).toHaveBeenCalledTimes(1);
+  });
+
+  it("still acks non-retryable failures when no ENRICHMENT_DLQ is bound", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const ack = vi.fn();
+    const retry = vi.fn();
+
+    await handleEnrichmentBatch(
+      {
+        messages: [{ body: { type: "enrich-batch", chunkIds: [1] }, attempts: 1, ack, retry }],
+      } as any,
+      {
+        DB: {
+          prepare() {
+            throw new Error("D1_ERROR: too many SQL variables");
+          },
+        },
+        ENRICHMENT_QUEUE: {},
+      } as any,
+    );
+
+    expect(retry).not.toHaveBeenCalled();
     expect(ack).toHaveBeenCalledTimes(1);
   });
 

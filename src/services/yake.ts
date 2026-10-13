@@ -79,8 +79,11 @@ export function extractYakeKeywords(
   for (let si = 0; si < sentences.length; si++) {
     const words = sentences[si].trim().split(/\s+/).filter(w => w.length > 0);
     for (const w of words) {
-      const clean = w.replace(/[^a-zA-Z0-9'-]/g, "");
-      if (clean.length > 0) {
+      // Anything but letters, digits, apostrophes and hyphens separates words:
+      // "AI/ML" is two words. Deleting those characters fused neighbours into
+      // tokens such as "aiml" and "llmagent", which then became topics.
+      for (const clean of w.split(/[^a-zA-Z0-9'-]+/)) {
+        if (clean.length === 0) continue;
         allWords.push({ word: clean.toLowerCase(), original: clean, sentIdx: si, posIdx: globalPos });
         globalPos++;
       }
