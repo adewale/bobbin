@@ -1088,3 +1088,31 @@ including those contributed by unprocessed chunks in the same episode.
 These changes do not exclude
 overlapping paid calls. Establish their frequency and billing impact from
 existing production evidence before adding ownership or lease machinery.
+
+### October 2026: bound preparation, not just database execution
+
+Batching writes does not bound synchronous preparation if every statement is
+built first. The Node-side local D1 proxy synchronously transports prepare/bind
+calls; a large word vocabulary can block its event loop and retain thousands
+of handles before the next asynchronous write. Prepare word inserts and score
+updates lazily within the existing 100-statement batches. Keep SQL, results and
+request counts unchanged instead of hiding socket resets with retries or longer
+timeouts. The full cached fixture is a compatibility check that small Workers
+tests cannot replace; its existing time budget does not promise every chunk is
+enriched.
+
+Miniflare 5 removed wrappedBindings. Migrating the test-plugin import alone
+can leave configured provider fakes absent while most unit tests still pass.
+Use local service bindings for the existing fakes, retain state across RPC
+calls, and await reset completion. Keep a runtime positive control for both
+bindings. Seed CI with the existing provider-free E2E config, which shares the
+local database ID used by the browser server; do not initialize remote provider
+bindings merely to seed local SQL data.
+
+An outer array chunk does not batch I/O when its body still awaits individual
+topic DELETE/UPDATE calls. Scale finalization exposed hundreds of those round
+trips in pruning and canonical renaming. Use bounded IN-clause replacements
+and batch independent renames, flushing pending renames before dependent
+merges. Count actual write dispatches in the existing scale control; a generous
+elapsed-time assertion on a fast laptop can miss an N+1 regression. Preserve
+the existing test deadlines instead of moving work to a larger hook timeout.

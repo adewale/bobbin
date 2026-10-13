@@ -31,24 +31,20 @@ export async function rebuildWordStatsAggregates(
   const baseline = loadEnglishBaseline();
   const distinctiveness = computeDistinctiveness(corpusFreq, Math.max(totalWords, 1), baseline);
   const scoredWords = new Set(distinctiveness.map((row) => row.word));
-  const updates = distinctiveness.map((row) =>
-    db.prepare(
+  function* updates() {
+    for (const row of distinctiveness) yield db.prepare(
       `UPDATE word_stats
        SET distinctiveness = ?, in_baseline = ?, updated_at = datetime('now')
        WHERE word = ?`
-    ).bind(row.distinctiveness, baseline.has(row.word) ? 1 : 0, row.word)
-  );
-  for (const row of rows.results) {
-    if (scoredWords.has(row.word)) continue;
-    updates.push(
-      db.prepare(
+    ).bind(row.distinctiveness, baseline.has(row.word) ? 1 : 0, row.word);
+    for (const row of rows.results) {
+      if (scoredWords.has(row.word)) continue;
+      yield db.prepare(
         `UPDATE word_stats
          SET distinctiveness = 0, in_baseline = ?, updated_at = datetime('now')
          WHERE word = ?`
-      ).bind(baseline.has(row.word) ? 1 : 0, row.word)
-    );
+      ).bind(baseline.has(row.word) ? 1 : 0, row.word);
+    }
   }
-  if (updates.length > 0) {
-    await batchExec(db, updates);
-  }
+  await batchExec(db, updates());
 }

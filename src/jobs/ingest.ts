@@ -1231,18 +1231,19 @@ export async function processChunkBatch(
   });
 
   await runPipelineStage("word_stats_rebuild", stageResults, async () => {
-    const wordStmts: D1PreparedStatement[] = [];
     wordRowCount = 0;
-    for (const chunk of analyzedChunks) {
-      for (const [word, count] of chunk.wordCounts) {
-        wordStmts.push(
-          db.prepare("INSERT OR REPLACE INTO chunk_words (chunk_id, word, count) VALUES (?, ?, ?)")
-            .bind(chunk.id, word, count)
-        );
-        wordRowCount++;
+    // Preparing a D1 statement through the local Node proxy is synchronous.
+    // Keep preparation bounded to the existing write batch, not the corpus.
+    function* wordStatements() {
+      for (const chunk of analyzedChunks) {
+        for (const [word, count] of chunk.wordCounts) {
+          yield db.prepare("INSERT OR REPLACE INTO chunk_words (chunk_id, word, count) VALUES (?, ?, ?)")
+            .bind(chunk.id, word, count);
+          wordRowCount++;
+        }
       }
     }
-    await batchExec(db, wordStmts);
+    await batchExec(db, wordStatements());
     if (rebuildWordStats) {
       await rebuildWordStatsAggregates(db);
     }
@@ -1458,15 +1459,16 @@ async function pruneTopicIds(
   const BATCH = 90;
   for (let i = 0; i < ids.length; i += BATCH) {
     const batch = ids.slice(i, i + BATCH);
-    for (const topicId of batch) {
-      await db.prepare("DELETE FROM chunk_topics WHERE topic_id = ?").bind(topicId).run();
-      await db.prepare("DELETE FROM episode_topics WHERE topic_id = ?").bind(topicId).run();
-      await db.prepare(
+    const placeholders = sqlPlaceholders(batch.length);
+    await db.batch([
+      db.prepare(`DELETE FROM chunk_topics WHERE topic_id IN (${placeholders})`).bind(...batch),
+      db.prepare(`DELETE FROM episode_topics WHERE topic_id IN (${placeholders})`).bind(...batch),
+      db.prepare(
         `UPDATE topics
          SET usage_count = 0, hidden = 1, display_suppressed = 1, display_reason = ?
-         WHERE id = ?`
-      ).bind(reason, topicId).run();
-    }
+         WHERE id IN (${placeholders})`
+      ).bind(reason, ...batch),
+    ]);
   }
   return ids.length;
 }
@@ -1732,11 +1734,22 @@ export async function finalizeEnrichment(db: D1Database): Promise<FinalizeResult
     const bySlug = new Map(topics.results.map((topic) => [topic.slug, topic]));
     let renamed = 0;
     let merged = 0;
+    let renameStatements: D1PreparedStatement[] = [];
+    let renamedIds: number[] = [];
+    const flushRenames = async () => {
+      if (renameStatements.length === 0) return;
+      await db.batch(renameStatements);
+      await markDirtyTopicsByIds(db, renamedIds, "canonicalize_topics");
+      renameStatements = [];
+      renamedIds = [];
+    };
     for (const topic of topics.results) {
       const canonical = canonicalizeExistingTopicName(topic.name, topic.kind);
       if (!canonical.name || !canonical.slug) continue;
       const existing = bySlug.get(canonical.slug);
       if (existing && existing.id !== topic.id) {
+        // A merge can depend on an earlier rename: preserve execution order.
+        await flushRenames();
         const keep = existing.usage_count >= topic.usage_count ? existing : topic;
         const dupe = keep.id === topic.id ? existing : topic;
         await mergeTopicInto(db, dupe, keep, "canonicalize_topics", "canonicalized_duplicate");
@@ -1745,13 +1758,16 @@ export async function finalizeEnrichment(db: D1Database): Promise<FinalizeResult
         continue;
       }
       if (canonical.name !== topic.name || canonical.slug !== topic.slug) {
-        await db.prepare("UPDATE topics SET name = ?, slug = ? WHERE id = ?").bind(canonical.name, canonical.slug, topic.id).run();
-        await markDirtyTopicsByIds(db, [topic.id], "canonicalize_topics");
+        renameStatements.push(db.prepare("UPDATE topics SET name = ?, slug = ? WHERE id = ?")
+          .bind(canonical.name, canonical.slug, topic.id));
+        renamedIds.push(topic.id);
         bySlug.delete(topic.slug);
         bySlug.set(canonical.slug, { ...topic, name: canonical.name, slug: canonical.slug });
         renamed++;
+        if (renameStatements.length === 100) await flushRenames();
       }
     }
+    await flushRenames();
     result.merged += merged;
     return { detail: `${renamed} renamed, ${merged} merged`, counts: { renamed, merged } };
   });

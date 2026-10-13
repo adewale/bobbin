@@ -1,5 +1,5 @@
 import { defineConfig } from "vitest/config";
-import { cloudflareTest } from "@cloudflare/vitest-pool-workers";
+import { cloudflareTest } from "@cloudflare/vitest-plugin";
 
 // Scale tests seed hundreds of chunks and thousands of chunk_topics rows and
 // run whole-pipeline finalization. They run in their own project, one file
@@ -17,9 +17,9 @@ export default defineConfig({
         // runtime binds in-memory fakes that follow their interfaces
         // (test/fakes/). Every `env.AI && env.VECTORIZE` path now runs
         // under test; tests that need the unbound path pass AI: null.
-        wrappedBindings: {
-          AI: { scriptName: "bobbin-fake-workers-ai" },
-          VECTORIZE: { scriptName: "bobbin-fake-vectorize", bindings: { DIMENSIONS: 768 } },
+        serviceBindings: {
+          AI: { name: "bobbin-fake-workers-ai", entrypoint: "WorkersAiFake" },
+          VECTORIZE: { name: "bobbin-fake-vectorize", entrypoint: "VectorizeFake" },
         },
         workers: [
           { name: "bobbin-fake-workers-ai", modules: true, scriptPath: "./test/fakes/workers-ai.mjs" },

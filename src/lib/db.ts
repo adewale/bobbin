@@ -32,8 +32,15 @@ export async function collectInBatches<TValue, TResult>(
   return results;
 }
 
-export async function batchExec(db: D1Database, stmts: D1PreparedStatement[], size = 100) {
-  for (let i = 0; i < stmts.length; i += size) {
-    await db.batch(stmts.slice(i, i + size));
+export async function batchExec(db: D1Database, stmts: Iterable<D1PreparedStatement>, size = 100) {
+  if (!Number.isInteger(size) || size < 1) throw new RangeError("batch size must be a positive integer");
+  let batch: D1PreparedStatement[] = [];
+  for (const statement of stmts) {
+    batch.push(statement);
+    if (batch.length === size) {
+      await db.batch(batch);
+      batch = [];
+    }
   }
+  if (batch.length > 0) await db.batch(batch);
 }

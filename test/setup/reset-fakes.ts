@@ -7,5 +7,5 @@ import { env } from "cloudflare:test";
 // rows.
 beforeEach(async () => {
   await (env as any).VECTORIZE?.__reset?.();
-  (env as any).AI?.__reset?.();
+  await (env as any).AI?.__reset?.();
 });
