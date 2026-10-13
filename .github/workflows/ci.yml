@@ -35,7 +35,7 @@ jobs:
         run: npx playwright install --with-deps chromium webkit
 
       - name: Seed local fixture
-        run: npm run fixture:local
+        run: npm run fixture:local -- --config wrangler.e2e.jsonc
 
       - name: Run E2E tests against the local fixture
         run: npx playwright test

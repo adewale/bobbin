@@ -1231,18 +1231,19 @@ export async function processChunkBatch(
   });
 
   await runPipelineStage("word_stats_rebuild", stageResults, async () => {
-    const wordStmts: D1PreparedStatement[] = [];
     wordRowCount = 0;
-    for (const chunk of analyzedChunks) {
-      for (const [word, count] of chunk.wordCounts) {
-        wordStmts.push(
-          db.prepare("INSERT OR REPLACE INTO chunk_words (chunk_id, word, count) VALUES (?, ?, ?)")
-            .bind(chunk.id, word, count)
-        );
-        wordRowCount++;
+    // Preparing a D1 statement through the local Node proxy is synchronous.
+    // Keep preparation bounded to the existing write batch, not the corpus.
+    function* wordStatements() {
+      for (const chunk of analyzedChunks) {
+        for (const [word, count] of chunk.wordCounts) {
+          yield db.prepare("INSERT OR REPLACE INTO chunk_words (chunk_id, word, count) VALUES (?, ?, ?)")
+            .bind(chunk.id, word, count);
+          wordRowCount++;
+        }
       }
     }
-    await batchExec(db, wordStmts);
+    await batchExec(db, wordStatements());
     if (rebuildWordStats) {
       await rebuildWordStatsAggregates(db);
     }

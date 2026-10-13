@@ -12,7 +12,9 @@
 //   `{ response: '{"candidates":[]}' }` (valid JSON, no candidates).
 // - Any other model throws, so a new model cannot silently get a junk answer.
 //
-// Must stay a single self-contained ES module (miniflare wrapped-binding rule).
+// Bound locally through WorkerEntrypoint RPC; no provider is contacted.
+
+import { WorkerEntrypoint } from "cloudflare:workers";
 
 const EMBEDDING_DIMENSIONS = {
   "@cf/baai/bge-small-en-v1.5": 384,
@@ -48,7 +50,7 @@ export function embedText(text, dimensions) {
   return vector.map((v) => v / norm);
 }
 
-export default function makeWorkersAi() {
+function makeWorkersAi() {
   const calls = [];
   return {
     // Test-only introspection; not part of the Ai interface.
@@ -84,4 +86,11 @@ export default function makeWorkersAi() {
       throw new Error(`AiError: fake Workers AI does not implement model ${model}`);
     },
   };
+}
+
+// Keep state at module scope: WorkerEntrypoint instances are per RPC call.
+const ai = makeWorkersAi();
+export class WorkersAiFake extends WorkerEntrypoint {
+  run(model, inputs, options) { return ai.run(model, inputs, options); }
+  __reset() { ai.__reset(); }
 }

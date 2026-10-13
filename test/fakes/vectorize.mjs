@@ -23,7 +23,9 @@
 //
 // State lives in this binding instance. test/setup/reset-fakes.ts clears it
 // before every test, matching the per-test D1 reset in the test files.
-// Must stay a single self-contained ES module (miniflare wrapped-binding rule).
+// Bound locally through WorkerEntrypoint RPC; no provider is contacted.
+
+import { WorkerEntrypoint } from "cloudflare:workers";
 
 const MAX_TOP_K = 100;
 const MAX_TOP_K_WITH_VALUES_OR_METADATA = 20;
@@ -67,7 +69,7 @@ function matchesFilter(metadata, filter) {
   return true;
 }
 
-export default function makeVectorize(env) {
+function makeVectorize(env) {
   const dimensions = Number(env.DIMENSIONS ?? 768);
   const store = new Map();
   let mutations = 0;
@@ -142,4 +144,17 @@ export default function makeVectorize(env) {
       throw new Error("fake Vectorize does not implement queryById()");
     },
   };
+}
+
+// Keep the existing 768-dimensional index alive across individual RPC calls.
+const vectorize = makeVectorize({ DIMENSIONS: 768 });
+export class VectorizeFake extends WorkerEntrypoint {
+  __reset() { return vectorize.__reset(); }
+  describe() { return vectorize.describe(); }
+  upsert(vectors) { return vectorize.upsert(vectors); }
+  insert() { return vectorize.insert(); }
+  getByIds(ids) { return vectorize.getByIds(ids); }
+  deleteByIds(ids) { return vectorize.deleteByIds(ids); }
+  query(vector, options) { return vectorize.query(vector, options); }
+  queryById() { return vectorize.queryById(); }
 }

@@ -151,6 +151,30 @@ describe("Item 1: IDF from word_stats", () => {
 });
 
 describe("Item 2: Raised batch sizes", () => {
+  it("prepares lazy statements one batch at a time without changing the batch budget", async () => {
+    let prepared = 0;
+    const sizes: number[] = [];
+    function* statements() {
+      for (let i = 0; i < 150; i++) {
+        prepared++;
+        yield env.DB.prepare("INSERT INTO word_stats (word, total_count, doc_count) VALUES (?, 1, 1)")
+          .bind(`lazy${i}`);
+      }
+    }
+    const db = { batch: async (batch: D1PreparedStatement[]) => {
+      expect(prepared).toBe(batch.length);
+      expect(prepared).toBeLessThanOrEqual(100);
+      sizes.push(batch.length);
+      const result = await env.DB.batch(batch);
+      prepared -= batch.length;
+      return result;
+    } } as D1Database;
+    await batchExec(db, statements());
+    expect(sizes).toEqual([100, 50]);
+    expect(await env.DB.prepare("SELECT COUNT(*) AS c FROM word_stats").first()).toEqual({ c: 150 });
+    await expect(batchExec(db, [], 0)).rejects.toThrow("batch size must be a positive integer");
+  });
+
   it("batchExec default batch size is 100", async () => {
     // Create 150 insert statements
     const stmts: D1PreparedStatement[] = [];

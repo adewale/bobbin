@@ -125,7 +125,7 @@ describe("optional-binding guards", () => {
   it("binds a fake for every remote-only binding in the workers-pool config", () => {
     const config = readFileSync(join(ROOT, "vitest.config.ts"), "utf8");
     for (const name of ["AI", "VECTORIZE"]) {
-      expect(config, `vitest.config.ts must bind ${name} for the workers pool`).toMatch(new RegExp(`\\b${name}:\\s*\\{\\s*scriptName:`));
+      expect(config, `vitest.config.ts must bind ${name} for the workers pool`).toMatch(new RegExp(`\\b${name}:\\s*\\{\\s*name:`));
     }
   });
 });
