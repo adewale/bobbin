@@ -65,19 +65,18 @@ export function queueJobKey(body: EnrichmentMessage): string {
 
 async function beginQueueJob(db: D1Database, messageId: string | undefined, body: EnrichmentMessage, attempts: number | undefined): Promise<"run" | "completed"> {
   const jobKey = queueJobKey(body);
-  const existing = await db.prepare("SELECT status FROM queue_message_state WHERE job_key = ?").bind(jobKey).first<{ status: string }>();
-  if (existing?.status === "completed") return "completed";
-
-  await db.prepare(
+  const state = await db.prepare(
     `INSERT INTO queue_message_state (job_key, message_id, message_type, status, attempts, updated_at)
      VALUES (?, ?, ?, 'running', ?, datetime('now'))
      ON CONFLICT(job_key) DO UPDATE SET
-       message_id = excluded.message_id,
+       message_id = CASE WHEN queue_message_state.status = 'completed' THEN queue_message_state.message_id ELSE excluded.message_id END,
        status = CASE WHEN queue_message_state.status = 'completed' THEN 'completed' ELSE 'running' END,
        attempts = excluded.attempts,
-       updated_at = datetime('now')`
-  ).bind(jobKey, messageId ?? null, body.type, Math.max(1, attempts ?? 1)).run();
-  return "run";
+       updated_at = datetime('now')
+     RETURNING status`
+  ).bind(jobKey, messageId ?? null, body.type, Math.max(1, attempts ?? 1)).first<{ status: string }>();
+  if (!state) throw new Error("Queue state decision returned no row");
+  return state.status === "completed" ? "completed" : "run";
 }
 
 async function completeQueueJob(db: D1Database, body: EnrichmentMessage): Promise<void> {
@@ -92,7 +91,7 @@ async function failQueueJob(db: D1Database, body: EnrichmentMessage, status: "re
   await db.prepare(
     `UPDATE queue_message_state
      SET status = ?, last_error = ?, updated_at = datetime('now')
-     WHERE job_key = ?`
+     WHERE job_key = ? AND status != 'completed'`
   ).bind(status, (error instanceof Error ? error.message : String(error)).substring(0, 500), queueJobKey(body)).run();
 }
 
