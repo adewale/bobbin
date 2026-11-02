@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { getPlatformProxy } from "wrangler";
 
 const args = process.argv.slice(2);
 const configFlagIndex = args.indexOf("--config");
@@ -14,23 +14,13 @@ function sqlValue(value) {
   return `'${String(value).replace(/'/g, "''")}'`;
 }
 
-function localExec(sqlStatements) {
-  const joined = sqlStatements.join(" ");
-  execFileSync("npx", ["wrangler", "d1", "execute", "bobbin-db", "--local", "--config", CONFIG_PATH, "--command", joined], {
-    cwd: process.cwd(),
-    stdio: "inherit",
-  });
+// Share one local D1 runtime instead of starting Wrangler for every statement.
+async function localExec(sqlStatements) {
+  await db.batch(sqlStatements.map((sql) => db.prepare(sql)));
 }
 
-function localQuery(sql) {
-  const output = execFileSync("npx", ["wrangler", "d1", "execute", "bobbin-db", "--local", "--config", CONFIG_PATH, "--command", sql], {
-    cwd: process.cwd(),
-    encoding: "utf8",
-  });
-  const jsonStart = output.indexOf("[");
-  const jsonEnd = output.lastIndexOf("]");
-  const parsed = JSON.parse(output.slice(jsonStart, jsonEnd + 1));
-  return parsed?.[0]?.results || [];
+async function localQuery(sql) {
+  return (await db.prepare(sql).all()).results;
 }
 
 const topics = [
@@ -169,76 +159,83 @@ const episodes = [
   },
 ];
 
-localExec([
-  `INSERT OR IGNORE INTO sources (google_doc_id, title, is_archive) VALUES (${sqlValue(SOURCE_DOC_ID)}, 'Episode Rail Demo Source', 0);`,
-]);
+const { env, dispose } = await getPlatformProxy({ configPath: CONFIG_PATH, remoteBindings: false });
+const db = env.DB;
 
-const source = localQuery(`SELECT id FROM sources WHERE google_doc_id = ${sqlValue(SOURCE_DOC_ID)};`)[0];
-if (!source?.id) throw new Error("Failed to create or locate demo source");
-
-localExec([
-  `DELETE FROM chunk_topics WHERE chunk_id IN (SELECT c.id FROM chunks c JOIN episodes e ON c.episode_id = e.id WHERE e.slug IN (${sqlValue(PREV_SLUG)}, ${sqlValue(CURR_SLUG)}));`,
-  `DELETE FROM chunks WHERE episode_id IN (SELECT id FROM episodes WHERE slug IN (${sqlValue(PREV_SLUG)}, ${sqlValue(CURR_SLUG)}));`,
-  `DELETE FROM episode_topics WHERE episode_id IN (SELECT id FROM episodes WHERE slug IN (${sqlValue(PREV_SLUG)}, ${sqlValue(CURR_SLUG)}));`,
-  `DELETE FROM episodes WHERE slug IN (${sqlValue(PREV_SLUG)}, ${sqlValue(CURR_SLUG)});`,
-]);
-
-for (const topic of topics) {
-  localExec([
-    `INSERT INTO topics (name, slug, usage_count, distinctiveness)
-     VALUES (${sqlValue(topic.name)}, ${sqlValue(topic.slug)}, ${topic.usage_count}, ${topic.distinctiveness})
-     ON CONFLICT(slug) DO UPDATE SET
-       name = excluded.name,
-       usage_count = excluded.usage_count,
-       distinctiveness = excluded.distinctiveness;`,
+try {
+  await localExec([
+    `INSERT OR IGNORE INTO sources (google_doc_id, title, is_archive) VALUES (${sqlValue(SOURCE_DOC_ID)}, 'Episode Rail Demo Source', 0);`,
   ]);
-}
 
-for (const episode of episodes) {
-  localExec([
-    `INSERT INTO episodes (source_id, slug, title, published_date, year, month, day, chunk_count, format)
-     VALUES (${source.id}, ${sqlValue(episode.slug)}, ${sqlValue(episode.title)}, ${sqlValue(episode.published_date)}, ${episode.year}, ${episode.month}, ${episode.day}, ${episode.chunks.length}, ${sqlValue(episode.format)});`,
+  const source = (await localQuery(`SELECT id FROM sources WHERE google_doc_id = ${sqlValue(SOURCE_DOC_ID)};`))[0];
+  if (!source?.id) throw new Error("Failed to create or locate demo source");
+
+  await localExec([
+    `DELETE FROM chunk_topics WHERE chunk_id IN (SELECT c.id FROM chunks c JOIN episodes e ON c.episode_id = e.id WHERE e.slug IN (${sqlValue(PREV_SLUG)}, ${sqlValue(CURR_SLUG)}));`,
+    `DELETE FROM chunks WHERE episode_id IN (SELECT id FROM episodes WHERE slug IN (${sqlValue(PREV_SLUG)}, ${sqlValue(CURR_SLUG)}));`,
+    `DELETE FROM episode_topics WHERE episode_id IN (SELECT id FROM episodes WHERE slug IN (${sqlValue(PREV_SLUG)}, ${sqlValue(CURR_SLUG)}));`,
+    `DELETE FROM episodes WHERE slug IN (${sqlValue(PREV_SLUG)}, ${sqlValue(CURR_SLUG)});`,
   ]);
-}
 
-const topicRows = localQuery(`SELECT id, slug FROM topics WHERE slug IN (${topics.map((topic) => sqlValue(topic.slug)).join(", ")});`);
-const topicIdBySlug = new Map(topicRows.map((row) => [row.slug, row.id]));
-
-for (const episode of episodes) {
-  const episodeRow = localQuery(`SELECT id FROM episodes WHERE slug = ${sqlValue(episode.slug)};`)[0];
-  if (!episodeRow?.id) throw new Error(`Missing episode ${episode.slug}`);
-
-  const episodeTopicIds = new Set();
-  for (let index = 0; index < episode.chunks.length; index += 1) {
-    const chunk = episode.chunks[index];
-    const content = `${chunk.title}\n\n${chunk.body}`;
-    localExec([
-      `INSERT INTO chunks (episode_id, slug, title, content, content_plain, position, links_json)
-       VALUES (${episodeRow.id}, ${sqlValue(chunk.slug)}, ${sqlValue(chunk.title)}, ${sqlValue(content)}, ${sqlValue(chunk.body)}, ${index}, ${sqlValue(JSON.stringify(chunk.links))});`,
+  for (const topic of topics) {
+    await localExec([
+      `INSERT INTO topics (name, slug, usage_count, distinctiveness)
+       VALUES (${sqlValue(topic.name)}, ${sqlValue(topic.slug)}, ${topic.usage_count}, ${topic.distinctiveness})
+       ON CONFLICT(slug) DO UPDATE SET
+         name = excluded.name,
+         usage_count = excluded.usage_count,
+         distinctiveness = excluded.distinctiveness;`,
     ]);
+  }
 
-    const chunkRow = localQuery(`SELECT id FROM chunks WHERE slug = ${sqlValue(chunk.slug)};`)[0];
-    if (!chunkRow?.id) throw new Error(`Missing chunk ${chunk.slug}`);
+  for (const episode of episodes) {
+    await localExec([
+      `INSERT INTO episodes (source_id, slug, title, published_date, year, month, day, chunk_count, format)
+       VALUES (${source.id}, ${sqlValue(episode.slug)}, ${sqlValue(episode.title)}, ${sqlValue(episode.published_date)}, ${episode.year}, ${episode.month}, ${episode.day}, ${episode.chunks.length}, ${sqlValue(episode.format)});`,
+    ]);
+  }
 
-    for (const topicSlug of chunk.topics) {
-      const topicId = topicIdBySlug.get(topicSlug);
-      if (!topicId) throw new Error(`Missing topic ${topicSlug}`);
-      episodeTopicIds.add(topicId);
-      localExec([
-        `INSERT OR IGNORE INTO chunk_topics (chunk_id, topic_id) VALUES (${chunkRow.id}, ${topicId});`,
+  const topicRows = await localQuery(`SELECT id, slug FROM topics WHERE slug IN (${topics.map((topic) => sqlValue(topic.slug)).join(", ")});`);
+  const topicIdBySlug = new Map(topicRows.map((row) => [row.slug, row.id]));
+
+  for (const episode of episodes) {
+    const episodeRow = (await localQuery(`SELECT id FROM episodes WHERE slug = ${sqlValue(episode.slug)};`))[0];
+    if (!episodeRow?.id) throw new Error(`Missing episode ${episode.slug}`);
+
+    const episodeTopicIds = new Set();
+    for (let index = 0; index < episode.chunks.length; index += 1) {
+      const chunk = episode.chunks[index];
+      const content = `${chunk.title}\n\n${chunk.body}`;
+      await localExec([
+        `INSERT INTO chunks (episode_id, slug, title, content, content_plain, position, links_json)
+         VALUES (${episodeRow.id}, ${sqlValue(chunk.slug)}, ${sqlValue(chunk.title)}, ${sqlValue(content)}, ${sqlValue(chunk.body)}, ${index}, ${sqlValue(JSON.stringify(chunk.links))});`,
+      ]);
+
+      const chunkRow = (await localQuery(`SELECT id FROM chunks WHERE slug = ${sqlValue(chunk.slug)};`))[0];
+      if (!chunkRow?.id) throw new Error(`Missing chunk ${chunk.slug}`);
+
+      for (const topicSlug of chunk.topics) {
+        const topicId = topicIdBySlug.get(topicSlug);
+        if (!topicId) throw new Error(`Missing topic ${topicSlug}`);
+        episodeTopicIds.add(topicId);
+        await localExec([
+          `INSERT OR IGNORE INTO chunk_topics (chunk_id, topic_id) VALUES (${chunkRow.id}, ${topicId});`,
+        ]);
+      }
+    }
+
+    for (const topicId of episodeTopicIds) {
+      await localExec([
+        `INSERT OR IGNORE INTO episode_topics (episode_id, topic_id) VALUES (${episodeRow.id}, ${topicId});`,
       ]);
     }
   }
 
-  for (const topicId of episodeTopicIds) {
-    localExec([
-      `INSERT OR IGNORE INTO episode_topics (episode_id, topic_id) VALUES (${episodeRow.id}, ${topicId});`,
-    ]);
-  }
+  console.log(JSON.stringify({
+    source: SOURCE_DOC_ID,
+    episodes: episodes.map((episode) => ({ slug: episode.slug, title: episode.title, chunks: episode.chunks.length })),
+    previewUrl: `http://localhost:9090/episodes/${CURR_SLUG}`,
+  }, null, 2));
+} finally {
+  await dispose();
 }
-
-console.log(JSON.stringify({
-  source: SOURCE_DOC_ID,
-  episodes: episodes.map((episode) => ({ slug: episode.slug, title: episode.title, chunks: episode.chunks.length })),
-  previewUrl: `http://localhost:9090/episodes/${CURR_SLUG}`,
-}, null, 2));
