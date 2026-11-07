@@ -8,7 +8,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
 import { applyTestMigrations } from "../../test/helpers/migrations";
 import { getUnenrichedChunks, markChunksEnriched } from "../db/ingestion";
-import { CURRENT_ENRICHMENT_VERSION } from "./ingest";
+import { CURRENT_ENRICHMENT_VERSION, enrichChunks, finalizeEnrichment } from "./ingest";
 
 beforeEach(async () => {
   await applyTestMigrations(env.DB);
@@ -110,5 +110,52 @@ describe("Enrichment versioning", () => {
       { id: 2, enriched: 0, enrichment_version: 0 },
       { id: 3, enriched: 1, enrichment_version: CURRENT_ENRICHMENT_VERSION },
     ]);
+  });
+});
+
+// v6 and earlier ran the naive YAKE tokenizer that deleted punctuation inside
+// words, so "AI/ML teams" was stored as the topic "aiml team". The general
+// mechanism is covered above (an older version is re-selected and re-marked),
+// in queue-handler.test.ts (a completed job key from the previous version does
+// not block the new one) and in version-bump.test.ts (finalize deletes orphan
+// topics). This follows one fused topic through the v7 campaign.
+describe("v7 re-enrichment of topics fused by the old tokenizer", () => {
+  it("re-selects a chunk enriched at v6, drops its fused topic link, and finalize deletes the topic", async () => {
+    const text = "Most AI/ML teams still ship models by hand. AI/ML tooling lags behind.";
+    await env.DB.batch([
+      env.DB.prepare("UPDATE chunks SET content = ?, content_plain = ? WHERE id = 1").bind(text, text),
+      env.DB.prepare("UPDATE chunks SET enriched = 1, enrichment_version = 6"),
+      env.DB.prepare("INSERT INTO topics (id, name, slug, kind, usage_count) VALUES (1, 'aiml team', 'aiml-team', 'concept', 1)"),
+      env.DB.prepare("INSERT INTO chunk_topics (chunk_id, topic_id) VALUES (1, 1)"),
+      env.DB.prepare("INSERT INTO episode_topics (episode_id, topic_id) VALUES (1, 1)"),
+      env.DB.prepare(
+        `INSERT INTO topic_candidate_audit (
+           chunk_id, topic_id, source, stage, raw_candidate, normalized_candidate, topic_name, slug,
+           score, kind, decision, decision_reason, provenance
+         ) VALUES (1, 1, 'yake', 'topic_promoted', 'aiml teams', 'aiml team', 'aiml team', 'aiml-team',
+           0.05, 'concept', 'accepted', 'candidate_survived_filters', '["yake_score:0.050000"]')`
+      ),
+    ]);
+
+    const pending = await getUnenrichedChunks(env.DB, 100);
+    expect(pending.map((chunk: { id: number }) => chunk.id)).toEqual([3, 2, 1]);
+
+    const { chunksProcessed } = await enrichChunks(env.DB, 100, "naive");
+    expect(chunksProcessed).toBe(3);
+
+    const chunk = await env.DB.prepare("SELECT enrichment_version FROM chunks WHERE id = 1")
+      .first<{ enrichment_version: number }>();
+    expect(chunk?.enrichment_version).toBe(CURRENT_ENRICHMENT_VERSION);
+    const fusedRefs = await env.DB.prepare(
+      `SELECT
+         (SELECT COUNT(*) FROM chunk_topics WHERE topic_id = 1) AS links,
+         (SELECT COUNT(*) FROM topic_candidate_audit WHERE slug LIKE '%aiml%' OR topic_id = 1) AS audit_rows`
+    ).first<{ links: number; audit_rows: number }>();
+    expect(fusedRefs).toEqual({ links: 0, audit_rows: 0 });
+
+    await finalizeEnrichment(env.DB);
+
+    const fused = await env.DB.prepare("SELECT id FROM topics WHERE slug LIKE '%aiml%'").first();
+    expect(fused).toBeNull();
   });
 });
